@@ -426,21 +426,21 @@ const Spese: React.FC = () => {
           <button
             onClick={exportToPDF}
             disabled={isExporting}
-            className="flex items-center justify-center gap-2 px-4 py-3 bg-white text-slate-700 rounded-2xl font-bold shadow-sm border border-slate-200 hover:bg-slate-50 transition-all text-sm uppercase tracking-wider disabled:opacity-50"
+            className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 px-6 py-2.5 rounded-full font-bold uppercase italic tracking-wider hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[10px] disabled:opacity-50"
           >
             <Download size={18} />
             {isExporting ? '...' : 'PDF'}
           </button>
           <button
             onClick={() => setIsCategoryModalOpen(true)}
-            className="flex items-center justify-center gap-2 px-4 py-3 bg-white text-slate-700 rounded-2xl font-bold shadow-sm border border-slate-200 hover:bg-slate-50 transition-all text-sm uppercase tracking-wider"
+            className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 px-6 py-2.5 rounded-full font-bold uppercase italic tracking-wider hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[10px]"
           >
             <Tag size={18} />
             Categorie
           </button>
           <button
             onClick={() => { resetForm(); setIsModalOpen(true); }}
-            className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all text-sm uppercase tracking-wider"
+            className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2.5 rounded-full font-bold uppercase italic tracking-wider hover:bg-blue-700 transition-all shadow-md hover:shadow-lg active:scale-95 text-[10px]"
           >
             <Plus size={18} />
             Nuova Spesa
@@ -595,8 +595,8 @@ const Spese: React.FC = () => {
       </div>
 
       {/* List */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden overflow-x-auto">
-        <table className="w-full text-left border-collapse">
+      <div className="lg:bg-white lg:rounded-3xl lg:border lg:border-slate-200 lg:shadow-sm lg:overflow-hidden overflow-x-auto">
+        <table className="hidden lg:table w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-100">
               <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 tracking-wider">Pagato</th>
@@ -627,7 +627,7 @@ const Spese: React.FC = () => {
                     <div>
                       <p className={`text-sm font-bold text-slate-900 line-clamp-1 ${expense.paid ? 'line-through text-slate-400' : ''}`}>{expense.name}</p>
                       {expense.deadline && !expense.paid && (
-                        <p className={`text-[10px] font-bold uppercase ${new Date(expense.deadline) < new Date() ? 'text-red-600' : 'text-amber-600'}`}>
+                        <p className={`text-[10px] font-bold uppercase ${new Date(expense.deadline) < startOfDay(new Date()) ? 'text-red-600' : 'text-amber-600'}`}>
                           Scadenza: {format(new Date(expense.deadline), 'dd/MM/yy')}
                         </p>
                       )}
@@ -675,7 +675,7 @@ const Spese: React.FC = () => {
                         href={expense.invoiceUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="p-2 text-blue-600 bg-white border border-slate-200 rounded-lg hover:bg-blue-50 transition-all shadow-sm"
+                        className="p-2.5 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-full transition-all border border-blue-100 shadow-sm hover:scale-110"
                         title="Vedi Fattura"
                       >
                         <Download size={16} />
@@ -683,14 +683,14 @@ const Spese: React.FC = () => {
                     )}
                     <button
                       onClick={() => handleEdit(expense)}
-                      className="p-2 text-blue-600 bg-white border border-slate-200 rounded-lg hover:bg-blue-50 transition-all shadow-sm"
+                      className="p-2.5 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-full transition-all border border-blue-100 shadow-sm hover:scale-110"
                       title="Modifica"
                     >
                       <Pencil size={16} />
                     </button>
                     <button
                       onClick={() => setExpenseToDelete(expense.id)}
-                      className="p-2 text-red-600 bg-white border border-slate-200 rounded-lg hover:bg-red-50 transition-all shadow-sm"
+                      className="p-2.5 text-red-600 bg-red-50 hover:bg-red-100 rounded-full transition-all border border-red-100 shadow-sm hover:scale-110"
                       title="Elimina"
                     >
                       <Trash2 size={16} />
@@ -701,41 +701,108 @@ const Spese: React.FC = () => {
             ))}
             {filteredExpenses.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-6 py-20 text-center text-slate-500 italic text-sm">
+                <td colSpan={7} className="px-6 py-20 text-center text-slate-500 italic text-sm">
                   Nessun spesa registrata o corrispondente ai criteri di ricerca.
                 </td>
               </tr>
             )}
           </tbody>
         </table>
+
+        {/* Mobile View */}
+        <div className="lg:hidden space-y-4">
+          {filteredExpenses.map((expense) => (
+            <div key={expense.id} className={`bg-white p-5 rounded-[2rem] border border-slate-200 shadow-sm space-y-4 transition-opacity ${expense.paid ? 'opacity-60' : ''}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={expense.paid || false}
+                    onChange={() => togglePaid(expense)}
+                    className="w-6 h-6 rounded border-slate-300 text-blue-600 focus:ring-blue-500 transition-all cursor-pointer"
+                  />
+                  <div>
+                    <h3 className={`font-black text-slate-900 uppercase text-xs italic ${expense.paid ? 'line-through text-slate-400' : ''}`}>
+                      {expense.name}
+                    </h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                      {expense.category || 'Spesa'}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-sm font-black text-slate-900 italic">€{expense.amount.toLocaleString('it-IT')}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 py-3 border-y border-slate-50">
+                <div className="space-y-1">
+                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Data</p>
+                  <p className="text-[10px] font-bold text-slate-900">{format(new Date(expense.date), 'dd/MM/yyyy')}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Scadenza</p>
+                  <p className={`text-[10px] font-bold uppercase ${!expense.paid && expense.deadline && new Date(expense.deadline) < startOfDay(new Date()) ? 'text-red-600' : 'text-slate-900'}`}>
+                    {expense.deadline ? format(new Date(expense.deadline), 'dd/MM/yy') : '-'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <Users size={14} className="text-slate-300 shrink-0" />
+                  <p className="text-[10px] font-bold text-slate-500 truncate italic">
+                    {expense.reimbursableTo ? `Rimborso: ${expense.reimbursableTo}` : 'Cassa Parrocchia'}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                   {expense.invoiceUrl && (
+                    <a href={expense.invoiceUrl} target="_blank" rel="noopener noreferrer" className="p-2 bg-blue-50 text-blue-600 rounded-full border border-blue-100">
+                      <Download size={14} />
+                    </a>
+                  )}
+                  <button onClick={() => handleEdit(expense)} className="p-2 bg-blue-50 text-blue-600 rounded-full border border-blue-100">
+                    <Pencil size={14} />
+                  </button>
+                  <button onClick={() => setExpenseToDelete(expense.id)} className="p-2 bg-red-50 text-red-600 rounded-full border border-red-100">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+          {filteredExpenses.length === 0 && (
+            <div className="text-center py-10 bg-white rounded-[2rem] border border-dashed border-slate-200">
+               <p className="text-xs text-slate-400 italic">Nessun spesa trovata.</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Main Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-[3rem] w-full max-w-7xl max-h-[95vh] overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-300">
-            <div className="p-10 border-b border-slate-100 flex items-center justify-between">
+            <div className="p-6 md:p-10 border-b border-slate-100 flex items-center justify-between">
               <div>
-                <h2 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3 uppercase">
-                  <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center">
-                    <Euro size={28} />
+                <h2 className="text-xl md:text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3 uppercase italic">
+                  <div className="w-10 h-10 md:w-12 md:h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center">
+                    <Euro size={24} />
                   </div>
                   {editingId ? 'Modifica Spesa' : 'Nuova Spesa'}
                 </h2>
-                <p className="text-slate-500 font-semibold mt-1">Inserisci tutte le informazioni relative al costo e all'eventuale rimborso.</p>
+                <p className="hidden md:block text-slate-500 font-semibold mt-1 italic">Inserisci tutte le informazioni relative al costo e all'eventuale rimborso.</p>
               </div>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="p-4 text-slate-400 hover:text-slate-900 hover:bg-slate-50 rounded-[1.5rem] transition-all"
+                className="p-2.5 text-slate-400 hover:text-slate-900 hover:bg-slate-50 rounded-full transition-all"
               >
-                <X size={28} />
+                <X size={24} />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-10 space-y-12 custom-scrollbar bg-slate-50/30">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 md:p-10 space-y-8 md:space-y-12 custom-scrollbar bg-slate-50/30">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12">
                 {/* Left Column: Basic Info */}
-                <div className="space-y-8 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                <div className="space-y-6 md:space-y-8 bg-white p-6 md:p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
                   <div className="flex items-center gap-3 border-b border-slate-50 pb-6 mb-2">
                     <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
                       <FileText size={20} />
@@ -751,18 +818,18 @@ const Spese: React.FC = () => {
                       value={form.name}
                       onChange={(e) => setForm({ ...form, name: e.target.value })}
                       placeholder="es. Fattura Manutenzione Caldaia"
-                      className="w-full px-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:outline-none focus:border-blue-500/30 focus:bg-white transition-all text-slate-900 font-bold placeholder:text-slate-300"
+                      className="w-full px-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:outline-none focus:border-blue-500/30 focus:bg-white transition-all text-slate-900 font-bold placeholder:text-slate-300 text-sm"
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-4">Categoria voce</label>
                       <select
                         required
                         value={form.category}
                         onChange={(e) => setForm({ ...form, category: e.target.value })}
-                        className="w-full px-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:outline-none focus:border-blue-500/30 focus:bg-white transition-all text-slate-900 font-bold appearance-none"
+                        className="w-full px-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:outline-none focus:border-blue-500/30 focus:bg-white transition-all text-slate-900 font-bold appearance-none text-sm"
                       >
                         <option value="">Seleziona...</option>
                         {categories.map(c => (
@@ -780,13 +847,13 @@ const Spese: React.FC = () => {
                           step="0.01"
                           value={form.amount}
                           onChange={(e) => setForm({ ...form, amount: parseFloat(e.target.value) || 0 })}
-                          className="w-full pl-14 pr-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:outline-none focus:border-blue-500/30 focus:bg-white transition-all text-slate-900 font-black"
+                          className="w-full pl-14 pr-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:outline-none focus:border-blue-500/30 focus:bg-white transition-all text-slate-900 font-black text-sm"
                         />
                       </div>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-4">Data Documento</label>
                       <input
@@ -794,7 +861,7 @@ const Spese: React.FC = () => {
                         type="date"
                         value={form.date}
                         onChange={(e) => setForm({ ...form, date: e.target.value })}
-                        className="w-full px-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:outline-none focus:border-blue-500/30 focus:bg-white transition-all text-slate-900 font-bold"
+                        className="w-full px-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:outline-none focus:border-blue-500/30 focus:bg-white transition-all text-slate-900 font-bold text-sm"
                       />
                     </div>
                     <div className="space-y-2">
@@ -803,7 +870,7 @@ const Spese: React.FC = () => {
                         type="date"
                         value={form.deadline}
                         onChange={(e) => setForm({ ...form, deadline: e.target.value })}
-                        className="w-full px-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:outline-none focus:border-blue-500/30 focus:bg-white transition-all text-slate-900 font-bold"
+                        className="w-full px-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:outline-none focus:border-blue-500/30 focus:bg-white transition-all text-slate-900 font-bold text-sm"
                       />
                     </div>
                   </div>
@@ -815,11 +882,11 @@ const Spese: React.FC = () => {
                       value={form.usage}
                       onChange={(e) => setForm({ ...form, usage: e.target.value })}
                       placeholder="es. Ripristino riscaldamento sala catechesi"
-                      className="w-full px-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:outline-none focus:border-blue-500/30 focus:bg-white transition-all text-slate-900 font-bold placeholder:text-slate-300"
+                      className="w-full px-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:outline-none focus:border-blue-500/30 focus:bg-white transition-all text-slate-900 font-bold placeholder:text-slate-300 text-sm"
                     />
                   </div>
 
-                  <div className="flex items-center gap-4 p-6 bg-slate-50 rounded-2xl border-2 border-transparent transition-all">
+                  <div className="flex items-center gap-4 p-4 md:p-6 bg-slate-50 rounded-2xl border-2 border-transparent transition-all">
                     <input
                       type="checkbox"
                       id="paid-checkbox"
@@ -828,8 +895,8 @@ const Spese: React.FC = () => {
                       className="w-6 h-6 rounded border-slate-300 text-blue-600 focus:ring-blue-500 transition-all cursor-pointer"
                     />
                     <label htmlFor="paid-checkbox" className="flex-1 cursor-pointer">
-                      <p className="text-sm font-black text-slate-900 uppercase">Pagamento Avvenuto</p>
-                      <p className="text-[10px] text-slate-500 font-bold">Segna questa spesa come già saldata</p>
+                      <p className="text-[10px] md:text-sm font-black text-slate-900 uppercase tracking-tighter">Pagamento Avvenuto</p>
+                      <p className="text-[8px] md:text-[10px] text-slate-500 font-bold uppercase italic">Segna questa spesa come già saldata</p>
                     </label>
                   </div>
 
@@ -851,7 +918,7 @@ const Spese: React.FC = () => {
                       >
                         <div className="flex items-center gap-3">
                           <FileUp size={20} />
-                          <span className="font-bold text-sm">{form.invoiceUrl ? 'Documento caricato' : 'Carica fattura PDF'}</span>
+                          <span className="font-bold text-sm italic">{form.invoiceUrl ? 'PDF caricato' : 'Carica PDF'}</span>
                         </div>
                         {form.invoiceUrl && <CheckCircle2 size={18} className="text-blue-500" />}
                       </label>
@@ -860,7 +927,7 @@ const Spese: React.FC = () => {
                 </div>
 
                 {/* Right Column: Reimbursement & Notes */}
-                <div className="space-y-8 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col">
+                <div className="space-y-8 bg-white p-6 md:p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col">
                   <div>
                     <div className="flex items-center gap-3 border-b border-slate-50 pb-6 mb-8">
                       <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
@@ -878,39 +945,38 @@ const Spese: React.FC = () => {
                             type="text"
                             value={form.reimbursableTo}
                             onChange={(e) => setForm({ ...form, reimbursableTo: e.target.value })}
-                            placeholder="es. Mario Rossi (o lasciare scarico se pagato direttamente)"
-                            className="w-full pl-14 pr-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:outline-none focus:border-blue-500/30 focus:bg-white transition-all text-slate-900 font-bold placeholder:text-slate-300"
+                            placeholder="es. Mario Rossi"
+                            className="w-full pl-14 pr-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:outline-none focus:border-blue-500/30 focus:bg-white transition-all text-slate-900 font-bold placeholder:text-slate-300 text-sm"
                           />
                         </div>
-                        <p className="text-[10px] text-slate-400 ml-4 italic font-medium">Inserisci il nome della persona che ha anticipato la spesa.</p>
+                        <p className="text-[10px] text-slate-400 ml-4 italic font-medium">Inserisci chi ha anticipato la somma.</p>
                       </div>
                     </div>
                   </div>
 
-                  <div className="space-y-2 mt-8">
+                  <div className="space-y-2 mt-8 flex-1 flex flex-col">
                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-4">Note aggiuntive / Promemoria</label>
                     <textarea
                       value={form.notes}
                       onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                      rows={6}
-                      className="w-full px-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:outline-none focus:border-blue-500/30 focus:bg-white transition-all text-slate-900 font-bold placeholder:text-slate-300 resize-none shadow-inner"
+                      className="w-full flex-1 px-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:outline-none focus:border-blue-500/30 focus:bg-white transition-all text-slate-900 font-bold placeholder:text-slate-300 resize-none shadow-inner min-h-[150px] text-sm"
                       placeholder="Annotazioni utili per la contabilità..."
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="flex gap-4 pt-4 border-t border-slate-100 uppercase">
+              <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="flex-1 px-8 py-5 rounded-2xl font-black text-slate-400 bg-white border border-slate-200 hover:bg-slate-50 transition-all uppercase tracking-widest text-xs"
+                  className="bg-white border border-slate-200 text-slate-600 px-6 py-4 md:py-5 rounded-full font-bold uppercase italic tracking-wider hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[10px] flex-1"
                 >
                   Annulla
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-8 py-5 bg-blue-600 text-white rounded-2xl font-black hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 uppercase tracking-widest text-xs transform active:scale-95"
+                  className="bg-blue-600 text-white px-6 py-4 md:py-5 rounded-full font-bold uppercase italic tracking-widest hover:bg-blue-700 transition-all shadow-xl active:scale-95 text-[10px] flex-1"
                 >
                   Salva Movimento Cassa
                 </button>
@@ -948,7 +1014,7 @@ const Spese: React.FC = () => {
                 />
                 <button
                   type="submit"
-                  className="p-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-sm"
+                  className="p-2.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-all shadow-md active:scale-95"
                 >
                   <Plus size={20} />
                 </button>
@@ -972,7 +1038,7 @@ const Spese: React.FC = () => {
             <div className="p-6 bg-white border-t border-slate-100 shrink-0">
               <button
                 onClick={() => setIsCategoryModalOpen(false)}
-                className="w-full py-3 rounded-2xl font-bold bg-slate-900 text-white hover:bg-slate-800 transition-all uppercase tracking-widest text-xs"
+                className="bg-white border border-slate-200 text-slate-600 px-10 py-4 rounded-full font-bold uppercase italic tracking-wider hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[10px] w-full"
               >
                 Fatto
               </button>
@@ -995,16 +1061,16 @@ const Spese: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex gap-4">
               <button
                 onClick={() => setExpenseToDelete(null)}
-                className="flex-1 px-4 py-2 rounded-xl font-medium text-slate-600 hover:bg-slate-100 transition-colors border border-slate-200"
+                className="flex-1 bg-white border border-slate-200 text-slate-600 px-6 py-3 rounded-full font-bold uppercase italic tracking-wider hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[10px]"
               >
                 Annulla
               </button>
               <button
                 onClick={handleDelete}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors shadow-md shadow-red-100"
+                className="flex-1 bg-red-600 text-white px-6 py-3 rounded-full font-bold uppercase italic tracking-wider hover:bg-red-700 transition-all shadow-md active:scale-95 text-[10px]"
               >
                 Elimina
               </button>

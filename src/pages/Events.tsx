@@ -633,21 +633,24 @@ const Events: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">Eventi</h1>
-          <p className="text-slate-500 mt-1">Gestisci il calendario degli eventi parrocchiali.</p>
+    <div className="space-y-6 md:space-y-8 min-h-screen pb-20">
+      {/* Header */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+        <div className="text-center lg:text-left">
+          <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight italic uppercase">Gestione Eventi</h1>
+          <p className="text-slate-500 font-medium text-xs md:text-sm">Pianifica le attività e monitora le iscrizioni parrocchiali.</p>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="hidden lg:flex items-center gap-3 bg-white border border-slate-200 px-4 py-2 rounded-xl text-sm shadow-sm">
+        
+        <div className="flex flex-col sm:flex-row items-center gap-3">
+          {/* Calendar Range Filter (Desktop) */}
+          <div className="hidden sm:flex items-center gap-3 bg-white border border-slate-200 px-4 py-2 rounded-2xl text-xs shadow-sm">
             <div className="flex gap-2 mr-2">
               <button 
                 onClick={() => {
                   setExportStartDate(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
                   setExportEndDate(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
                 }}
-                className="text-[10px] font-black uppercase text-blue-600 hover:underline"
+                className="text-[9px] font-black uppercase text-blue-600 hover:text-blue-800 transition-colors"
               >
                 Mese
               </button>
@@ -656,224 +659,222 @@ const Events: React.FC = () => {
                   setExportStartDate(format(startOfYear(new Date()), 'yyyy-MM-dd'));
                   setExportEndDate(format(endOfYear(new Date()), 'yyyy-MM-dd'));
                 }}
-                className="text-[10px] font-black uppercase text-blue-600 hover:underline"
+                className="text-[9px] font-black uppercase text-blue-600 hover:text-blue-800 transition-colors"
               >
                 Anno
               </button>
             </div>
             <div className="flex items-center gap-2">
-              <CalendarIcon size={16} className="text-slate-400" />
+              <CalendarIcon size={14} className="text-slate-400" />
               <input
                 type="date"
                 value={exportStartDate}
                 onChange={(e) => setExportStartDate(e.target.value)}
-                className="outline-none bg-transparent"
+                className="outline-none bg-transparent font-bold text-slate-600"
               />
             </div>
             <span className="text-slate-300">|</span>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 text-slate-600">
               <input
                 type="date"
                 value={exportEndDate}
                 onChange={(e) => setExportEndDate(e.target.value)}
-                className="outline-none bg-transparent"
+                className="outline-none bg-transparent font-bold"
               />
             </div>
-            {(exportStartDate || exportEndDate) && (
-              <button
-                onClick={() => { setExportStartDate(''); setExportEndDate(''); }}
-                className="ml-2 p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-red-500 transition-colors"
-                title="Resetta filtri"
-              >
-                <X size={14} />
-              </button>
-            )}
           </div>
-          <button
-            onClick={exportToPDF}
-            disabled={isExporting}
-            className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-xl font-medium hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-50"
-          >
-            <Download size={20} />
-            {isExporting ? 'Generando...' : 'Esporta PDF'}
-          </button>
-          <button
-            onClick={() => {
-              setIsEditing(false);
-              setEditingId(null);
-              setNewEvent(initialEventState);
-              setIsModalOpen(true);
-            }}
-            className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2 rounded-xl font-medium hover:bg-blue-700 transition-colors"
-          >
-            <Plus size={20} />
-            Nuovo Evento
-          </button>
+
+          <div className="flex gap-2 w-full sm:w-auto">
+            <button
+              onClick={exportToPDF}
+              disabled={isExporting}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-600 px-5 py-3 rounded-full font-black uppercase italic tracking-widest hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[10px] disabled:opacity-50"
+            >
+              <Download size={16} />
+              {isExporting ? '...' : 'PDF'}
+            </button>
+            <button
+              onClick={() => {
+                setIsEditing(false);
+                setEditingId(null);
+                setNewEvent(initialEventState);
+                setIsModalOpen(true);
+              }}
+              className="flex-[2] sm:flex-none flex items-center justify-center gap-2 bg-blue-600 text-white px-8 py-3 rounded-full font-black uppercase italic tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 active:scale-95 text-[10px]"
+            >
+              <Plus size={18} />
+              Nuovo Evento
+            </button>
+          </div>
         </div>
       </div>
 
+      {/* Stats Dashboard */}
       {!loading && events.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Approved vs Pending */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
-            <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+          <div className="bg-white p-5 md:p-6 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col md:flex-row items-center md:items-start text-center md:text-left gap-4 transition-all hover:shadow-md">
+            <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl">
               <CheckCircle2 size={24} />
             </div>
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Eventi Approvati</p>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-black text-slate-900">{approvedCount}</span>
-                <span className="text-xs font-semibold text-slate-400">/ {events.length}</span>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Approvati</p>
+              <div className="flex items-baseline justify-center md:justify-start gap-1">
+                <span className="text-xl md:text-2xl font-black text-slate-900 leading-none">{approvedCount}</span>
+                <span className="text-[10px] font-bold text-slate-400 italic">/ {events.length}</span>
               </div>
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
-            <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
+          <div className="bg-white p-5 md:p-6 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col md:flex-row items-center md:items-start text-center md:text-left gap-4 transition-all hover:shadow-md">
+            <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl">
               <AlertCircle size={24} />
             </div>
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">In Attesa</p>
-              <span className="text-2xl font-black text-slate-900">{pendingCount}</span>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">In Attesa</p>
+              <span className="text-xl md:text-2xl font-black text-slate-900 leading-none">{pendingCount}</span>
             </div>
           </div>
 
-          {/* Past vs Scheduled */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
-            <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+          <div className="bg-white p-5 md:p-6 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col md:flex-row items-center md:items-start text-center md:text-left gap-4 transition-all hover:shadow-md">
+            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl">
               <CalendarIcon size={24} />
             </div>
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Programmati</p>
-              <span className="text-2xl font-black text-slate-900">{scheduledCount}</span>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Programmati</p>
+              <span className="text-xl md:text-2xl font-black text-slate-900 leading-none">{scheduledCount}</span>
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
-            <div className="p-3 bg-slate-50 text-slate-400 rounded-xl">
+          <div className="bg-white p-5 md:p-6 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col md:flex-row items-center md:items-start text-center md:text-left gap-4 transition-all hover:shadow-md">
+            <div className="p-3 bg-slate-50 text-slate-400 rounded-2xl">
               <Clock size={24} />
             </div>
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Passati</p>
-              <span className="text-2xl font-black text-slate-900">{pastCount}</span>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Passati</p>
+              <span className="text-xl md:text-2xl font-black text-slate-900 leading-none">{pastCount}</span>
             </div>
           </div>
         </div>
       )}
 
-      {!loading && events.length > 0 && (
-        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-wrap items-center gap-4">
-          <div className="flex-1 min-w-[250px] relative">
-            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Cerca per titolo, descr o luogo..."
-              value={filterSearch}
-              onChange={(e) => setFilterSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm"
-            />
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <Filter size={16} className="text-slate-400" />
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium"
-            >
-              <option value="All">Tutte le Tipologie</option>
-              <option value="Messa">Messa</option>
-              <option value="Oratorio">Oratorio</option>
-              <option value="Catechismo">Catechismo</option>
-              <option value="Preghiera">Preghiera</option>
-              <option value="Incontro">Incontro</option>
-              <option value="Festa">Festa</option>
-              <option value="Cena">Cena</option>
-              <option value="Gita">Gita</option>
-              <option value="Concerto">Concerto</option>
-              <option value="Volontariato">Volontariato</option>
-              <option value="Formazione">Formazione</option>
-              <option value="Altro">Altro</option>
-            </select>
+      {/* Container with Filters & List */}
+      <div className="bg-white rounded-[2.5rem] md:rounded-[3rem] border border-slate-200 shadow-sm overflow-hidden">
+        {/* Advanced Filters */}
+        <div className="p-4 md:p-6 bg-slate-50 border-b border-slate-100">
+          <div className="flex flex-col lg:flex-row gap-4">
+            <div className="flex-1 relative">
+              <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Cerca per titolo, descrizione o luogo..."
+                value={filterSearch}
+                onChange={(e) => setFilterSearch(e.target.value)}
+                className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl md:rounded-full focus:ring-4 focus:ring-blue-100 outline-none transition-all text-sm font-bold placeholder:font-medium"
+              />
+            </div>
             
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value as any)}
-              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium"
-            >
-              <option value="All">Tutti gli Stati</option>
-              <option value="Upcoming">In Arrivo</option>
-              <option value="Past">Passati</option>
-            </select>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm">
+                <Filter size={16} className="text-slate-400" />
+                <select
+                  value={filterType}
+                  onChange={(e) => setFilterType(e.target.value)}
+                  className="bg-transparent text-xs font-black uppercase tracking-wider outline-none cursor-pointer text-slate-700 italic pr-2"
+                >
+                  <option value="All">Tutte le Tipologie</option>
+                  {[
+                    'Messa', 'Oratorio', 'Catechismo', 'Preghiera', 'Incontro', 
+                    'Festa', 'Cena', 'Gita', 'Concerto', 'Volontariato', 
+                    'Formazione', 'Altro'
+                  ].map(type => <option key={type} value={type}>{type}</option>)}
+                </select>
+              </div>
+              
+              <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm">
+                <LayoutGrid size={16} className="text-slate-400" />
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value as any)}
+                  className="bg-transparent text-xs font-black uppercase tracking-wider outline-none cursor-pointer text-slate-700 italic pr-2"
+                >
+                  <option value="All">Tutti gli Stati</option>
+                  <option value="Upcoming">In Arrivo</option>
+                  <option value="Past">Passati</option>
+                </select>
+              </div>
 
-            {(filterSearch !== '' || filterType !== 'All' || filterStatus !== 'All') && (
-              <button
-                onClick={() => {
-                  setFilterSearch('');
-                  setFilterType('All');
-                  setFilterStatus('All');
-                }}
-                className="p-2 text-slate-400 hover:text-red-500 transition-colors"
-                title="Resetta filtri"
-              >
-                <X size={18} />
-              </button>
-            )}
+              {(filterSearch !== '' || filterType !== 'All' || filterStatus !== 'All') && (
+                <button
+                  onClick={() => {
+                    setFilterSearch('');
+                    setFilterType('All');
+                    setFilterStatus('All');
+                  }}
+                  className="p-3 text-red-500 bg-red-50 hover:bg-red-100 rounded-xl transition-all border border-red-100 shadow-sm"
+                  title="Resetta filtri"
+                >
+                  <X size={18} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
-      )}
 
-      {loading ? (
-        <div className="flex items-center justify-center p-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        </div>
-      ) : (
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-100">
-                  <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 tracking-wider">Data e Ora</th>
-                  <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 tracking-wider">Evento</th>
-                  <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 tracking-wider">Iscritti</th>
-                  <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 tracking-wider">Tipologia</th>
-                  <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 tracking-wider">Luogo</th>
-                  <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 tracking-wider">Prezzo</th>
-                  <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 tracking-wider">Stato</th>
-                  <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 tracking-wider text-right">Azioni</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredEvents.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-slate-500 italic">
-                      Nessun evento trovato con i filtri selezionati.
-                    </td>
+        {/* List Content */}
+        <div className="overflow-x-auto">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center p-20 space-y-4">
+              <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 animate-pulse">Caricamento eventi in corso...</p>
+            </div>
+          ) : filteredEvents.length === 0 ? (
+            <div className="text-center py-24 bg-white px-6">
+              <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-inner">
+                <CalendarIcon className="text-slate-300" size={40} strokeWidth={1} />
+              </div>
+              <h3 className="text-xl font-black text-slate-900 uppercase italic">Nessun evento trovato</h3>
+              <p className="text-slate-500 max-w-xs mx-auto text-sm font-medium mt-2 leading-relaxed">
+                Nessun record corrisponde ai filtri selezionati. <br/> Prova a modificare la ricerca o i filtri.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Desktop View */}
+              <table className="hidden lg:table w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/50 border-b border-slate-100">
+                    <th className="px-8 py-5 text-[10px] font-black uppercase text-slate-400 tracking-widest">Data e Ora</th>
+                    <th className="px-8 py-5 text-[10px] font-black uppercase text-slate-400 tracking-widest">Evento</th>
+                    <th className="px-8 py-5 text-[10px] font-black uppercase text-slate-400 tracking-widest text-center">Iscritti</th>
+                    <th className="px-8 py-5 text-[10px] font-black uppercase text-slate-400 tracking-widest">Tipologia</th>
+                    <th className="px-8 py-5 text-[10px] font-black uppercase text-slate-400 tracking-widest">Luogo</th>
+                    <th className="px-8 py-5 text-[10px] font-black uppercase text-slate-400 tracking-widest">Stato</th>
+                    <th className="px-8 py-5 text-[10px] font-black uppercase text-slate-400 tracking-widest text-right">Azioni</th>
                   </tr>
-                ) : (
-                  filteredEvents.map((event) => {
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredEvents.map((event) => {
                     const eventDate = new Date(event.date);
                     const isPast = isBefore(eventDate, new Date());
                     
                     return (
                       <tr 
                         key={event.id} 
-                        onClick={() => handleEdit(event)}
-                        className={`hover:bg-slate-50 cursor-pointer transition-colors ${isPast ? 'opacity-75' : ''}`}
+                        className={`hover:bg-slate-50 transition-all group ${isPast ? 'opacity-60' : ''}`}
                       >
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 rounded-xl flex flex-col items-center justify-center shrink-0 border ${
-                              isPast ? 'bg-slate-50 border-slate-200 text-slate-400' : 'bg-blue-50 border-blue-100 text-blue-700'
+                        <td className="px-8 py-6">
+                          <div className="flex items-center gap-4">
+                            <div className={`w-12 h-12 rounded-2xl flex flex-col items-center justify-center shrink-0 border ${
+                              isPast ? 'bg-slate-50 border-slate-200 text-slate-400' : 'bg-blue-50 border-blue-100 text-blue-700 shadow-sm'
                             }`}>
-                              <span className="text-[10px] font-bold uppercase leading-none">{format(eventDate, 'MMM', { locale: it })}</span>
-                              <span className="text-sm font-bold leading-none">{format(eventDate, 'dd')}</span>
+                              <span className="text-[9px] font-black uppercase tracking-tighter leading-none mb-1">{format(eventDate, 'MMM', { locale: it })}</span>
+                              <span className="text-base font-black leading-none">{format(eventDate, 'dd')}</span>
                             </div>
-                            <div className="space-y-0.5">
-                              <p className="text-xs font-bold text-slate-900 leading-tight">
+                            <div>
+                              <p className="text-xs font-black text-slate-900 uppercase italic leading-none mb-1">
                                 {format(eventDate, 'EEEE', { locale: it })}
                               </p>
-                              <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">
+                              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
                                 ore {format(eventDate, 'HH:mm')}
                                 {event.endDate && (
                                   <> - {format(new Date(event.endDate), 'HH:mm')}</>
@@ -882,32 +883,21 @@ const Events: React.FC = () => {
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <p className="text-sm font-bold text-slate-900">{event.title}</p>
-                              {isPast && (
-                                <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded text-[8px] font-bold uppercase">Passato</span>
-                              )}
-                            </div>
-                            <p className="text-xs text-slate-500 line-clamp-1 max-w-md">{event.description}</p>
-                            {event.targetAudience && (
-                              <div className="flex items-center gap-1 text-[10px] text-slate-400 font-bold uppercase italic">
-                                <Users size={10} />
-                                {event.targetAudience}
-                              </div>
-                            )}
+                        <td className="px-8 py-6">
+                          <div className="space-y-1.5 max-w-sm">
+                            <h4 className="text-sm font-black text-slate-900 leading-tight uppercase italic">{event.title}</h4>
+                            <p className="text-[11px] text-slate-500 font-medium line-clamp-1">{event.description}</p>
                           </div>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-8 py-6">
                           {event.registrationsEnabled ? (
-                            <div className="flex flex-col gap-1">
-                              <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
-                                <span>{event.registrationsCount || 0} / {event.maxParticipants || '∞'}</span>
-                              </div>
-                              <div className="h-1 w-20 bg-slate-100 rounded-full overflow-hidden">
+                            <div className="flex flex-col items-center gap-1.5">
+                              <span className="text-[10px] font-black text-slate-800 tracking-widest">
+                                {event.registrationsCount || 0} / {event.maxParticipants || '∞'}
+                              </span>
+                              <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200/50">
                                 <div 
-                                  className={`h-full rounded-full transition-all ${
+                                  className={`h-full rounded-full transition-all duration-700 ${
                                     (event.registrationsCount || 0) >= (parseInt(event.maxParticipants) || 9999) ? 'bg-red-500' : 'bg-blue-500'
                                   }`}
                                   style={{ width: `${Math.min(100, ((event.registrationsCount || 0) / (parseInt(event.maxParticipants) || 100)) * 100)}%` }}
@@ -915,66 +905,42 @@ const Events: React.FC = () => {
                               </div>
                             </div>
                           ) : (
-                            <span className="text-[10px] text-slate-300 font-bold uppercase">Disabilitate</span>
+                            <div className="text-center">
+                              <span className="text-[9px] text-slate-300 font-black uppercase tracking-widest">Libero</span>
+                            </div>
                           )}
                         </td>
-                        <td className="px-6 py-4">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${
-                            event.type === 'Messa' ? 'bg-blue-50 text-blue-700 border-blue-100' :
-                            event.type === 'Oratorio' ? 'bg-amber-50 text-amber-700 border-amber-100' :
-                            event.type === 'Catechismo' ? 'bg-red-50 text-red-700 border-red-100' :
-                            event.type === 'Preghiera' ? 'bg-purple-50 text-purple-700 border-purple-100' :
-                            event.type === 'Incontro' ? 'bg-indigo-50 text-indigo-700 border-indigo-100' :
-                            event.type === 'Festa' ? 'bg-pink-50 text-pink-700 border-pink-100' :
-                            event.type === 'Cena' ? 'bg-rose-50 text-rose-700 border-rose-100' :
-                            event.type === 'Gita' ? 'bg-blue-50 text-blue-700 border-blue-100' :
-                            event.type === 'Concerto' ? 'bg-orange-50 text-orange-700 border-orange-100' :
-                            event.type === 'Volontariato' ? 'bg-teal-50 text-teal-700 border-teal-100' :
-                            event.type === 'Formazione' ? 'bg-cyan-50 text-cyan-700 border-cyan-100' :
-                            'bg-slate-50 text-slate-700 border-slate-200'
-                          }`}>
-                            <Tag size={10} className="opacity-70" />
+                        <td className="px-8 py-6">
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-[0.1em] border bg-white shadow-sm italic text-slate-600">
+                            <Tag size={10} className="text-blue-500" />
                             {event.type === 'Altro' && event.customType ? event.customType : event.type}
                           </span>
                         </td>
-                        <td className="px-6 py-4">
-                          {event.location ? (
-                            <div className="flex items-center gap-1.5 text-xs text-slate-600">
-                              <MapPin size={14} className="text-slate-400" />
-                              {event.location}
-                            </div>
-                          ) : (
-                            <span className="text-xs text-slate-300 italic">Luogo non specificato</span>
-                          )}
+                        <td className="px-8 py-6">
+                          <div className="flex items-center gap-2 text-[11px] font-bold text-slate-500 italic max-w-[150px] truncate">
+                            <MapPin size={14} className="text-slate-300 shrink-0" />
+                            <span className="truncate">{event.location || 'Settore vario'}</span>
+                          </div>
                         </td>
-                        <td className="px-6 py-4">
-                          {event.price ? (
-                            <span className="text-xs font-bold text-slate-900 bg-slate-100 px-2 py-1 rounded-md">
-                              {event.price}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-slate-400">---</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4">
+                        <td className="px-8 py-6">
                           {event.isApproved ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded-lg text-[10px] font-bold uppercase border border-blue-100">
+                            <span className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-[9px] font-black uppercase tracking-widest border border-blue-100 italic">
                               Approvato
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-50 text-amber-700 rounded-lg text-[10px] font-bold uppercase border border-amber-100">
-                              In Attesa
+                            <span className="inline-flex items-center gap-1 px-3 py-1 bg-amber-50 text-amber-700 rounded-full text-[9px] font-black uppercase tracking-widest border border-amber-100 italic">
+                              Attesa
                             </span>
                           )}
                         </td>
-                        <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                        <td className="px-8 py-6 text-right">
                           <div className="flex items-center justify-end gap-2 text-black">
                             {event.posterUrl && (
                               <a 
                                 href={event.posterUrl} 
                                 target="_blank" 
                                 rel="noreferrer"
-                                className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors shadow-sm bg-white border border-slate-100"
+                                className="p-3 text-indigo-600 bg-indigo-50/50 hover:bg-indigo-50 rounded-2xl transition-all border border-indigo-100 hover:scale-105 active:scale-95 shadow-sm"
                                 title={`Visualizza ${event.posterType === 'pdf' ? 'PDF' : 'Locandina'}`}
                               >
                                 {event.posterType === 'pdf' ? <FileText size={16} /> : <ImageIcon size={16} />}
@@ -982,7 +948,7 @@ const Events: React.FC = () => {
                             )}
                             <button
                               onClick={() => handleEdit(event)}
-                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors shadow-sm bg-white border border-slate-100"
+                              className="p-3 text-blue-600 bg-blue-50/50 hover:bg-blue-50 rounded-2xl transition-all border border-blue-100 hover:scale-105 active:scale-95 shadow-sm"
                               title="Modifica"
                             >
                               <Pencil size={16} />
@@ -990,7 +956,7 @@ const Events: React.FC = () => {
                             {event.registrationsEnabled && (
                               <button
                                 onClick={() => setSelectedEventForRegistrations(event)}
-                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors shadow-sm bg-white border border-slate-100"
+                                className="p-3 text-emerald-600 bg-emerald-50/50 hover:bg-emerald-50 rounded-2xl transition-all border border-emerald-100 hover:scale-105 active:scale-95 shadow-sm"
                                 title="Gestisci Iscrizioni"
                               >
                                 <ListTodo size={16} />
@@ -998,7 +964,7 @@ const Events: React.FC = () => {
                             )}
                             <button
                               onClick={() => setDeleteConfirmation(event.id)}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors shadow-sm bg-white border border-slate-100"
+                              className="p-3 text-red-600 bg-red-50/50 hover:bg-red-50 rounded-2xl transition-all border border-red-100 hover:scale-105 active:scale-95 shadow-sm"
                               title="Elimina"
                             >
                               <Trash2 size={16} />
@@ -1007,258 +973,321 @@ const Events: React.FC = () => {
                         </td>
                       </tr>
                     );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                  })}
+                </tbody>
+              </table>
+
+              {/* Mobile Card View */}
+              <div className="lg:hidden p-4 space-y-4 bg-slate-50/30">
+                {filteredEvents.map((event) => {
+                  const eventDate = new Date(event.date);
+                  const isPast = isBefore(eventDate, new Date());
+
+                  return (
+                    <div 
+                      key={event.id}
+                      onClick={() => handleEdit(event)}
+                      className={`bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-5 relative ${isPast ? 'opacity-60' : ''}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className={`w-14 h-14 rounded-3xl flex flex-col items-center justify-center shrink-0 border ${
+                            isPast ? 'bg-slate-50 border-slate-200 text-slate-400' : 'bg-blue-600 text-white shadow-xl shadow-blue-500/20'
+                          }`}>
+                            <span className="text-[10px] font-black uppercase tracking-tighter leading-none mb-1 opacity-80">{format(eventDate, 'MMM', { locale: it })}</span>
+                            <span className="text-xl font-black leading-none">{format(eventDate, 'dd')}</span>
+                          </div>
+                          <div>
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[9px] font-black uppercase tracking-widest border border-slate-100 italic text-slate-500 bg-slate-50 shadow-sm mb-1.5">
+                              {event.type}
+                            </span>
+                            <h4 className="font-black text-slate-900 leading-tight uppercase italic text-sm">{event.title}</h4>
+                          </div>
+                        </div>
+                        {event.isApproved ? (
+                          <div className="w-2 h-2 bg-blue-500 rounded-full shadow-lg shadow-blue-500/40"></div>
+                        ) : (
+                          <div className="w-2 h-2 bg-amber-500 rounded-full shadow-lg shadow-amber-500/40 animate-pulse"></div>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 py-4 border-y border-slate-50 bg-slate-50/50 p-4 rounded-3xl">
+                        <div>
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 italic">Orario</p>
+                          <p className="text-xs font-black text-slate-900 uppercase">
+                            {format(eventDate, 'HH:mm')}
+                            {event.endDate && <> - {format(new Date(event.endDate), 'HH:mm')}</>}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 italic">Iscritti</p>
+                          <p className="text-xs font-black text-slate-900 uppercase">
+                            {event.registrationsEnabled ? `${event.registrationsCount || 0}/${event.maxParticipants || '∞'}` : 'Nessuna'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-2 text-xs font-bold text-slate-500 italic truncate flex-1 leading-none">
+                          <MapPin size={14} className="text-slate-300 shrink-0" />
+                          <span className="truncate">{event.location || 'Non specificato'}</span>
+                        </div>
+                        <div className="flex gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => handleEdit(event)}
+                            className="p-3 bg-blue-50 text-blue-600 rounded-2xl border border-blue-100"
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          {event.registrationsEnabled && (
+                            <button
+                              onClick={() => setSelectedEventForRegistrations(event)}
+                              className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-100"
+                            >
+                              <ListTodo size={16} />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setDeleteConfirmation(event.id)}
+                            className="p-3 bg-red-50 text-red-600 rounded-2xl border border-red-100"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Registrations Management Modal */}
       {selectedEventForRegistrations && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[55]">
-          <div className="bg-white rounded-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-white z-10 shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-0 md:p-4 z-[55]">
+          <div className="bg-white md:rounded-[2.5rem] w-full max-w-6xl h-full md:max-h-[95vh] overflow-hidden shadow-2xl flex flex-col">
+            {/* Header */}
+            <div className="p-6 md:p-8 border-b border-slate-100 flex items-center justify-between bg-white z-10 shrink-0">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl shadow-sm">
                   <ListTodo size={24} />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-slate-900">Iscrizioni: {selectedEventForRegistrations.title}</h2>
-                  <p className="text-xs text-slate-500">
-                    {registrations.length} {registrations.length === 1 ? 'iscritto' : 'iscritti'} 
-                    {selectedEventForRegistrations.maxParticipants && ` su ${selectedEventForRegistrations.maxParticipants} posti disponibili`}
+                  <h2 className="text-xl font-black text-slate-900 uppercase italic tracking-tight">Iscrizioni</h2>
+                  <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-0.5">
+                    {selectedEventForRegistrations.title}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <button 
                   onClick={() => setSelectedEventForRegistrations(null)} 
-                  className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500"
+                  className="p-3 hover:bg-slate-50 rounded-2xl transition-all text-slate-400 hover:text-slate-900 border border-transparent hover:border-slate-100 shadow-sm hover:shadow-md"
                 >
-                  <X size={20} />
+                  <X size={24} />
                 </button>
               </div>
             </div>
 
-            <div className="flex-1 overflow-auto p-6 space-y-6">
-              {/* Secretary Info Banner */}
-              {selectedEventForRegistrations.secretaryInfo && (
-                <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 flex gap-3">
-                  <div className="p-2 bg-white rounded-lg text-amber-600 shadow-sm self-start">
-                    <AlertCircle size={18} />
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider mb-0.5">Nota per la Segreteria</p>
-                    <p className="text-sm text-amber-900 whitespace-pre-wrap">{selectedEventForRegistrations.secretaryInfo}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Registration Summary Dashboard */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex items-center gap-4">
-                  <div className="p-3 bg-white rounded-lg text-blue-600 shadow-sm">
+            <div className="flex-1 overflow-auto p-4 md:p-8 space-y-8">
+              {/* Stats & Quick Actions */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 flex items-center gap-4">
+                  <div className="p-3 bg-white rounded-2xl text-blue-600 shadow-sm">
                     <Users size={20} />
                   </div>
                   <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Iscritti Totali</p>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 italic">Iscritti</p>
                     <p className="text-xl font-black text-slate-900">
                       {registrations.length}
                       {selectedEventForRegistrations.maxParticipants && (
-                        <span className="text-sm font-medium text-slate-400 ml-1">/ {selectedEventForRegistrations.maxParticipants}</span>
+                        <span className="text-sm font-bold text-slate-400 ml-1 italic">/ {selectedEventForRegistrations.maxParticipants}</span>
                       )}
                     </p>
                   </div>
                 </div>
 
                 {selectedEventForRegistrations.price && (
-                  <>
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex items-center gap-4">
-                      <div className="p-3 bg-white rounded-lg text-blue-600 shadow-sm">
-                        <CheckCircle2 size={20} />
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Pagamenti Ricevuti</p>
-                        <p className="text-xl font-black text-slate-900">
-                          {registrations.filter(r => r.isPaid).length}
-                          <span className="text-sm font-medium text-slate-400 ml-1">persone</span>
-                        </p>
-                      </div>
+                  <div className="bg-blue-50 p-6 rounded-[2rem] border border-blue-100 flex items-center gap-4">
+                    <div className="p-3 bg-white rounded-2xl text-blue-600 shadow-sm">
+                      <CheckCircle2 size={20} />
                     </div>
-
-                    <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex items-center gap-4">
-                      <div className="p-3 bg-white rounded-lg text-blue-600 shadow-sm">
-                        <span className="font-bold">€</span>
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Totale Incassato</p>
-                        <p className="text-xl font-black text-blue-900">
-                          {(registrations.filter(r => r.isPaid).length * (parseFloat(selectedEventForRegistrations.price.replace(',', '.').replace(/[^0-9.]/g, '')) || 0)).toFixed(2)}€
-                        </p>
-                      </div>
+                    <div>
+                      <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest mb-1 italic">Pagamenti</p>
+                      <p className="text-xl font-black text-blue-900">
+                        {registrations.filter(r => r.isPaid).length}
+                      </p>
                     </div>
-                  </>
+                  </div>
                 )}
+
+                <div className="md:col-span-2 flex items-center">
+                  <button
+                    onClick={exportRegistrationsToPDF}
+                    className="w-full flex items-center justify-center gap-3 bg-white border border-slate-200 text-blue-600 p-6 rounded-[2rem] font-black uppercase italic tracking-widest hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-xs"
+                  >
+                    <Download size={20} /> Scarica Elenco PDF
+                  </button>
+                </div>
               </div>
 
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                  <LayoutGrid size={16} /> Elenco Partecipanti
-                </h3>
-                <button
-                  onClick={exportRegistrationsToPDF}
-                  className="flex items-center gap-2 text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg text-xs font-bold border border-blue-200 transition-colors"
-                >
-                  <Download size={14} /> Scarica Elenco PDF
-                </button>
-              </div>
+              {/* Secretary Info Banner */}
+              {selectedEventForRegistrations.secretaryInfo && (
+                <div className="bg-amber-50 border border-amber-100 rounded-[2rem] p-6 flex gap-4">
+                  <div className="p-3 bg-white rounded-2xl text-amber-600 shadow-sm self-start">
+                    <AlertCircle size={24} />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1 italic">Nota per la Segreteria</p>
+                    <p className="text-sm text-amber-900 font-medium leading-relaxed whitespace-pre-wrap italic opacity-80">{selectedEventForRegistrations.secretaryInfo}</p>
+                  </div>
+                </div>
+              )}
 
-              <div className="bg-white border border-slate-100 rounded-xl overflow-hidden shadow-sm">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-100">
-                      <th className="px-6 py-4 text-[10px] font-bold uppercase text-slate-500 tracking-wider w-12">N.</th>
-                      {selectedEventForRegistrations.registrationFields.map((field: any) => (
-                        <th key={field.id} className="px-6 py-4 text-[10px] font-bold uppercase text-slate-500 tracking-wider">
-                          {field.label}
-                        </th>
-                      ))}
-                      {selectedEventForRegistrations.price && (
-                        <th className="px-6 py-4 text-[10px] font-bold uppercase text-slate-500 tracking-wider">Pagamento</th>
-                      )}
-                      <th className="px-6 py-4 text-[10px] font-bold uppercase text-slate-500 tracking-wider">Note</th>
-                      <th className="px-6 py-4 text-[10px] font-bold uppercase text-slate-500 tracking-wider">Data Iscr.</th>
-                      <th className="px-6 py-4 text-[10px] font-bold uppercase text-slate-500 tracking-wider text-right">Azioni</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {/* Inline Registration Entry Row */}
-                    <tr className="bg-blue-50/50">
-                      <td className="px-6 py-3">
-                        <span className="text-[10px] font-bold text-blue-600 opacity-50">#</span>
-                      </td>
-                      {selectedEventForRegistrations.registrationFields.map((field: any) => (
-                        <td key={field.id} className="px-6 py-3">
+              {/* Table Container */}
+              <div className="bg-white border border-slate-200 rounded-[2.5rem] overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-100">
+                        <th className="px-6 py-5 text-[9px] font-black uppercase text-slate-400 tracking-widest w-12 text-center italic">N.</th>
+                        {selectedEventForRegistrations.registrationFields.map((field: any) => (
+                          <th key={field.id} className="px-6 py-5 text-[9px] font-black uppercase text-slate-400 tracking-widest italic">
+                            {field.label}
+                          </th>
+                        ))}
+                        {selectedEventForRegistrations.price && (
+                          <th className="px-6 py-5 text-[9px] font-black uppercase text-slate-400 tracking-widest italic">Pagamento</th>
+                        )}
+                        <th className="px-6 py-5 text-[9px] font-black uppercase text-slate-400 tracking-widest italic">Note</th>
+                        <th className="px-6 py-5 text-[9px] font-black uppercase text-slate-400 tracking-widest italic text-right">Azioni</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {/* Inline Registration Entry Row */}
+                      <tr className="bg-blue-50/30">
+                        <td className="px-6 py-4 text-center">
+                          <span className="text-[10px] font-black text-blue-400">NEW</span>
+                        </td>
+                        {selectedEventForRegistrations.registrationFields.map((field: any) => (
+                          <td key={field.id} className="px-6 py-4">
+                            <input
+                              type={field.type}
+                              required={field.required}
+                              placeholder={field.label}
+                              value={newParticipant[field.id] || ''}
+                              onChange={(e) => setNewParticipant({ ...newParticipant, [field.id]: e.target.value })}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleSubmitParticipant(e as any);
+                                }
+                              }}
+                              className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold focus:ring-4 focus:ring-blue-100 outline-none transition-all placeholder:font-medium placeholder:text-slate-300"
+                            />
+                          </td>
+                        ))}
+                        {selectedEventForRegistrations.price && <td className="px-6 py-4"></td>}
+                        <td className="px-6 py-4">
                           <input
-                            type={field.type}
-                            required={field.required}
-                            placeholder={field.label}
-                            value={newParticipant[field.id] || ''}
-                            onChange={(e) => setNewParticipant({ ...newParticipant, [field.id]: e.target.value })}
+                            type="text"
+                            placeholder="Note segretaria..."
+                            value={newParticipant.secretaryNotes || ''}
+                            onChange={(e) => setNewParticipant({ ...newParticipant, secretaryNotes: e.target.value })}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
                                 handleSubmitParticipant(e as any);
                               }
                             }}
-                            className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
+                            className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold focus:ring-4 focus:ring-blue-100 outline-none transition-all placeholder:font-medium placeholder:text-slate-300 italic"
                           />
                         </td>
-                      ))}
-                      {selectedEventForRegistrations.price && <td className="px-6 py-3"></td>}
-                      <td className="px-6 py-3">
-                        <input
-                          type="text"
-                          placeholder="Note segretaria"
-                          value={newParticipant.secretaryNotes || ''}
-                          onChange={(e) => setNewParticipant({ ...newParticipant, secretaryNotes: e.target.value })}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              handleSubmitParticipant(e as any);
-                            }
-                          }}
-                          className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
-                        />
-                      </td>
-                      <td className="px-6 py-3">
-                        <span className="text-[10px] font-bold text-blue-600 uppercase">Nuova</span>
-                      </td>
-                      <td className="px-6 py-3 text-right">
-                        <button
-                          onClick={handleSubmitParticipant}
-                          className="p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
-                          title="Salva Iscritto"
-                        >
-                          <CheckCircle2 size={16} />
-                        </button>
-                      </td>
-                    </tr>
-
-                    {registrations.length === 0 ? (
-                      <tr>
-                        <td colSpan={selectedEventForRegistrations.registrationFields.length + 4 + (selectedEventForRegistrations.price ? 1 : 0)} className="px-6 py-12 text-center text-slate-400 space-y-4">
-                          <div className="flex flex-col items-center justify-center">
-                            <UserPlus size={32} className="opacity-20 mb-2" />
-                            <p className="italic text-sm">Nessun partecipante ancora iscritto.</p>
-                          </div>
+                        <td className="px-6 py-4 text-right">
+                          <button
+                            onClick={handleSubmitParticipant}
+                            className="p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 active:scale-95"
+                            title="Salva Iscritto"
+                          >
+                            <UserPlus size={18} />
+                          </button>
                         </td>
                       </tr>
-                    ) : (
-                      registrations.map((reg, index) => (
-                        <tr key={reg.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-6 py-4 text-xs font-bold text-slate-400">
-                            {index + 1}
-                          </td>
-                          {selectedEventForRegistrations.registrationFields.map((field: any) => (
-                            <td key={field.id} className="px-6 py-4">
-                              <input
-                                type={field.type}
-                                defaultValue={reg[field.id] || ''}
-                                onBlur={(e) => {
-                                  if (e.target.value !== (reg[field.id] || '')) {
-                                    updateParticipantField(reg.id, field.id, e.target.value);
-                                  }
-                                }}
-                                className="w-full bg-transparent border-none focus:ring-0 text-sm font-medium text-slate-700"
-                              />
-                            </td>
-                          ))}
-                          {selectedEventForRegistrations.price && (
-                            <td className="px-6 py-4">
-                              <button
-                                onClick={() => togglePayment(reg.id, !!reg.isPaid)}
-                                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all border ${
-                                  reg.isPaid 
-                                    ? 'bg-blue-50 text-blue-700 border-blue-200' 
-                                    : 'bg-slate-50 text-slate-400 border-slate-200 hover:border-blue-200 hover:text-blue-600'
-                                }`}
-                              >
-                                {reg.isPaid ? <CheckCircle2 size={14} /> : <div className="w-[14px] h-[14px] border border-current rounded-sm" />}
-                                {reg.isPaid ? `Pagato (${format(new Date(reg.paymentDate), 'dd/MM')})` : 'Non Pagato'}
-                              </button>
-                            </td>
-                          )}
-                          <td className="px-6 py-4">
-                            <input
-                              type="text"
-                              defaultValue={reg.secretaryNotes || ''}
-                              placeholder="Aggiungi nota..."
-                              onBlur={(e) => {
-                                if (e.target.value !== (reg.secretaryNotes || '')) {
-                                  updateSecretaryNotes(reg.id, e.target.value);
-                                }
-                              }}
-                              className="w-full bg-transparent border-none focus:ring-0 text-sm text-slate-600 placeholder:text-slate-300 italic"
-                            />
-                          </td>
-                          <td className="px-6 py-4 text-xs text-slate-500 italic">
-                            {format(new Date(reg.createdAt), 'dd/MM/yyyy HH:mm')}
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <button
-                              onClick={() => handleDeleteParticipant(reg.id)}
-                              className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Elimina"
-                            >
-                              <Trash2 size={14} />
-                            </button>
+
+                      {registrations.length === 0 ? (
+                        <tr>
+                          <td colSpan={10} className="px-8 py-20 text-center">
+                            <div className="flex flex-col items-center justify-center space-y-4">
+                              <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center shadow-inner">
+                                <Users size={32} className="text-slate-200" />
+                              </div>
+                              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 italic">Nessun iscritto presente</p>
+                            </div>
                           </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                      ) : (
+                        registrations.map((reg, index) => (
+                          <tr key={reg.id} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="px-6 py-4 text-center">
+                              <span className="text-[10px] font-black text-slate-400">{index + 1}</span>
+                            </td>
+                            {selectedEventForRegistrations.registrationFields.map((field: any) => (
+                              <td key={field.id} className="px-6 py-4">
+                                <input
+                                  type={field.type}
+                                  defaultValue={reg[field.id] || ''}
+                                  onBlur={(e) => {
+                                    if (e.target.value !== (reg[field.id] || '')) {
+                                      updateParticipantField(reg.id, field.id, e.target.value);
+                                    }
+                                  }}
+                                  className="w-full bg-transparent border-none focus:ring-0 text-xs font-bold text-slate-700 p-0"
+                                />
+                              </td>
+                            ))}
+                            {selectedEventForRegistrations.price && (
+                              <td className="px-6 py-4">
+                                <button
+                                  onClick={() => togglePayment(reg.id, !!reg.isPaid)}
+                                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border italic ${
+                                    reg.isPaid 
+                                      ? 'bg-blue-50 text-blue-700 border-blue-200' 
+                                      : 'bg-slate-50 text-slate-400 border-slate-200 hover:border-blue-200 hover:text-blue-600'
+                                  }`}
+                                >
+                                  {reg.isPaid ? <CheckCircle2 size={12} /> : <div className="w-3 h-3 border-2 border-current rounded-sm" />}
+                                  {reg.isPaid ? 'Pagato' : 'Da Pagare'}
+                                </button>
+                              </td>
+                            )}
+                            <td className="px-6 py-4">
+                              <input
+                                type="text"
+                                defaultValue={reg.secretaryNotes || ''}
+                                placeholder="..."
+                                onBlur={(e) => {
+                                  if (e.target.value !== (reg.secretaryNotes || '')) {
+                                    updateSecretaryNotes(reg.id, e.target.value);
+                                  }
+                                }}
+                                className="w-full bg-transparent border-none focus:ring-0 text-xs font-medium text-slate-500 placeholder:text-slate-200 italic p-0"
+                              />
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <button
+                                onClick={() => handleDeleteParticipant(reg.id)}
+                                className="p-2.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                                title="Elimina"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
@@ -1267,28 +1296,31 @@ const Events: React.FC = () => {
 
       {/* Delete Confirmation Modal */}
       {deleteConfirmation && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-6">
-            <div className="flex flex-col items-center text-center space-y-4">
-              <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center">
-                <AlertCircle size={32} />
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 z-[70]">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl space-y-8 text-center">
+            <div className="flex flex-col items-center space-y-4">
+              <div className="w-20 h-20 bg-red-50 text-red-600 rounded-[2rem] flex items-center justify-center shadow-inner">
+                <Trash2 size={40} />
               </div>
-              <div className="space-y-1">
-                <h3 className="text-xl font-bold text-slate-900">Conferma Eliminazione</h3>
-                <p className="text-slate-500">Sei sicuro di voler eliminare questo evento? Questa operazione non può essere annullata.</p>
+              <div className="space-y-2">
+                <h3 className="text-xl font-black text-slate-900 uppercase italic">Elimina Evento</h3>
+                <p className="text-slate-500 text-sm font-medium leading-relaxed">
+                  Sei sicuro di voler eliminare questo evento?<br/>
+                  <strong>Questa operazione è irreversibile.</strong>
+                </p>
               </div>
             </div>
 
-            <div className="flex gap-4">
+            <div className="flex gap-4 uppercase italic">
               <button
                 onClick={() => setDeleteConfirmation(null)}
-                className="flex-1 px-4 py-2 rounded-xl font-medium text-slate-600 hover:bg-slate-100 transition-colors border border-slate-200"
+                className="flex-1 bg-white border border-slate-200 text-slate-600 px-6 py-4 rounded-2xl font-black text-[10px] tracking-widest hover:bg-slate-50 transition-all active:scale-95 shadow-sm"
               >
                 Annulla
               </button>
               <button
                 onClick={() => handleDelete(deleteConfirmation)}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors"
+                className="flex-1 bg-red-600 text-white px-6 py-4 rounded-2xl font-black text-[10px] tracking-widest hover:bg-red-700 transition-all shadow-xl shadow-red-500/20 active:scale-95"
               >
                 Elimina
               </button>
@@ -1299,30 +1331,33 @@ const Events: React.FC = () => {
 
       {/* Registration Delete Confirmation Modal */}
       {registrationToDelete && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[70]">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-6">
-            <div className="flex flex-col items-center text-center space-y-4">
-              <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center">
-                <Trash2 size={32} />
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 z-[80]">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl space-y-8 text-center">
+            <div className="flex flex-col items-center space-y-4">
+              <div className="w-20 h-20 bg-red-50 text-red-600 rounded-[2rem] flex items-center justify-center shadow-inner">
+                <AlertCircle size={40} strokeWidth={3} />
               </div>
-              <div className="space-y-1">
-                <h3 className="text-xl font-bold text-slate-900">Elimina Iscrizione</h3>
-                <p className="text-slate-500">Sei sicuro di voler eliminare questa iscrizione? L'operazione è definitiva.</p>
+              <div className="space-y-2">
+                <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tight">Elimina Iscrizione</h3>
+                <p className="text-slate-500 text-sm font-medium leading-relaxed">
+                  Rimuovere definitivamente questo partecipante?<br/>
+                  <strong>I dati non potranno essere recuperati.</strong>
+                </p>
               </div>
             </div>
 
-            <div className="flex gap-4">
+            <div className="flex gap-4 uppercase italic">
               <button
                 onClick={() => setRegistrationToDelete(null)}
-                className="flex-1 px-4 py-2 rounded-xl font-medium text-slate-600 hover:bg-slate-100 transition-colors border border-slate-200"
+                className="flex-1 bg-white border border-slate-200 text-slate-600 px-6 py-4 rounded-2xl font-black text-[10px] tracking-widest hover:bg-slate-50 transition-all active:scale-95 shadow-sm"
               >
-                Annulla
+                Indietro
               </button>
               <button
                 onClick={executeDeleteParticipant}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors"
+                className="flex-1 bg-red-600 text-white px-6 py-4 rounded-2xl font-black text-[10px] tracking-widest hover:bg-red-700 transition-all shadow-xl shadow-red-500/20 active:scale-95"
               >
-                Elimina
+                Conferma
               </button>
             </div>
           </div>
@@ -1344,7 +1379,7 @@ const Events: React.FC = () => {
                   setEditingId(null);
                   setNewEvent(initialEventState);
                 }} 
-                className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+                className="p-2 hover:bg-slate-100 rounded-full transition-all text-slate-400 hover:text-slate-900"
               >
                 <X size={20} />
               </button>
@@ -1686,21 +1721,21 @@ const Events: React.FC = () => {
                             </div>
                           ))}
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const newField: RegistrationField = {
-                              id: Math.random().toString(36).substr(2, 9),
-                              label: '',
-                              type: 'text',
-                              required: true
-                            };
-                            setNewEvent({ ...newEvent, registrationFields: [...newEvent.registrationFields, newField] });
-                          }}
-                          className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-blue-600 hover:bg-blue-600 hover:text-white px-4 py-3 rounded-xl border-2 border-dashed border-blue-200 w-full justify-center transition-all bg-white"
-                        >
-                          <Plus size={16} /> Aggiungi Campo Personalizzato
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newField: RegistrationField = {
+                                id: Math.random().toString(36).substr(2, 9),
+                                label: '',
+                                type: 'text',
+                                required: true
+                              };
+                              setNewEvent({ ...newEvent, registrationFields: [...newEvent.registrationFields, newField] });
+                            }}
+                            className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-blue-600 hover:bg-blue-50 px-4 py-3 rounded-full border-2 border-dashed border-blue-200 w-full justify-center transition-all bg-white"
+                          >
+                            <Plus size={16} /> Aggiungi Campo Personalizzato
+                          </button>
                       </div>
                     </div>
                   )}
@@ -1761,17 +1796,17 @@ const Events: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-6 border-t border-slate-100">
+              <div className="flex justify-end gap-4 pt-6 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-8 py-4 rounded-2xl font-black text-slate-400 hover:bg-slate-100 transition-all uppercase tracking-widest text-[10px]"
+                  className="bg-white border border-slate-200 text-slate-600 px-10 py-4 rounded-full font-bold uppercase italic tracking-wider hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[10px]"
                 >
                   Annulla
                 </button>
                 <button
                   type="submit"
-                  className="px-10 py-4 bg-blue-600 text-white rounded-2xl font-black shadow-xl shadow-blue-200 hover:bg-blue-700 hover:-translate-y-1 active:translate-y-0 transition-all uppercase tracking-widest text-[10px]"
+                  className="bg-blue-600 text-white px-12 py-4 rounded-full font-bold uppercase italic tracking-widest hover:bg-blue-700 transition-all shadow-xl active:scale-95 text-[10px]"
                 >
                   {isEditing ? 'Salva Modifiche' : 'Crea Evento'}
                 </button>

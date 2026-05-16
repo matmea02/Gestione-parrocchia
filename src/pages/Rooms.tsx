@@ -267,7 +267,7 @@ const Rooms: React.FC = () => {
         <div className="flex items-center gap-3">
           <button
             onClick={() => setIsManageRoomsOpen(true)}
-            className="flex items-center gap-2 bg-white border-2 border-slate-200 text-slate-600 px-5 py-3 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:border-blue-500 hover:text-blue-600 transition-all shadow-sm"
+            className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 px-6 py-2.5 rounded-full font-bold uppercase italic tracking-wider hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[10px]"
           >
             <DoorOpen size={18} />
             Gestisci Sale
@@ -285,7 +285,7 @@ const Rooms: React.FC = () => {
               });
               setIsBookingModalOpen(true);
             }}
-            className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-3 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+            className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2.5 rounded-full font-bold uppercase italic tracking-wider hover:bg-blue-700 transition-all shadow-md hover:shadow-lg active:scale-95 text-[10px]"
           >
             <Calendar size={18} />
             Nuova Prenotazione
@@ -350,14 +350,14 @@ const Rooms: React.FC = () => {
                           <>
                             <button
                               onClick={() => updateBookingStatus(booking.id, 'Approvata')}
-                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
+                              className="p-2.5 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-full transition-all border border-blue-100 shadow-sm hover:scale-110"
                               title="Approva"
                             >
                               <Check size={18} />
                             </button>
                             <button
                               onClick={() => updateBookingStatus(booking.id, 'Rifiutata')}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                              className="p-2.5 text-red-600 bg-red-50 hover:bg-red-100 rounded-full transition-all border border-red-100 shadow-sm hover:scale-110"
                               title="Rifiuta"
                             >
                               <XCircle size={18} />
@@ -366,14 +366,14 @@ const Rooms: React.FC = () => {
                         )}
                         <button
                           onClick={() => handleEditBooking(booking)}
-                          className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                          className="p-2.5 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-full transition-all border border-blue-100 shadow-sm hover:scale-110"
                           title="Modifica"
                         >
                           <Pencil size={18} />
                         </button>
                         <button
                           onClick={() => setBookingToDelete(booking.id)}
-                          className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                          className="p-2.5 text-red-600 bg-red-50 hover:bg-red-100 rounded-full transition-all border border-red-100 shadow-sm hover:scale-110"
                           title="Elimina"
                         >
                           <Trash2 size={18} />
@@ -393,16 +393,16 @@ const Rooms: React.FC = () => {
                 <AlertCircle size={18} className="text-red-500" />
                 <p className="text-xs font-bold text-red-700 uppercase tracking-tight">Confermi l'eliminazione di questa prenotazione?</p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-4">
                 <button 
                   onClick={() => setBookingToDelete(null)}
-                  className="px-4 py-2 text-[10px] font-black uppercase text-slate-500 hover:text-slate-700"
+                  className="bg-white border border-slate-200 text-slate-600 px-6 py-2 rounded-full font-bold uppercase italic tracking-wider hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[10px]"
                 >
                   Annulla
                 </button>
                 <button 
                   onClick={() => handleDeleteBooking(bookingToDelete)}
-                  className="px-4 py-2 bg-red-500 text-white rounded-xl text-[10px] font-black uppercase hover:bg-red-600 transition-all shadow-sm shadow-red-100"
+                  className="bg-red-600 text-white px-6 py-2 rounded-full font-bold uppercase italic tracking-wider hover:bg-red-700 transition-all shadow-md active:scale-95 text-[10px]"
                 >
                   Elimina
                 </button>
@@ -432,14 +432,14 @@ const Rooms: React.FC = () => {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setIsRoomModalOpen(true)}
-                  className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
+                  className="bg-blue-600 text-white px-6 py-2 rounded-full font-bold uppercase italic tracking-wider hover:bg-blue-700 transition-all shadow-md active:scale-95 text-[10px]"
                 >
                   <Plus size={16} />
                   Nuova Sala
                 </button>
                 <button 
                   onClick={() => setIsManageRoomsOpen(false)} 
-                  className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+                  className="p-2 hover:bg-slate-100 rounded-full transition-all text-slate-400 hover:text-slate-900"
                 >
                   <X size={20} className="text-slate-400" />
                 </button>
@@ -472,14 +472,14 @@ const Rooms: React.FC = () => {
                     <div className="flex items-center gap-2">
                       <button 
                         onClick={() => handleEditRoom(room)}
-                        className="p-2 text-slate-300 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-all"
+                        className="p-2.5 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-full transition-all border border-blue-100 shadow-sm hover:scale-110"
                         title="Modifica sala"
                       >
                         <Pencil size={16} />
                       </button>
                       <button 
                         onClick={() => setRoomToDelete(room.id)}
-                        className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                        className="p-2.5 text-red-600 bg-red-50 hover:bg-red-100 rounded-full transition-all border border-red-100 shadow-sm hover:scale-110"
                         title="Elimina sala"
                       >
                         <Trash2 size={16} />
@@ -502,16 +502,16 @@ const Rooms: React.FC = () => {
                   <AlertCircle size={20} className="text-red-500" />
                   <p className="text-xs font-bold text-red-700">Sei sicuro? Questo eliminerà la sala e le sue impostazioni.</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-4">
                   <button 
                     onClick={() => setRoomToDelete(null)}
-                    className="px-3 py-1.5 text-[10px] font-black uppercase text-slate-500 hover:text-slate-700"
+                    className="bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-full font-bold uppercase italic tracking-wider hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[10px]"
                   >
                     Annulla
                   </button>
                   <button 
                     onClick={() => handleDeleteRoom(roomToDelete)}
-                    className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-[10px] font-black uppercase hover:bg-red-600 transition-colors shadow-sm shadow-red-100"
+                    className="bg-red-600 text-white px-4 py-2 rounded-full font-bold uppercase italic tracking-wider hover:bg-red-700 transition-all shadow-md active:scale-95 text-[10px]"
                   >
                     Conferma
                   </button>
@@ -522,7 +522,7 @@ const Rooms: React.FC = () => {
             <div className="p-6 bg-slate-50/50 border-t border-slate-100 flex justify-end">
               <button
                 onClick={() => setIsManageRoomsOpen(false)}
-                className="px-6 py-2.5 text-[10px] font-black text-slate-500 uppercase tracking-widest hover:text-slate-700 transition-colors"
+                className="bg-white border border-slate-200 text-slate-600 px-6 py-2 rounded-full font-bold uppercase italic tracking-wider hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[10px]"
               >
                 Chiudi
               </button>
@@ -579,7 +579,7 @@ const Rooms: React.FC = () => {
                   className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none h-24 resize-none"
                 />
               </div>
-              <div className="flex justify-end gap-4 pt-4">
+              <div className="flex justify-end gap-4 pt-6">
                 <button 
                   type="button" 
                   onClick={() => {
@@ -587,11 +587,14 @@ const Rooms: React.FC = () => {
                     setEditingRoomId(null);
                     setNewRoom({ name: '', capacity: 0, description: '' });
                   }} 
-                  className="px-6 py-2 text-slate-600 font-medium"
+                  className="bg-white border border-slate-200 text-slate-600 px-10 py-3 rounded-full font-bold uppercase italic tracking-wider hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[10px]"
                 >
                   Annulla
                 </button>
-                <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-xl font-medium">
+                <button 
+                  type="submit" 
+                  className="bg-blue-600 text-white px-10 py-3 rounded-full font-bold uppercase italic tracking-widest hover:bg-blue-700 transition-all shadow-lg active:scale-95 text-[10px]"
+                >
                   {editingRoomId ? 'Aggiorna Sala' : 'Salva Sala'}
                 </button>
               </div>
@@ -721,20 +724,20 @@ const Rooms: React.FC = () => {
                   ))}
                 </div>
               </div>
-              <div className="flex justify-end gap-4 pt-6 border-t border-slate-50">
+              <div className="flex justify-end gap-4 pt-6 border-t border-slate-100">
                 <button 
                   type="button" 
                   onClick={() => {
                     setIsBookingModalOpen(false);
                     setEditingBookingId(null);
                   }} 
-                  className="px-8 py-3 text-[10px] font-black text-slate-500 uppercase tracking-widest hover:text-slate-700 transition-colors"
+                  className="bg-white border border-slate-200 text-slate-600 px-10 py-3 rounded-full font-bold uppercase italic tracking-wider hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[10px]"
                 >
                   Annulla
                 </button>
                 <button 
                   type="submit" 
-                  className="px-8 py-3 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                  className="bg-blue-600 text-white px-10 py-3 rounded-full font-bold uppercase italic tracking-widest hover:bg-blue-700 transition-all shadow-lg active:scale-95 text-[10px]"
                 >
                   {editingBookingId ? 'Salva Modifiche' : 'Salva Prenotazione'}
                 </button>

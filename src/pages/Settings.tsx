@@ -191,13 +191,20 @@ const Settings: React.FC = () => {
     e.preventDefault();
     setSaving(true);
     try {
+      const featuredPhoto = parish.photos.find(p => p.isFeatured);
       await setDoc(settingsDoc, parish);
 
       // Sync summary info to the main parishes collection for the Master Dashboard
       if (currentParish) {
         await updateDoc(doc(db, 'parishes', currentParish.id), {
           name: parish.name,
-          logoUrl: parish.logoUrl
+          logoUrl: parish.logoUrl,
+          address: parish.address,
+          email: parish.email,
+          phone: parish.phone,
+          contactPerson: parish.contactPerson,
+          featuredImageUrl: featuredPhoto ? featuredPhoto.url : '',
+          updatedAt: new Date().toISOString()
         });
       }
 
@@ -549,9 +556,9 @@ const Settings: React.FC = () => {
           <button
             type="submit"
             disabled={saving}
-            className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2 rounded-xl font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 bg-blue-600 text-white px-8 py-3.5 rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-blue-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50"
           >
-            <Save size={18} />
+            <Save size={16} />
             {saving ? 'Salvataggio...' : 'Salva Impostazioni'}
           </button>
         </div>

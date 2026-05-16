@@ -4,14 +4,31 @@ import { collection, onSnapshot, query, limit, orderBy } from 'firebase/firestor
 import { db } from '../firebase';
 import { useAuth } from '../components/AuthContext';
 import { useParish, useParishCollection } from '../components/ParishContext';
-import { Calendar, Wrench, DoorOpen, Users, Tag, AlertCircle, Clock, PlusCircle, Wallet } from 'lucide-react';
-import { format, startOfMonth, endOfMonth, addDays, getDay, setHours, setMinutes, setSeconds, isBefore, startOfDay, isSameDay } from 'date-fns';
+import { Calendar, Wrench, DoorOpen, Users, Tag, AlertCircle, Clock, PlusCircle, Wallet, GraduationCap, ChevronRight, BookOpen, Building2 } from 'lucide-react';
+import { format, startOfMonth, endOfMonth, addDays, getDay, setHours, setMinutes, setSeconds, isBefore, startOfDay, isSameDay, parseISO } from 'date-fns';
 import { it } from 'date-fns/locale';
-import { Church, Heart, MapPin, CalendarDays, FileText } from 'lucide-react';
+import { Church, Heart, MapPin, CalendarDays, FileText, Image as ImageIcon } from 'lucide-react';
+import { useParishDoc } from '../components/ParishContext';
 
 const Dashboard: React.FC = () => {
-  const { user } = useAuth();
+  const { user, portalUser } = useAuth();
   const { currentParish } = useParish();
+  const settingsDoc = useParishDoc('settings', 'parish');
+  const [parishSettings, setParishSettings] = useState<any>(null);
+
+  useEffect(() => {
+    const unsub = onSnapshot(settingsDoc, (doc) => {
+      if (doc.exists()) setParishSettings(doc.data());
+    });
+    return unsub;
+  }, [settingsDoc]);
+
+  const hasModule = (moduleId: string) => {
+    if (portalUser?.isAdmin) return true;
+    if (!currentParish || !portalUser) return false;
+    const pData = portalUser.permissions?.[currentParish.id];
+    return pData?.enabled && pData?.modules?.includes(moduleId);
+  };
   
   const eventsColl = useParishCollection('events');
   const maintenanceColl = useParishCollection('maintenance');
@@ -24,6 +41,7 @@ const Dashboard: React.FC = () => {
   const litIntentionsColl = useParishCollection('liturgy_intentions');
   const calEventsColl = useParishCollection('calendar_events');
   const calendarsColl = useParishCollection('calendars');
+  const catechismColl = useParishCollection('catechism_groups');
 
   const [stats, setStats] = useState({
     events: 0,
@@ -47,6 +65,7 @@ const Dashboard: React.FC = () => {
   const [liturgyIntentions, setLiturgyIntentions] = useState<any[]>([]);
   const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
   const [calendars, setCalendars] = useState<any[]>([]);
+  const [catechismGroups, setCatechismGroups] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'recent' | 'oldest' | 'progress'>('recent');
 
   useEffect(() => {
@@ -132,6 +151,9 @@ const Dashboard: React.FC = () => {
     const unsubCalendars = onSnapshot(calendarsColl, (snap) => {
       setCalendars(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
+    const unsubCatechism = onSnapshot(catechismColl, (snap) => {
+      setCatechismGroups(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
 
     return () => {
       unsubEvents();
@@ -146,12 +168,14 @@ const Dashboard: React.FC = () => {
       unsubLitIntentions();
       unsubCalendarEvents();
       unsubCalendars();
+      unsubCatechism();
     };
   }, []);
 
   const getUpcomingLiturgies = () => {
     const now = new Date();
     const result: any[] = [];
+    // ... logic remains same ...
 
     // Recurring
     liturgyTemplates.forEach(t => {
@@ -314,8 +338,42 @@ const Dashboard: React.FC = () => {
     return result.sort((a, b) => a.start.getTime() - b.start.getTime());
   };
 
-  const todaysAgenda = getTodaysAgenda();
+  const getUpcomingCatechism = () => {
+    const now = new Date();
+    const todayStr = format(now, 'yyyy-MM-dd');
+    const result: any[] = [];
+
+    catechismGroups.forEach(group => {
+      const dates = group.meetingDates || [];
+      dates.forEach((date: string) => {
+        const meetingDate = parseISO(date);
+        const [h, m] = group.time.split(':').map(Number);
+        const meetingStart = setSeconds(setMinutes(setHours(meetingDate, h), m), 0);
+        
+        if (meetingStart >= now && isBefore(meetingStart, addDays(now, 21))) {
+          result.push({
+            id: `${group.id}-${date}`,
+            name: group.name,
+            pathYear: group.pathYear,
+            catechismYear: group.catechismYear,
+            time: group.time,
+            date: meetingStart,
+            catechists: (group.catechistNames || []).join(', ')
+          });
+        }
+      });
+    });
+
+    return result.sort((a, b) => a.date.getTime() - b.date.getTime()).slice(0, 5);
+  };
+
+  const todaysAgenda = getTodaysAgenda().filter(item => {
+    if (item.type === 'calendar') return hasModule('calendar');
+    if (item.type === 'liturgy') return hasModule('liturgy');
+    return true;
+  });
   const upcomingLiturgies = getUpcomingLiturgies();
+  const upcomingCatechism = getUpcomingCatechism();
 
   const statsByType = allTickets.reduce((acc: any, t) => {
     const label = t.label || 'Altro';
@@ -393,6 +451,7 @@ const Dashboard: React.FC = () => {
 
   const statCards = [
     { 
+      id: 'events',
       label: 'Eventi Totali', 
       value: stats.events, 
       subValue: `${stats.upcomingEvents} imminenti`,
@@ -403,6 +462,7 @@ const Dashboard: React.FC = () => {
       to: '/eventi'
     },
     { 
+      id: 'maintenance',
       label: 'Ticket Manutenzione', 
       value: stats.tickets, 
       subValue: `${stats.pendingTickets} pendenti, ${stats.inProgressTickets} in corso`,
@@ -413,6 +473,7 @@ const Dashboard: React.FC = () => {
       to: '/manutenzione'
     },
     { 
+      id: 'expenses',
       label: 'Spese del Mese', 
       value: `€${stats.totalExpensesMonth.toLocaleString('it-IT', { minimumFractionDigits: 0 })}`, 
       subValue: `€${stats.totalExpenses.toLocaleString('it-IT', { minimumFractionDigits: 0 })} totali`,
@@ -423,6 +484,7 @@ const Dashboard: React.FC = () => {
       to: '/spese'
     },
     { 
+      id: 'rooms',
       label: 'Sale & Prenotazioni', 
       value: stats.bookings, 
       subValue: `${stats.rooms} sale configurate`, 
@@ -431,396 +493,377 @@ const Dashboard: React.FC = () => {
       bg: 'bg-blue-50',
       to: '/sale'
     },
-  ];
+  ].filter(card => hasModule(card.id));
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
-        <p className="text-slate-500 mt-1 italic">
-          Benvenuto, <span className="text-blue-600 font-bold not-italic">{user?.displayName || 'Utente'}</span>! Ecco il riepilogo della parrocchia.
-        </p>
+    <div className="space-y-10 pb-12">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-black text-slate-900 italic uppercase tracking-tight">Dashboard</h1>
+          <p className="text-slate-500 mt-1 italic font-medium flex items-center gap-2">
+            Benvenuto, <span className="text-blue-600 font-black not-italic">{portalUser?.volunteerName || user?.displayName || 'Utente'}</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+          </p>
+        </div>
       </div>
 
-      {/* Todays Agenda */}
-      <div className="bg-white rounded-3xl border-2 border-blue-100 shadow-xl shadow-blue-50/50 overflow-hidden">
-        <div className="p-8 border-b border-blue-50 bg-gradient-to-r from-blue-50/50 to-white flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-blue-600 text-white rounded-2xl shadow-lg shadow-blue-200">
-              <CalendarDays size={28} />
-            </div>
-            <div>
-              <h2 className="text-2xl font-black text-slate-900 tracking-tight">Agenda di Oggi</h2>
-              <p className="text-sm font-bold text-blue-600 uppercase tracking-widest flex items-center gap-2">
-                {format(new Date(), 'EEEE d MMMM yyyy', { locale: it })}
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-              </p>
-            </div>
-          </div>
-          <Link to="/calendario" className="px-6 py-2.5 bg-white border-2 border-blue-100 text-blue-600 rounded-xl font-bold text-sm hover:bg-blue-50 hover:border-blue-200 transition-all shadow-sm">
-            Vedi Calendario Completo
-          </Link>
-        </div>
-        
-        <div className="p-8">
-          {todaysAgenda.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-100">
-                <CalendarDays size={32} className="text-slate-300" />
-              </div>
-              <p className="text-slate-500 font-bold">Nessun impegno in programma per oggi.</p>
-              <p className="text-slate-400 text-sm mt-1">Goditi una giornata di tranquillità!</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {todaysAgenda.map((item) => (
-                <Link 
-                  key={item.id}
-                  to={item.type === 'calendar' ? `/calendario?edit=${item.id}` : '/calendario'}
-                  className={`relative p-5 rounded-[2rem] border-2 transition-all hover:scale-[1.02] hover:shadow-xl block group ${
-                    item.type === 'liturgy' 
-                      ? 'bg-purple-50/30 border-purple-100/50' 
-                      : 'bg-white border-slate-100 hover:border-blue-200'
-                  }`}
-                  style={item.type === 'calendar' ? { borderColor: `${item.color}20` } : {}}
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                       <div 
-                         className="w-1.5 h-4 rounded-full" 
-                         style={{ backgroundColor: item.type === 'liturgy' ? '#9333ea' : item.color }} 
-                       />
-                       <div className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${
-                         item.type === 'liturgy' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'
-                       }`}
-                       style={item.type === 'calendar' ? { backgroundColor: `${item.color}15`, color: item.color } : {}}
-                       >
-                         {item.type === 'liturgy' ? 'Ad Orario' : item.calendarName}
-                       </div>
-                    </div>
-                    <div className="flex items-center gap-1 text-slate-900 font-black">
-                      <Clock size={14} className={item.type === 'liturgy' ? 'text-purple-600' : 'text-slate-400'} style={item.type === 'calendar' ? { color: item.color } : {}} />
-                      <span className="text-sm">
-                        {item.timeStr}
-                        {item.endTimeStr && <span className="text-slate-400 font-bold"> - {item.endTimeStr}</span>}
-                      </span>
-                    </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+         {statCards.map(card => (
+           <Link 
+             key={card.id} 
+             to={card.to}
+             className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all group flex flex-col justify-between"
+           >
+             <div className="flex items-center justify-between mb-4">
+                <div className={`p-3 rounded-2xl ${card.bg} ${card.color} group-hover:scale-110 transition-transform`}>
+                  <card.icon size={20} />
+                </div>
+                {card.id === 'maintenance' && stats.pendingTickets > 0 && (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-red-50 text-red-600 rounded-full text-[9px] font-black uppercase tracking-widest border border-red-100 animate-pulse">
+                    <AlertCircle size={10} />
+                    {stats.pendingTickets} Urgenti
                   </div>
+                )}
+             </div>
+             <div>
+               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 italic">{card.label}</p>
+               <h3 className="text-2xl font-black text-slate-900 tracking-tighter italic uppercase">{card.value}</h3>
+               <p className="text-[9px] font-bold text-slate-500 mt-1 uppercase tracking-tight">{card.subValue}</p>
+             </div>
+           </Link>
+         ))}
+      </div>
 
-                  <h3 className="text-lg font-black text-slate-900 leading-tight mb-2 group-hover:text-blue-600 transition-colors line-clamp-1">
-                    {item.title}
-                  </h3>
-
-                  {(item.location || item.notes) && (
-                    <div className="space-y-1 mb-3">
-                      {item.location && (
-                        <div className="flex items-center gap-2 text-slate-500">
-                          <MapPin size={12} className="shrink-0 text-slate-400" />
-                          <span className="text-[10px] font-bold truncate">{item.location}</span>
+      {/* Main Grid: Masonry/Liquid Layout */}
+      <div className="flex flex-col gap-8">
+        
+        {/* Agenda di Oggi - Full Width but fluid */}
+        <div className="bg-white rounded-[2.5rem] border-2 border-blue-100 shadow-xl shadow-blue-50/50 overflow-hidden h-auto">
+          <div className="p-8 border-b border-blue-50 bg-gradient-to-r from-blue-50/20 to-white flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-blue-600 text-white rounded-full shadow-lg shadow-blue-200">
+                <CalendarDays size={28} />
+              </div>
+              <div>
+                <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase italic">Agenda di Oggi</h2>
+                <p className="text-sm font-bold text-blue-600 uppercase tracking-widest flex items-center gap-2">
+                  {format(new Date(), 'EEEE d MMMM yyyy', { locale: it })}
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                </p>
+              </div>
+            </div>
+            <Link to="/calendario" className="w-full md:w-auto px-6 py-2.5 bg-white border-2 border-blue-100 text-blue-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-50 hover:border-blue-200 transition-all shadow-sm text-center">
+              Vedi Calendario Completo
+            </Link>
+          </div>
+          
+          <div className="p-6">
+            {todaysAgenda.length === 0 ? (
+              <div className="text-center py-10">
+                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-100">
+                  <CalendarDays size={32} className="text-slate-300" />
+                </div>
+                <p className="text-slate-500 font-bold">Nessun impegno in programma per oggi.</p>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-4">
+                {todaysAgenda.map((item) => (
+                  <Link 
+                    key={item.id}
+                    to={item.type === 'calendar' ? `/calendario?edit=${item.id}` : '/calendario'}
+                    className={`flex-1 min-w-[280px] relative p-5 rounded-[2rem] border-2 transition-all hover:scale-[1.02] hover:shadow-lg flex flex-col justify-between ${
+                      item.type === 'liturgy' 
+                        ? 'bg-purple-50/30 border-purple-100/50' 
+                        : 'bg-white border-slate-100'
+                    }`}
+                    style={item.type === 'calendar' ? { borderColor: `${item.color}30` } : {}}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${
+                          item.type === 'liturgy' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'
+                        }`}
+                        style={item.type === 'calendar' ? { backgroundColor: `${item.color}15`, color: item.color } : {}}
+                        >
+                          {item.type === 'liturgy' ? 'Liturgia' : item.calendarName}
                         </div>
-                      )}
-                      {item.notes && (
-                        <div className="flex items-start gap-2 text-slate-400">
-                          <FileText size={12} className="shrink-0 mt-0.5 text-slate-300" />
-                          <p className="text-[10px] font-medium line-clamp-1">{item.notes}</p>
+                        <div className="flex items-center gap-1 text-slate-900 font-black text-xs">
+                          <Clock size={12} className="opacity-40" />
+                          {item.timeStr}
                         </div>
-                      )}
+                      </div>
+                      <h3 className="text-sm font-black text-slate-900 italic uppercase leading-tight mb-2 group-hover:text-blue-600 truncate">{item.title}</h3>
                     </div>
-                  )}
 
-                  {item.names && item.names.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-purple-200/50">
-                      <div className="flex flex-wrap gap-1">
-                        {item.names.map((name: string, i: number) => (
-                          <span key={i} className="text-[9px] font-black text-slate-700 bg-white shadow-sm px-2 py-1 rounded-lg border border-purple-100">
-                            † {name}
-                          </span>
+                    {item.names && item.names.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-purple-200/50 flex flex-wrap gap-1">
+                        {item.names.slice(0, 3).map((n: string, i: number) => (
+                          <span key={i} className="text-[8px] font-black text-slate-500 bg-white px-2 py-0.5 rounded-full border border-slate-50">† {n}</span>
                         ))}
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Bento Grid - Columns that grow based on content */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+          
+          {/* CATECHISMO - Section */}
+          {hasModule('catechism') && (
+            <div className="bg-white rounded-[2.5rem] border border-indigo-100 shadow-sm overflow-hidden flex flex-col hover:border-indigo-300 transition-all lg:col-span-1 xl:col-span-1 h-auto">
+              <div className="p-6 border-b border-indigo-50 bg-indigo-50/30 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-indigo-600 text-white rounded-full flex items-center justify-center">
+                    <GraduationCap size={20} />
+                  </div>
+                  <h3 className="text-sm font-black text-slate-900 uppercase italic">Catechismo</h3>
+                </div>
+                <Link to="/catechismo" className="p-1.5 hover:bg-white rounded-lg text-indigo-600">
+                  <PlusCircle size={20} />
                 </Link>
-              ))}
+              </div>
+              <div className="p-5 space-y-4">
+                {upcomingCatechism.length === 0 ? (
+                  <p className="text-xs text-slate-400 font-bold italic text-center py-6">Nessun incontro programmato.</p>
+                ) : (
+                  upcomingCatechism.map(meet => (
+                    <div key={meet.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100/50 space-y-2 group">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black text-indigo-600 uppercase italic leading-none">{meet.name}</span>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">{format(meet.date, 'dd MMM', { locale: it })}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Clock size={12} className="text-slate-300" />
+                          <span className="text-xs font-black text-slate-900">{meet.time}</span>
+                        </div>
+                        <span className="text-[8px] font-black text-slate-400 bg-white px-2 py-0.5 rounded-full border border-slate-100">{meet.pathYear}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+              {upcomingCatechism.length > 0 && (
+                <div className="px-5 pb-5 mt-auto">
+                  <Link to="/catechismo" className="w-full flex items-center justify-center gap-2 py-3 bg-indigo-50 text-indigo-700 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-indigo-100 transition-all">
+                    Tutti i gruppi <ChevronRight size={14} />
+                  </Link>
+                </div>
+              )}
             </div>
           )}
-        </div>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Events Combined Card */}
-        <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col hover:border-blue-100 transition-all">
-          <div className="p-8 border-b border-slate-50 bg-slate-50/50 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-               <div className="p-3 bg-blue-100 text-blue-600 rounded-2xl">
-                 <Calendar size={28} />
-               </div>
-               <div>
-                  <h2 className="text-xl font-black text-slate-900 leading-tight">Eventi e Iniziative</h2>
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">{stats.events} totali • {stats.upcomingEvents} imminenti</p>
-               </div>
-            </div>
-            <Link to="/eventi" className="p-2 hover:bg-white rounded-full transition-colors text-blue-600">
-              <PlusCircle size={24} />
-            </Link>
-          </div>
-          
-          <div className="p-6 divide-y divide-slate-50">
-            {recentEvents.length === 0 ? (
-              <p className="py-12 text-slate-400 font-bold text-center italic">Nessun evento registrato.</p>
-            ) : (
-              recentEvents.map((event) => (
-                <Link 
-                  key={event.id} 
-                  to={`/eventi?edit=${event.id}`}
-                  className="py-4 flex items-center gap-4 hover:bg-slate-50 px-4 -mx-4 rounded-xl transition-all group"
-                >
-                  <div className="w-12 h-12 bg-blue-50 rounded-xl flex flex-col items-center justify-center text-blue-700 group-hover:bg-blue-100 transition-colors">
-                    <span className="text-[10px] font-black uppercase text-blue-400">{format(new Date(event.date), 'MMM', { locale: it })}</span>
-                    <span className="text-lg font-black leading-none">{format(new Date(event.date), 'dd')}</span>
+          {/* MANUTENZIONI - Fluid Height */}
+          {hasModule('maintenance') && (
+            <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col hover:border-amber-200 transition-all md:col-span-1 lg:col-span-1 h-auto">
+              <div className="p-6 border-b border-slate-50 bg-amber-50/30 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-amber-500 text-white rounded-full flex items-center justify-center shadow-lg shadow-amber-200">
+                    <Wrench size={20} />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-black text-slate-900 group-hover:text-blue-600 transition-colors">{event.title}</p>
-                    <p className="text-xs font-bold text-slate-400 flex items-center gap-1 mt-0.5">
-                      <MapPin size={10} /> {event.location || 'Senza luogo'}
-                    </p>
-                  </div>
+                  <h3 className="text-sm font-black text-slate-900 uppercase italic">Manutenzioni</h3>
+                </div>
+                <Link to="/manutenzione" className="p-1.5 hover:bg-white rounded-lg text-amber-600">
+                  <PlusCircle size={20} />
                 </Link>
-              ))
-            )}
-          </div>
-          <div className="p-6 bg-slate-50 border-t border-slate-100 mt-auto">
-             <div className="grid grid-cols-2 gap-4">
-                {eventTypeDistribution.slice(0, 4).map(item => (
-                  <div key={item.status} className="bg-white p-3 rounded-2xl border border-slate-200/50">
-                     <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider mb-1 truncate">{item.status}</p>
-                     <p className="text-lg font-black text-slate-900 leading-none">{item.count}</p>
-                  </div>
+              </div>
+              <div className="p-5 space-y-3">
+                {allTickets.filter(t => t.status !== 'Completato').slice(0, 4).map(ticket => (
+                  <Link 
+                    key={ticket.id} 
+                    to={`/manutenzione?edit=${ticket.id}`} 
+                    className="flex items-center gap-3 p-3 hover:bg-slate-50 rounded-2xl transition-all border border-transparent hover:border-slate-100"
+                  >
+                    <div className={`w-8 h-8 rounded-lg shrink-0 flex items-center justify-center ${
+                      ticket.status === 'In Corso' ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'
+                    }`}>
+                      {ticket.status === 'In Corso' ? <Clock size={14} /> : <AlertCircle size={14} />}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-black text-slate-800 truncate">{ticket.title}</p>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase">{ticket.status}</p>
+                    </div>
+                  </Link>
                 ))}
-             </div>
-          </div>
-        </div>
-
-        {/* Maintenance Combined Card */}
-        <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col hover:border-amber-100 transition-all">
-          <div className="p-8 border-b border-slate-50 bg-slate-50/50 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-               <div className="p-3 bg-amber-100 text-amber-600 rounded-2xl">
-                 <Wrench size={28} />
-               </div>
-               <div>
-                  <h2 className="text-xl font-black text-slate-900 leading-tight">Manutenzioni</h2>
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">{stats.tickets} segnalazioni • {stats.pendingTickets} da evadere</p>
-               </div>
+                {allTickets.filter(t => t.status !== 'Completato').length === 0 && (
+                  <p className="text-xs text-slate-400 font-bold italic text-center py-6">Nessun ticket aperto.</p>
+                )}
+              </div>
+              <div className="px-5 pb-5 mt-auto">
+                <Link to="/manutenzione" className="w-full flex items-center justify-center gap-2 py-3 bg-slate-50 text-slate-600 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-slate-100 transition-all">
+                  Gestisci Ticket <ChevronRight size={14} />
+                </Link>
+              </div>
             </div>
-            <Link to="/manutenzione" className="p-2 hover:bg-white rounded-full transition-colors text-amber-600">
-              <PlusCircle size={24} />
-            </Link>
-          </div>
+          )}
 
-          <div className="p-6 divide-y divide-slate-50 overflow-y-auto max-h-[400px]">
-            {allTickets.filter(t => t.status !== 'Completato' && t.status !== 'Annullato').slice(0, 5).map((ticket) => (
-              <Link 
-                key={ticket.id} 
-                to={`/manutenzione?edit=${ticket.id}`}
-                className="py-4 flex items-center gap-4 hover:bg-slate-50 px-4 -mx-4 rounded-xl transition-all group"
-              >
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                  ticket.status === 'In Corso' ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-600'
-                }`}>
-                  {ticket.status === 'In Corso' ? <Clock size={18} /> : <AlertCircle size={18} />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-black text-slate-900 truncate group-hover:text-amber-600 transition-colors">{ticket.title}</p>
-                  <p className="text-xs font-bold text-slate-400 capitalize">{ticket.status} • {ticket.label || 'Generale'}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[10px] font-black uppercase text-slate-300">{format(new Date(ticket.createdAt), 'dd MMM', { locale: it })}</p>
-                </div>
-              </Link>
-            ))}
-            {allTickets.filter(t => t.status !== 'Completato' && t.status !== 'Annullato').length === 0 && (
-               <p className="py-12 text-slate-400 font-bold text-center italic">Ottimo! Nessuna manutenzione pendente.</p>
-            )}
-          </div>
-          <div className="p-6 bg-slate-50 border-t border-slate-100 mt-auto">
-             <div className="flex flex-wrap gap-2">
-                {statusDistribution.map(item => (
-                  <div key={item.status} className="bg-white px-4 py-2 rounded-xl border border-slate-200/50 flex flex-col">
-                     <span className="text-[9px] font-black uppercase text-slate-400 leading-none mb-1">{item.status}</span>
-                     <span className="text-sm font-black text-slate-900">{item.count}</span>
+          {/* SPESE - Compact but fluid */}
+          {hasModule('expenses') && (
+            <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col hover:border-red-200 transition-all h-auto">
+              <div className="p-6 border-b border-slate-50 bg-red-50/30 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-red-600 text-white rounded-full flex items-center justify-center">
+                    <Wallet size={20} />
                   </div>
-                ))}
-             </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Expenses Combined Card */}
-        <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col hover:border-red-100 transition-all">
-          <div className="p-8 border-b border-slate-50 bg-slate-50/50 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-               <div className="p-3 bg-red-100 text-red-600 rounded-2xl">
-                 <Wallet size={28} />
-               </div>
-               <div>
-                  <h2 className="text-xl font-black text-slate-900 leading-tight">Gestione Spese</h2>
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">€{stats.totalExpensesMonth.toLocaleString('it-IT')} questo mese</p>
-               </div>
-            </div>
-            <Link to="/spese" className="p-2 hover:bg-white rounded-full transition-colors text-red-600">
-              <PlusCircle size={24} />
-            </Link>
-          </div>
-          
-          <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-             <div className="space-y-4">
-                <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest">Top Categorie</h3>
+                  <h3 className="text-sm font-black text-slate-900 uppercase italic">Spese Mensili</h3>
+                </div>
+                <Link to="/spese" className="p-1.5 hover:bg-white rounded-lg text-red-600">
+                  <PlusCircle size={20} />
+                </Link>
+              </div>
+              <div className="p-6 text-center space-y-4">
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Totale Mese</p>
+                  <p className="text-4xl font-black text-slate-900 tracking-tighter italic">€{stats.totalExpensesMonth.toLocaleString('it-IT')}</p>
+                </div>
                 <div className="space-y-3">
-                  {expenseCategoryDistribution.slice(0, 4).map(cat => (
+                  {expenseCategoryDistribution.slice(0, 3).map(cat => (
                     <div key={cat.status} className="space-y-1">
-                      <div className="flex justify-between items-end">
-                        <span className="text-xs font-bold text-slate-700 truncate mr-2">{cat.status}</span>
-                        <span className="text-[10px] font-black text-slate-400">€{cat.amount.toLocaleString()}</span>
+                      <div className="flex justify-between text-[10px] font-black uppercase text-slate-500 italic">
+                        <span>{cat.status}</span>
+                        <span>{cat.percentage.toFixed(0)}%</span>
                       </div>
-                      <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-red-500 rounded-full" 
-                          style={{ width: `${cat.percentage}%` }}
-                        />
+                      <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-red-500 rounded-full" style={{ width: `${cat.percentage}%` }} />
                       </div>
                     </div>
                   ))}
                 </div>
-             </div>
-             <div className="bg-slate-50 rounded-3xl p-6 flex flex-col justify-center items-center text-center">
-                <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">Totale Storico</p>
-                <p className="text-3xl font-black text-slate-900">€{stats.totalExpenses.toLocaleString('it-IT', { maximumFractionDigits: 0 })}</p>
-                <div className="mt-4 flex items-center gap-2 text-red-600 bg-red-50 px-4 py-1.5 rounded-full text-xs font-bold">
-                  <AlertCircle size={14} />
-                  <span>Aggiornato a oggi</span>
-                </div>
-             </div>
-          </div>
-        </div>
-
-        {/* Liturgy Combined Card */}
-        <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col hover:border-purple-100 transition-all">
-          <div className="p-8 border-b border-slate-50 bg-slate-50/50 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-               <div className="p-3 bg-purple-100 text-purple-600 rounded-2xl">
-                 <Church size={28} />
-               </div>
-               <div>
-                  <h2 className="text-xl font-black text-slate-900 leading-tight">Celebrazioni</h2>
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Orari e intenzioni sante messe</p>
-               </div>
-            </div>
-            <Link to="/liturgie" className="p-2 hover:bg-white rounded-full transition-colors text-purple-600">
-              <PlusCircle size={24} />
-            </Link>
-          </div>
-          
-          <div className="p-6 divide-y divide-slate-50 flex-1">
-            {upcomingLiturgies.length === 0 ? (
-              <p className="py-12 text-slate-400 font-bold text-center italic">Caricamento celebrazioni...</p>
-            ) : (
-              upcomingLiturgies.map((lit) => (
-                <Link 
-                  key={lit.id} 
-                  to="/liturgie"
-                  className="py-4 flex items-center gap-4 hover:bg-slate-50 px-4 -mx-4 rounded-xl transition-all group"
-                >
-                  <div className="w-12 h-12 bg-purple-50 rounded-xl flex flex-col items-center justify-center text-purple-700 group-hover:bg-purple-100 transition-colors">
-                    <span className="text-[10px] font-black uppercase leading-none text-purple-400">{format(lit.start, 'EEE', { locale: it })}</span>
-                    <span className="text-lg font-black leading-none my-0.5">{format(lit.start, 'dd')}</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-black text-slate-900 truncate group-hover:text-purple-600 transition-colors">{lit.title}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <Clock size={12} className="text-slate-400" />
-                      <span className="text-xs font-bold text-slate-500">{format(lit.start, 'HH:mm')}</span>
-                    </div>
-                  </div>
-                  {lit.isTemplate ? (
-                    <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-[9px] font-black uppercase tracking-wider">Ad Orario</span>
-                  ) : (
-                    <span className="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-[9px] font-black uppercase tracking-wider">Speciale</span>
-                  )}
+              </div>
+              <div className="px-5 pb-5 mt-auto">
+                <Link to="/spese" className="w-full flex items-center justify-center gap-2 py-3 bg-red-50 text-red-700 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-red-100 transition-all">
+                  Dettaglio Spese <ChevronRight size={14} />
                 </Link>
-              ))
-            )}
-          </div>
-          <div className="p-6 bg-slate-50 border-t border-slate-100 text-[10px] font-bold text-slate-400 flex items-center gap-2">
-            <AlertCircle size={14} />
-            Le funzioni "Ad Orario" sono ricorrenti settimanalmente.
-          </div>
-        </div>
-
-        {/* Room Bookings Combined Card (NEW) */}
-        <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col hover:border-emerald-100 transition-all">
-          <div className="p-8 border-b border-slate-50 bg-slate-50/50 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-               <div className="p-3 bg-emerald-100 text-emerald-600 rounded-2xl">
-                 <DoorOpen size={28} />
-               </div>
-               <div>
-                  <h2 className="text-xl font-black text-slate-900 leading-tight">Prenotazioni Sale</h2>
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">{stats.bookings} richieste totali</p>
-               </div>
+              </div>
             </div>
-            <Link to="/sale" className="p-2 hover:bg-white rounded-full transition-colors text-emerald-600">
-              <PlusCircle size={24} />
-            </Link>
-          </div>
-          
-          <div className="p-6 divide-y divide-slate-50 flex-1">
-            {allBookings.filter(b => new Date(b.endTime) >= new Date()).length === 0 ? (
-              <p className="py-12 text-slate-400 font-bold text-center italic">Nessuna prenotazione imminente.</p>
-            ) : (
-              allBookings
-                .filter(b => new Date(b.endTime) >= new Date())
-                .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
-                .slice(0, 5)
-                .map((booking) => (
-                  <Link 
-                    key={booking.id} 
-                    to={`/sale?edit=${booking.id}`}
-                    className="py-4 flex items-center gap-4 hover:bg-slate-50 px-4 -mx-4 rounded-xl transition-all group"
-                  >
-                    <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center group-hover:scale-105 transition-transform ${
-                      booking.status === 'Approvata' ? 'bg-emerald-50 text-emerald-700' :
-                      booking.status === 'Rifiutata' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'
-                    }`}>
-                      <span className="text-[10px] font-black uppercase leading-none opacity-60">{format(new Date(booking.startTime), 'EEE', { locale: it })}</span>
-                      <span className="text-lg font-black leading-none my-0.5">{format(new Date(booking.startTime), 'dd')}</span>
+          )}
+
+          {/* LITURGIE - List that sizes by content */}
+          {hasModule('liturgy') && (
+            <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col hover:border-purple-200 transition-all h-auto xl:col-span-1">
+               <div className="p-6 border-b border-slate-50 bg-purple-50/30 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-purple-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-purple-100">
+                    <Church size={20} />
+                  </div>
+                  <h3 className="text-sm font-black text-slate-900 uppercase italic">Sante Messe</h3>
+                </div>
+                <Link to="/liturgie" className="p-1.5 hover:bg-white rounded-lg text-purple-600">
+                  <PlusCircle size={20} />
+                </Link>
+              </div>
+              <div className="p-5 space-y-3">
+                {upcomingLiturgies.map(lit => (
+                  <div key={lit.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100/50 group">
+                    <div className="w-10 h-10 bg-white rounded-full flex flex-col items-center justify-center shrink-0 border border-slate-100 text-purple-600">
+                      <span className="text-[8px] font-black uppercase leading-none opacity-50">{format(lit.start, 'EEE', { locale: it })}</span>
+                      <span className="text-xs font-black">{format(lit.start, 'dd')}</span>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-black text-slate-900 truncate group-hover:text-emerald-600 transition-colors">{booking.requesterName}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[10px] font-bold text-slate-500 truncate max-w-[150px]">{booking.roomNames || booking.roomName}</span>
-                        <span className="w-1 h-1 rounded-full bg-slate-300" />
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{format(new Date(booking.startTime), 'HH:mm')}</span>
+                    <div className="min-w-0">
+                      <p className="text-xs font-black text-slate-900 truncate uppercase mt-0.5">{lit.title}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <Clock size={10} className="text-slate-400" />
+                        <span className="text-[10px] font-bold text-slate-500">{lit.timeStr}</span>
                       </div>
                     </div>
-                    <div>
-                      <span className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-wider ${
-                        booking.status === 'Approvata' ? 'bg-emerald-100 text-emerald-700' :
-                        booking.status === 'Rifiutata' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
-                      }`}>
-                        {booking.status}
-                      </span>
-                    </div>
-                  </Link>
-                ))
-            )}
-          </div>
-          <div className="p-6 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
-            <div className="text-[10px] font-bold text-slate-400 flex items-center gap-2">
-              <Users size={14} />
-              {stats.rooms} sale configurate nel sistema
+                  </div>
+                ))}
+              </div>
+              <div className="px-5 pb-5 mt-auto">
+                <Link to="/liturgie" className="w-full flex items-center justify-center gap-2 py-3 bg-purple-50 text-purple-700 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-purple-100 transition-all">
+                  Orari S.Messe <ChevronRight size={14} />
+                </Link>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* SALE - Section */}
+          {hasModule('rooms') && (
+            <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col hover:border-emerald-200 transition-all h-auto">
+              <div className="p-6 border-b border-slate-50 bg-emerald-50/30 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-emerald-600 text-white rounded-full flex items-center justify-center">
+                    <DoorOpen size={20} />
+                  </div>
+                  <h3 className="text-sm font-black text-slate-900 uppercase italic">Sale e Affitti</h3>
+                </div>
+                <Link to="/sale" className="p-1.5 hover:bg-white rounded-lg text-emerald-600">
+                  <PlusCircle size={20} />
+                </Link>
+              </div>
+              <div className="p-5 space-y-3">
+                {allBookings.filter(b => b.status === 'In Attesa').slice(0, 3).map(booking => (
+                  <Link key={booking.id} to="/sale" className="block p-3 bg-amber-50 border border-amber-100 rounded-2xl space-y-1">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-black text-amber-700 uppercase italic">{booking.roomName}</span>
+                      <span className="text-[10px] font-bold text-amber-600">{format(new Date(booking.startTime), 'dd/MM')}</span>
+                    </div>
+                    <p className="text-xs font-black text-slate-900 truncate">{booking.requesterName}</p>
+                  </Link>
+                ))}
+                {allBookings.filter(b => b.status === 'In Attesa').length === 0 && (
+                  <div className="text-center py-6">
+                    <p className="text-[10px] font-black text-slate-400 uppercase italic">Nessuna richiesta pendente</p>
+                  </div>
+                )}
+              </div>
+              <div className="px-5 pb-5 mt-auto">
+                <Link to="/sale" className="w-full flex items-center justify-center gap-2 py-3 bg-emerald-50 text-emerald-700 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-emerald-100 transition-all">
+                  Configura Sale <ChevronRight size={14} />
+                </Link>
+              </div>
+            </div>
+          )}
+
+          {/* EVENTI - Dynamic List */}
+          {hasModule('events') && (
+            <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col hover:border-blue-200 transition-all h-auto xl:col-span-2">
+              <div className="p-6 border-b border-slate-50 bg-blue-50/30 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center">
+                    <Calendar size={20} />
+                  </div>
+                  <h3 className="text-sm font-black text-slate-900 uppercase italic">Iniziative</h3>
+                </div>
+                <Link to="/eventi" className="p-1.5 hover:bg-white rounded-lg text-blue-600">
+                  <PlusCircle size={20} />
+                </Link>
+              </div>
+              <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                 {recentEvents.slice(0, 4).map(event => (
+                   <Link 
+                     key={event.id}
+                     to="/eventi" 
+                     className="p-4 bg-slate-50 rounded-3xl border border-slate-100 hover:bg-white hover:border-blue-200 transition-all group"
+                   >
+                     <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-white rounded-full flex flex-col items-center justify-center border border-slate-100 text-blue-700 shadow-sm">
+                          <span className="text-[8px] font-black uppercase leading-none">{format(new Date(event.date), 'MMM', { locale: it })}</span>
+                          <span className="text-sm font-black">{format(new Date(event.date), 'dd')}</span>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-black text-slate-900 group-hover:text-blue-600 truncate uppercase mt-0.5 italic">{event.title}</p>
+                          <p className="text-[9px] font-bold text-slate-400 truncate">{event.location || 'Senza luogo'}</p>
+                        </div>
+                     </div>
+                   </Link>
+                 ))}
+                 {recentEvents.length === 0 && (
+                   <p className="text-xs text-slate-400 font-bold italic text-center py-6 col-span-full">Nessun evento futuro.</p>
+                 )}
+              </div>
+              <div className="px-5 pb-5 mt-auto">
+                <Link to="/eventi" className="w-full flex items-center justify-center gap-2 py-3 bg-blue-50 text-blue-700 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-blue-100 transition-all">
+                  Vedi Tutti <ChevronRight size={14} />
+                </Link>
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
     </div>

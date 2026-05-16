@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { auth, googleProvider, signInWithPopup, db } from '../firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, onSnapshot } from 'firebase/firestore';
 import { Shield, Key, User as UserIcon, Loader2, LogOut, Church, AlertCircle } from 'lucide-react';
 
 interface PortalUser {
@@ -43,8 +43,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     // Check local storage for portal session
     const savedPortalUser = localStorage.getItem('portal_user');
+    let portalUnsub: (() => void) | undefined;
+
     if (savedPortalUser) {
-      setPortalUser(JSON.parse(savedPortalUser));
+      const initialUser = JSON.parse(savedPortalUser);
+      setPortalUser(initialUser);
+
+      // Setup real-time listener for the portal user document
+      portalUnsub = onSnapshot(doc(db, 'portal_users', initialUser.id), (docSnap) => {
+        if (docSnap.exists()) {
+          const updatedUser = { id: docSnap.id, ...docSnap.data() } as PortalUser;
+          setPortalUser(updatedUser);
+          localStorage.setItem('portal_user', JSON.stringify(updatedUser));
+        } else {
+          // User deleted or disabled
+          setPortalUser(null);
+          localStorage.removeItem('portal_user');
+        }
+      });
     }
 
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -52,7 +68,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+      if (portalUnsub) portalUnsub();
+    };
   }, []);
 
   const logout = async () => {

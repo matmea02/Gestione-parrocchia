@@ -684,24 +684,24 @@ const Maintenance: React.FC = () => {
           <button
             onClick={exportToPDF}
             disabled={isExporting}
-            className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-xl font-medium hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-50"
+            className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 px-6 py-2.5 rounded-full font-bold uppercase italic tracking-wider hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[10px] disabled:opacity-50"
           >
-            <Download size={20} />
+            <Download size={18} />
             {isExporting ? 'Generando...' : 'Esporta PDF'}
           </button>
           <button
             onClick={() => setIsLabelsModalOpen(true)}
-            className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-xl font-medium hover:bg-slate-50 transition-colors shadow-sm"
+            className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 px-6 py-2.5 rounded-full font-bold uppercase italic tracking-wider hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[10px]"
             title="Gestisci Etichette"
           >
-            <Tag size={20} />
+            <Tag size={18} />
             <span className="hidden sm:inline">Etichette</span>
           </button>
           <button
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2 rounded-xl font-medium hover:bg-blue-700 transition-colors shadow-md shadow-blue-100"
+            className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2.5 rounded-full font-bold uppercase italic tracking-wider hover:bg-blue-700 transition-all shadow-md hover:shadow-lg active:scale-95 text-[10px]"
           >
-            <Plus size={20} />
+            <Plus size={18} />
             Segnala
           </button>
         </div>
@@ -1059,7 +1059,7 @@ const Maintenance: React.FC = () => {
                         {ticket.attachments?.length > 0 && (
                           <button
                             onClick={() => setViewingAttachments(ticket)}
-                            className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors shadow-sm bg-white border border-slate-100"
+                            className="p-2.5 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-full transition-all border border-indigo-100 shadow-sm hover:scale-110"
                             title="Visualizza Allegati"
                           >
                             <FileText size={16} />
@@ -1067,14 +1067,14 @@ const Maintenance: React.FC = () => {
                         )}
                         <button
                           onClick={() => handleEdit(ticket)}
-                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors shadow-sm bg-white border border-slate-100"
+                          className="p-2.5 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-full transition-all border border-blue-100 shadow-sm hover:scale-110"
                           title="Modifica"
                         >
                           <Pencil size={16} />
                         </button>
                         <button
                           onClick={() => setDeleteConfirmation(ticket.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors shadow-sm bg-white border border-slate-100"
+                          className="p-2.5 text-red-600 bg-red-50 hover:bg-red-100 rounded-full transition-all border border-red-100 shadow-sm hover:scale-110"
                           title="Elimina"
                         >
                           <Trash2 size={16} />
@@ -1112,7 +1112,7 @@ const Maintenance: React.FC = () => {
                   </span>
                 )}
               </div>
-              <button onClick={closeModal} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-slate-900">
+              <button onClick={closeModal} className="p-2 hover:bg-slate-100 rounded-full transition-all text-slate-400 hover:text-slate-900">
                 <X size={24} />
               </button>
             </div>
@@ -1306,7 +1306,7 @@ const Maintenance: React.FC = () => {
                           <button
                             type="button"
                             onClick={addExpense}
-                            className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition-all shadow-md active:scale-95"
+                            className="bg-blue-600 text-white p-3 rounded-full hover:bg-blue-700 transition-all shadow-md active:scale-95"
                           >
                             <Plus size={20} />
                           </button>
@@ -1371,7 +1371,7 @@ const Maintenance: React.FC = () => {
                         <button
                           type="button"
                           onClick={addUpdate}
-                          className="bg-slate-900 text-white p-3 rounded-xl hover:bg-blue-600 transition-all shadow-md active:scale-95"
+                          className="bg-slate-900 text-white p-3 rounded-full hover:bg-blue-600 transition-all shadow-md active:scale-95"
                         >
                           <PlusCircle size={20} />
                         </button>
@@ -1470,14 +1470,14 @@ const Maintenance: React.FC = () => {
               <button
                 type="button"
                 onClick={closeModal}
-                className="px-6 py-2.5 rounded-xl font-bold text-sm text-slate-600 hover:bg-slate-100 transition-colors uppercase tracking-wider"
+                className="bg-white border border-slate-200 text-slate-600 px-10 py-4 rounded-full font-bold uppercase italic tracking-wider hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[10px]"
               >
                 Annulla
               </button>
               <button
                 form="ticket-form"
                 type="submit"
-                className="px-8 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition-all shadow-md active:scale-95 uppercase tracking-wider"
+                className="bg-blue-600 text-white px-12 py-4 rounded-full font-bold uppercase italic tracking-widest hover:bg-blue-700 transition-all shadow-xl active:scale-95 text-[10px]"
               >
                 {editingTicketId ? 'Salva Modifiche' : 'Salva Segnalazione'}
               </button>
@@ -1522,7 +1522,7 @@ const Maintenance: React.FC = () => {
                   </div>
                   <button
                     onClick={() => openPdfPreview(att.name, att.url)}
-                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-indigo-700 transition-all shadow-md active:scale-95"
+                    className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-full font-bold uppercase italic tracking-wider hover:bg-indigo-700 transition-all shadow-md hover:shadow-lg active:scale-95 text-[10px]"
                   >
                     Visualizza
                   </button>
@@ -1538,7 +1538,7 @@ const Maintenance: React.FC = () => {
             <div className="p-6 border-t border-slate-100 flex justify-end bg-white">
               <button
                 onClick={() => setViewingAttachments(null)}
-                className="px-6 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-slate-800 transition-all shadow-md uppercase tracking-widest"
+                className="bg-slate-900 text-white px-8 py-3 rounded-full font-bold uppercase italic tracking-wider hover:bg-slate-800 transition-all shadow-md active:scale-95 text-[10px]"
               >
                 Chiudi
               </button>

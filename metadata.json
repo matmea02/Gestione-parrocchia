@@ -1,5 +1,6 @@
 {
-  "name": "Comunità Pastorale Santa Teresa Benedetta della Croce",
+  "name": "Gestionale parrocchie di Lissone",
   "description": "Portale multi-parrocchia per la gestione centralizzata di servizi, eventi, manutenzione, catechismi e prenotazione sale.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -335,7 +335,7 @@ const Catechism: React.FC = () => {
         </div>
         <button
           onClick={() => openModal()}
-          className="flex items-center justify-center gap-2 px-6 py-3.5 bg-indigo-600 text-white rounded-2xl font-black shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:-translate-y-0.5 transition-all text-xs uppercase tracking-[0.15em]"
+          className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2.5 rounded-full font-bold uppercase italic tracking-wider hover:bg-blue-700 transition-all shadow-md hover:shadow-lg active:scale-95 text-[10px]"
         >
           <Plus size={18} />
           Nuovo Gruppo
@@ -354,107 +354,178 @@ const Catechism: React.FC = () => {
             </div>
           ))
         ) : groups.length > 0 ? (
-          <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50/50 border-b border-slate-100">
-                    <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Gruppo / Percorso</th>
-                    <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Incontro</th>
-                    <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Catechista</th>
-                    <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Iscritti</th>
-                    <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Documenti</th>
-                    <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Azioni</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {groups.map((group) => (
-                    <tr key={group.id} className="hover:bg-indigo-50/30 transition-colors group">
-                      <td className="px-8 py-5">
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform">
-                            <GraduationCap size={22} />
-                          </div>
-                          <div className="space-y-0.5">
-                            <div className="flex items-center gap-2">
-                              <h3 className="text-sm font-black text-slate-900 italic">{group.name}</h3>
-                              <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[9px] font-black uppercase rounded-lg tracking-wider">
-                                {group.catechismYear}
-                              </span>
-                            </div>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{group.pathYear || 'Percorso'}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2 text-slate-700">
-                            <CalendarIcon size={14} className="text-indigo-500" />
-                            <span className="text-xs font-bold">{dayNames[parseInt(group.dayOfWeek)]}</span>
-                          </div>
-                          <div className="flex items-center gap-2 text-slate-400">
-                            <Clock size={12} />
-                            <span className="text-[10px] font-black uppercase">{group.time}</span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 shrink-0">
-                            <User size={16} />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold text-slate-600 truncate max-w-[150px]">
-                              {group.catechistNames?.join(', ') || 'Nessuno'}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5 text-center">
-                        <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-full border border-slate-100">
-                          <Users size={12} className="text-indigo-500" />
-                          <span className="text-xs font-black text-slate-700">{group.subscriberCount}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5 text-center">
-                        <div className="flex justify-center flex-wrap gap-1 max-w-[120px] mx-auto">
-                          {group.documents?.length > 0 ? (
-                            <span className="px-2 py-1 bg-indigo-50 text-indigo-600 text-[9px] font-black rounded-lg border border-indigo-100">
-                              {group.documents.length} FILE
-                            </span>
-                          ) : (
-                            <span className="text-[9px] font-black text-slate-300 uppercase">Nessuno</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-8 py-5 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => openModal(group)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-xl shadow-sm hover:shadow-md transition-all active:scale-95">
-                            <Pencil size={18} />
-                          </button>
-                          <button onClick={() => handleDeleteGroup(group.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-white rounded-xl shadow-sm hover:shadow-md transition-all active:scale-95">
-                            <Trash2 size={18} />
-                          </button>
-                        </div>
-                      </td>
+          <div className="space-y-4">
+            {/* Desktop Table View */}
+            <div className="hidden lg:block bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50/50 border-b border-slate-100">
+                      <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Gruppo / Percorso</th>
+                      <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Incontro</th>
+                      <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Catechista</th>
+                      <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Iscritti</th>
+                      <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Documenti</th>
+                      <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Azioni</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {groups.map((group) => (
+                      <tr key={group.id} className="hover:bg-indigo-50/30 transition-colors group">
+                        <td className="px-8 py-5">
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform">
+                              <GraduationCap size={22} />
+                            </div>
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-sm font-black text-slate-900 italic">{group.name}</h3>
+                                <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[9px] font-black uppercase rounded-full tracking-wider">
+                                  {group.catechismYear}
+                                </span>
+                              </div>
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{group.pathYear || 'Percorso'}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-5">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 text-slate-700">
+                              <CalendarIcon size={14} className="text-indigo-500" />
+                              <span className="text-xs font-bold">{dayNames[parseInt(group.dayOfWeek)]}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-slate-400">
+                              <Clock size={12} />
+                              <span className="text-[10px] font-black uppercase">{group.time}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-5">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 shrink-0">
+                              <User size={16} />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-600 truncate max-w-[150px]">
+                                {group.catechistNames?.join(', ') || 'Nessuno'}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-5 text-center">
+                          <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-full border border-slate-100">
+                            <Users size={12} className="text-indigo-500" />
+                            <span className="text-xs font-black text-slate-700">{group.subscriberCount}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-5 text-center">
+                          <div className="flex justify-center flex-wrap gap-1 max-w-[120px] mx-auto">
+                            {group.documents?.length > 0 ? (
+                              <span className="px-2 py-1 bg-indigo-50 text-indigo-600 text-[9px] font-black rounded-lg border border-indigo-100">
+                                {group.documents.length} FILE
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-black text-slate-300 uppercase">Nessuno</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-8 py-5 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button onClick={() => openModal(group)} className="p-2.5 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-full transition-all border border-blue-100 shadow-sm hover:scale-110">
+                              <Pencil size={18} />
+                            </button>
+                            <button onClick={() => handleDeleteGroup(group.id)} className="p-2.5 text-red-600 bg-red-50 hover:bg-red-100 rounded-full transition-all border border-red-100 shadow-sm hover:scale-110">
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Mobile/Tablet Card View */}
+            <div className="lg:hidden grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {groups.map((group) => (
+                <div key={group.id} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm space-y-4 hover:border-indigo-200 transition-colors">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center shrink-0">
+                        <GraduationCap size={20} />
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-black text-slate-900 italic truncate">{group.name}</h3>
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{group.pathYear || 'Percorso'}</p>
+                      </div>
+                    </div>
+                    <span className="px-2 py-1 bg-indigo-100 text-indigo-700 text-[9px] font-black uppercase rounded-full tracking-wider shrink-0">
+                      {group.catechismYear}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 py-3 border-y border-slate-50">
+                    <div className="space-y-1">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Incontro</p>
+                      <div className="flex items-center gap-2 text-slate-700">
+                        <CalendarIcon size={12} className="text-indigo-500" />
+                        <span className="text-[11px] font-bold">{dayNames[parseInt(group.dayOfWeek)]}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-slate-400">
+                        <Clock size={11} />
+                        <span className="text-[10px] font-black">{group.time}</span>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Iscritti</p>
+                      <div className="flex items-center gap-2">
+                        <Users size={12} className="text-indigo-500" />
+                        <span className="text-[11px] font-black text-slate-700">{group.subscriberCount}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Catechista</p>
+                    <p className="text-[11px] font-bold text-slate-600 truncate">
+                      {group.catechistNames?.join(', ') || 'Nessuno assegnato'}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2">
+                    <div className="text-[9px] font-black uppercase tracking-widest">
+                      {group.documents?.length > 0 ? (
+                        <span className="text-indigo-600">{group.documents.length} documenti</span>
+                      ) : (
+                        <span className="text-slate-300 italic">No documenti</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => openModal(group)} className="p-2 text-blue-600 bg-blue-50 rounded-full border border-blue-100">
+                        <Pencil size={16} />
+                      </button>
+                      <button onClick={() => handleDeleteGroup(group.id)} className="p-2 text-red-600 bg-red-50 rounded-full border border-red-100">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         ) : (
-          <div className="py-32 bg-white rounded-[3rem] border-2 border-dashed border-slate-100 flex flex-col items-center justify-center text-center space-y-6">
-             <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center text-slate-200">
-               <GraduationCap size={48} strokeWidth={1} />
+          <div className="py-20 md:py-32 bg-white rounded-[2.5rem] md:rounded-[3rem] border-2 border-dashed border-slate-100 flex flex-col items-center justify-center text-center space-y-6 px-6">
+             <div className="w-20 h-20 md:w-24 md:h-24 bg-slate-50 rounded-full flex items-center justify-center text-slate-200">
+               <GraduationCap size={40} className="md:w-12 md:h-12" strokeWidth={1} />
              </div>
              <div className="space-y-2">
-               <h3 className="text-xl font-black text-slate-900">Nessun gruppo configurato</h3>
-               <p className="text-slate-400 font-medium">Inizia creando il primo percorso di catechismo.</p>
+               <h3 className="text-lg md:text-xl font-black text-slate-900">Nessun gruppo configurato</h3>
+               <p className="text-slate-400 font-medium text-sm">Inizia creando il primo percorso di catechismo.</p>
              </div>
              <button
                onClick={() => openModal()}
-               className="px-8 py-3.5 bg-indigo-600 text-white rounded-2xl font-black shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all text-xs uppercase tracking-widest"
+               className="bg-blue-600 text-white px-8 py-3.5 rounded-full font-bold uppercase italic tracking-wider hover:bg-blue-700 transition-all shadow-md hover:shadow-lg active:scale-95 text-[10px]"
              >
                Crea Gruppo
              </button>
@@ -464,33 +535,33 @@ const Catechism: React.FC = () => {
 
       {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-hidden">
-          <div className="bg-white w-full max-w-5xl rounded-[40px] shadow-2xl h-[90vh] flex flex-col animate-in fade-in zoom-in duration-300">
-            <div className="p-8 flex items-center justify-between border-b border-slate-100 shrink-0">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 md:p-4 bg-slate-900/60 backdrop-blur-sm overflow-hidden">
+          <div className="bg-white w-full max-w-5xl rounded-[2rem] md:rounded-[2.5rem] lg:rounded-[3rem] shadow-2xl h-[95vh] md:h-[90vh] flex flex-col animate-in fade-in zoom-in duration-300">
+            <div className="p-6 md:p-8 flex items-center justify-between border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center shadow-inner">
-                  <GraduationCap size={24} />
+                <div className="w-10 h-10 md:w-12 md:h-12 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center shadow-inner">
+                  <GraduationCap size={20} className="md:w-6 md:h-6" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">{editingId ? 'Modifica Gruppo' : 'Nuovo Gruppo Catechismo'}</h2>
-                  <p className="text-[10px] uppercase font-black tracking-[0.2em] text-indigo-500">Impostazioni Percorso</p>
+                  <h2 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight leading-tight">{editingId ? 'Modifica Gruppo' : 'Nuovo Gruppo'}</h2>
+                  <p className="text-[9px] md:text-[10px] uppercase font-black tracking-[0.2em] text-indigo-500">Impostazioni Percorso</p>
                 </div>
               </div>
-              <button onClick={closeModal} className="p-3 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
+              <button onClick={closeModal} className="p-2 hover:bg-slate-100 rounded-full transition-all text-slate-400 hover:text-slate-900">
                 <X size={24} />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-8 bg-slate-50/20">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 md:p-8 bg-slate-50/20 custom-scrollbar">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
                 {/* Info Base */}
-                <div className="space-y-8">
-                  <div className="bg-white p-8 rounded-[3rem] border border-slate-200 shadow-sm space-y-6">
+                <div className="space-y-6 md:space-y-8">
+                  <div className="bg-white p-6 md:p-8 rounded-[2rem] md:rounded-[3rem] border border-slate-200 shadow-sm space-y-6">
                     <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 flex items-center gap-2">
                        <Info size={14} className="text-indigo-500" /> Dati Generali
                     </h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2 col-span-full">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2 md:col-span-2">
                         <label className="text-[11px] font-black text-slate-500 uppercase ml-1">Nome Gruppo</label>
                         <input
                           required
@@ -513,7 +584,7 @@ const Catechism: React.FC = () => {
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[11px] font-black text-slate-500 uppercase ml-1">Anno Nascita Bambini</label>
+                        <label className="text-[11px] font-black text-slate-500 uppercase ml-1">Anno Nascita</label>
                         <input
                           required
                           type="text"
@@ -524,7 +595,7 @@ const Catechism: React.FC = () => {
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[11px] font-black text-slate-500 uppercase ml-1">Anno Percorso (es. 1° anno)</label>
+                        <label className="text-[11px] font-black text-slate-500 uppercase ml-1">Anno Percorso</label>
                         <input
                           required
                           type="text"
@@ -546,11 +617,11 @@ const Catechism: React.FC = () => {
                     </div>
 
                     <div className="space-y-4">
-                      <label className="text-[11px] font-black text-slate-500 uppercase ml-1">Catechisti (Volontari "CATECHISTA")</label>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-4 bg-slate-50 rounded-2xl border-2 border-transparent focus-within:border-indigo-400 transition-all">
+                      <label className="text-[11px] font-black text-slate-500 uppercase ml-1">Catechisti</label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-4 bg-slate-50 rounded-2xl border-2 border-transparent focus-within:border-indigo-400 transition-all custom-scrollbar">
                         {volunteers.map(v => (
                           <label key={v.id} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-100 cursor-pointer hover:border-indigo-200 transition-all group">
-                            <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${form.catechistIds.includes(v.id) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-200'}`}>
+                            <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all shrink-0 ${form.catechistIds.includes(v.id) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-200'}`}>
                               {form.catechistIds.includes(v.id) && <CheckCircle2 size={12} className="text-white" />}
                             </div>
                             <input
@@ -564,33 +635,33 @@ const Catechism: React.FC = () => {
                                 setForm({ ...form, catechistIds: newIds });
                               }}
                             />
-                            <span className="text-xs font-bold text-slate-700">{v.lastName} {v.firstName}</span>
+                            <span className="text-xs font-bold text-slate-700 truncate">{v.lastName} {v.firstName}</span>
                           </label>
                         ))}
                       </div>
                       {volunteers.length === 0 && (
                         <p className="text-[10px] text-amber-600 bg-amber-50 p-3 rounded-xl border border-amber-100 flex items-center gap-2">
-                          <AlertCircle size={14} /> Nessun volontario nel gruppo "CATECHISTA" trovato.
+                          <AlertCircle size={14} /> Nessun volontario "CATECHISTA" trovato.
                         </p>
                       )}
                     </div>
                   </div>
 
-                  <div className="bg-white p-8 rounded-[3rem] border border-slate-200 shadow-sm space-y-6">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 flex items-center gap-2">
-                        <FilePlus size={14} className="text-indigo-500" /> Documenti
-                      </h3>
-                      <label className="p-2 bg-indigo-600 text-white rounded-xl cursor-pointer hover:bg-indigo-700 transition-all">
-                        <Plus size={18} />
-                        <input type="file" onChange={handleFileUpload} className="hidden" />
-                      </label>
-                    </div>
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                  <div className="bg-white p-6 md:p-8 rounded-[2rem] md:rounded-[3rem] border border-slate-200 shadow-sm space-y-6">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 flex items-center gap-2">
+                          <FilePlus size={14} className="text-indigo-500" /> Documenti
+                        </h3>
+                        <label className="p-2.5 bg-blue-600 text-white rounded-full cursor-pointer hover:bg-blue-700 transition-all shadow-md active:scale-95">
+                          <Plus size={18} />
+                          <input type="file" onChange={handleFileUpload} className="hidden" />
+                        </label>
+                      </div>
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
                       {form.documents.map((doc, idx) => (
                         <div key={doc.id} className="p-4 bg-slate-50 rounded-2xl flex items-center justify-between group">
                           <div className="flex items-center gap-3">
-                            <div className="p-2 bg-white rounded-lg text-slate-400">
+                            <div className="p-2 bg-white rounded-full text-slate-400">
                               <FileText size={16} />
                             </div>
                             <div className="min-w-0">
@@ -617,13 +688,13 @@ const Catechism: React.FC = () => {
                 </div>
 
                 {/* Calendar & Scheduling */}
-                <div className="space-y-8">
-                  <div className="bg-slate-900 p-8 rounded-[3rem] text-white space-y-8 shadow-xl">
+                <div className="space-y-6 md:space-y-8">
+                  <div className="bg-slate-900 p-6 md:p-8 rounded-[2rem] md:rounded-[3rem] text-white space-y-8 shadow-xl">
                     <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 flex items-center gap-2">
                       <CalendarIcon size={14} className="text-indigo-400" /> Pianificazione Incontri
                     </h3>
                     
-                    <div className="grid grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
                         <label className="text-[11px] font-black text-slate-400 uppercase ml-1">Giorno Settimana</label>
                         <select
@@ -647,12 +718,12 @@ const Catechism: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="bg-white/5 p-6 rounded-[2.5rem] border border-white/10 space-y-6">
+                    <div className="bg-white/5 p-5 md:p-6 rounded-[2rem] md:rounded-[2.5rem] border border-white/10 space-y-6">
                       <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest text-center">Generazione Automatica Date</p>
                       
                       <div className="grid grid-cols-1 gap-4">
-                        <div className="flex items-center gap-4">
-                          <div className="flex-1 space-y-1">
+                        <div className="flex flex-col sm:flex-row items-center gap-4">
+                          <div className="w-full sm:flex-1 space-y-1">
                             <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Dal</label>
                             <input
                               type="date"
@@ -661,8 +732,8 @@ const Catechism: React.FC = () => {
                               className="w-full px-4 py-3 rounded-xl bg-white/5 border-none text-xs font-bold text-white outline-none focus:ring-1 focus:ring-indigo-500"
                             />
                           </div>
-                          <ArrowRight size={16} className="text-slate-600 mt-5" />
-                          <div className="flex-1 space-y-1">
+                          <ArrowRight size={16} className="text-slate-600 hidden sm:block mt-5" />
+                          <div className="w-full sm:flex-1 space-y-1">
                             <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Al</label>
                             <input
                               type="date"
@@ -691,14 +762,14 @@ const Catechism: React.FC = () => {
                       <button
                         type="button"
                         onClick={generateDates}
-                        className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-900/40"
+                        className="w-full py-4 bg-blue-600 text-white rounded-full font-bold uppercase italic tracking-widest hover:bg-blue-700 transition-all shadow-lg active:scale-95 text-[10px]"
                       >
                         Genera Sequenza Date
                       </button>
                     </div>
 
                     {/* Manual Date Entry */}
-                    <div className="bg-white/5 p-6 rounded-[2.5rem] border border-white/10 space-y-4">
+                    <div className="bg-white/5 p-5 md:p-6 rounded-[2rem] md:rounded-[2.5rem] border border-white/10 space-y-4">
                       <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest text-center">Inserimento Manuale Data</p>
                       <div className="flex items-center gap-2">
                         <input
@@ -710,7 +781,7 @@ const Catechism: React.FC = () => {
                         <button
                           type="button"
                           onClick={addSingleDate}
-                          className="p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all"
+                          className="p-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-all shadow-md active:scale-95 shrink-0"
                         >
                           <Plus size={18} />
                         </button>
@@ -728,14 +799,14 @@ const Catechism: React.FC = () => {
                           Svuota
                         </button>
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
                         {form.meetingDates.map((date, idx) => (
                           <div key={idx} className="px-3 py-2 bg-white/5 rounded-xl border border-white/5 text-[11px] font-bold text-slate-300 flex items-center justify-between group/date">
                             {format(parseISO(date), 'dd/MM/yyyy')}
                             <button 
                               type="button"
                               onClick={() => setForm(p => ({ ...p, meetingDates: p.meetingDates.filter((_, i) => i !== idx) }))}
-                              className="text-red-400 opacity-0 group-hover/date:opacity-100 transition-opacity"
+                              className="text-red-400 opacity-0 group-hover/date:opacity-100 lg:opacity-0 transition-opacity"
                             >
                               <X size={12} />
                             </button>
@@ -748,7 +819,7 @@ const Catechism: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="bg-white p-8 rounded-[3rem] border border-slate-200 shadow-sm space-y-4">
+                  <div className="bg-white p-6 md:p-8 rounded-[2rem] md:rounded-[3rem] border border-slate-200 shadow-sm space-y-4">
                     <label className="text-[11px] font-black text-slate-500 uppercase ml-1">Note Aggiuntive</label>
                     <textarea
                       rows={4}
@@ -761,17 +832,17 @@ const Catechism: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex gap-4 pt-12">
+              <div className="flex flex-col sm:flex-row gap-4 pt-12">
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="flex-1 px-8 py-5 rounded-3xl font-black text-xs text-slate-400 hover:bg-slate-100 transition-all uppercase tracking-[0.2em]"
+                  className="bg-white border border-slate-200 text-slate-600 px-10 py-5 rounded-full font-bold uppercase italic tracking-wider hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[10px]"
                 >
                   Annulla
                 </button>
                 <button
                   type="submit"
-                  className="flex-[2] bg-slate-900 text-white px-10 py-5 rounded-3xl font-black text-xs shadow-xl hover:bg-indigo-600 transition-all uppercase tracking-[0.2em] active:scale-95"
+                  className="bg-blue-600 text-white px-12 py-5 rounded-full font-bold uppercase italic tracking-widest hover:bg-blue-700 transition-all shadow-xl active:scale-95 text-[10px] flex-1"
                 >
                   {editingId ? 'Salva Modifiche' : 'Conferma e Crea Gruppo'}
                 </button>

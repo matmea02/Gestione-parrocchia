@@ -465,237 +465,304 @@ const Consulte: React.FC = () => {
     c.agenda.toLowerCase().includes(searchTerm.toLowerCase()) ||
     c.number.toString().includes(searchTerm) ||
     c.year.toString().includes(searchTerm)
-  );
-
-  return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Consulte</h1>
-          <p className="text-slate-500 font-medium">Gestione dei verbali e dell'ordine del giorno</p>
+  );  return (
+    <div className="space-y-6 md:space-y-8 min-h-screen">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="text-center md:text-left">
+          <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight italic uppercase">Verbali e Consulte</h1>
+          <p className="text-slate-500 font-medium text-xs md:text-sm">Gestisci l'agenda e archivia i verbali delle consulte parrocchiali.</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
           <button
             onClick={() => {
               setForm(initialFormState);
               setIsEditing(false);
               setIsModalOpen(true);
             }}
-            className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all text-sm uppercase tracking-wider"
+            className="flex items-center justify-center gap-2 bg-blue-600 text-white px-6 py-4 rounded-full font-black uppercase italic tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 active:scale-95 text-[10px]"
           >
-            <Plus size={20} />
+            <Plus size={18} />
             Nuova Consulta
           </button>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-          <input
-            type="text"
-            placeholder="Cerca per numero, anno o contenuto..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 rounded-xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm"
-          />
+      {/* Main List */}
+      <div className="bg-white rounded-3xl md:rounded-[3rem] border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-4 bg-slate-50 border-b border-slate-100">
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input
+              type="text"
+              placeholder="Cerca per numero, anno o contenuto..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 rounded-xl bg-white border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm font-bold"
+            />
+          </div>
         </div>
-      </div>
 
-      {/* List */}
-      {loading ? (
-        <div className="space-y-4">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-16 bg-white border border-slate-100 rounded-xl animate-pulse" />
-          ))}
-        </div>
-      ) : filteredCouncils.length > 0 ? (
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-100">
-                <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 tracking-wider text-center w-24">N.</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 tracking-wider">Stagione</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 tracking-wider">Data e Ora</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 tracking-wider">Luogo</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 tracking-wider">Ordine del Giorno</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 tracking-wider text-right">Azioni</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredCouncils.map((council) => (
-                <tr key={council.id} className="hover:bg-slate-50 transition-colors group">
-                  <td className="px-6 py-4 text-center">
-                    <span className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-blue-50 text-blue-700 font-black text-sm">
-                      {council.number}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="text-sm font-bold text-slate-700">{council.year}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold text-slate-900">
-                        {format(new Date(council.date), 'dd/MM/yyyy', { locale: it })}
-                      </span>
-                      <span className="text-[10px] uppercase font-bold text-slate-400">
-                        {format(new Date(council.date), 'HH:mm', { locale: it })}
-                      </span>
+        <div className="overflow-x-auto">
+          {loading ? (
+            <div className="p-10 space-y-4">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="h-16 bg-slate-50 border border-slate-100 rounded-2xl animate-pulse" />
+              ))}
+            </div>
+          ) : filteredCouncils.length > 0 ? (
+            <>
+              <table className="hidden lg:table w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-100">
+                    <th className="px-8 py-5 text-[10px] font-black uppercase text-slate-400 tracking-widest text-center w-24">N.</th>
+                    <th className="px-8 py-5 text-[10px] font-black uppercase text-slate-400 tracking-widest text-center">Stagione</th>
+                    <th className="px-8 py-5 text-[10px] font-black uppercase text-slate-400 tracking-widest">Data e Ora</th>
+                    <th className="px-8 py-5 text-[10px] font-black uppercase text-slate-400 tracking-widest">Luogo</th>
+                    <th className="px-8 py-5 text-[10px] font-black uppercase text-slate-400 tracking-widest text-right">Azioni</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredCouncils.map((council) => (
+                    <tr key={council.id} className="hover:bg-slate-50 transition-colors group">
+                      <td className="px-8 py-6 text-center">
+                        <span className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-blue-50 text-blue-700 font-black text-sm border border-blue-100 shadow-sm">
+                          {council.number}
+                        </span>
+                      </td>
+                      <td className="px-8 py-6 text-center">
+                        <span className="text-[11px] font-black uppercase text-slate-500 tracking-widest">{council.year}</span>
+                      </td>
+                      <td className="px-8 py-6">
+                        <div>
+                          <p className="text-sm font-black text-slate-900 uppercase italic leading-none mb-1">
+                            {format(new Date(council.date), 'dd MMMM yyyy', { locale: it })}
+                          </p>
+                          <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">
+                            {format(new Date(council.date), 'HH:mm', { locale: it })}
+                          </p>
+                        </div>
+                      </td>
+                      <td className="px-8 py-6">
+                        <div className="flex items-center gap-2 text-xs font-bold text-slate-600 italic">
+                          <MapPin size={14} className="text-slate-300 shrink-0" />
+                          <span className="truncate max-w-[200px]">{council.location || 'Non specificato'}</span>
+                        </div>
+                      </td>
+                      <td className="px-8 py-6">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleDownloadPDF(council)}
+                            className="p-3 text-slate-400 hover:text-blue-600 bg-slate-50 hover:bg-blue-50 rounded-2xl transition-all border border-slate-100 hover:border-blue-100 hover:scale-105 active:scale-95"
+                            title="Scarica PDF"
+                          >
+                            <Download size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleEdit(council)}
+                            className="p-3 text-slate-400 hover:text-blue-600 bg-slate-50 hover:bg-blue-50 rounded-2xl transition-all border border-slate-100 hover:border-blue-100 hover:scale-105 active:scale-95"
+                            title="Modifica / Documento"
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          <button
+                            onClick={() => setCouncilToDelete(council.id)}
+                            className="p-3 text-slate-400 hover:text-red-600 bg-slate-50 hover:bg-red-50 rounded-2xl transition-all border border-slate-100 hover:border-red-100 hover:scale-105 active:scale-95"
+                            title="Elimina"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* Mobile Card View */}
+              <div className="lg:hidden p-4 space-y-4 bg-slate-50/50">
+                {filteredCouncils.map((council) => (
+                  <div key={council.id} className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <span className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-blue-50 text-blue-700 font-black text-base border border-blue-100 shadow-sm">
+                          {council.number}
+                        </span>
+                        <div>
+                          <h3 className="font-black text-slate-900 italic uppercase text-xs">Stagione {council.year}</h3>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Verbale Consulta</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleDownloadPDF(council)}
+                          className="p-3 bg-blue-50 text-blue-600 rounded-2xl border border-blue-100"
+                        >
+                          <Download size={16} />
+                        </button>
+                        <button
+                          onClick={() => handleEdit(council)}
+                          className="p-3 bg-blue-50 text-blue-600 rounded-2xl border border-blue-100"
+                        >
+                          <Pencil size={16} />
+                        </button>
+                      </div>
                     </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2 text-sm text-slate-600">
-                      <MapPin size={14} className="text-slate-400" />
-                      <span className="truncate max-w-[150px]">{council.location || 'Non specificato'}</span>
+                    
+                    <div className="grid grid-cols-2 gap-4 py-4 border-y border-slate-50 bg-slate-50/50 p-4 rounded-3xl">
+                      <div className="space-y-1">
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Data</p>
+                        <p className="text-[10px] font-bold text-slate-900">
+                          {format(new Date(council.date), 'dd/MM/yyyy', { locale: it })}
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Ora</p>
+                        <p className="text-[10px] font-bold text-slate-900">
+                          {format(new Date(council.date), 'HH:mm', { locale: it })}
+                        </p>
+                      </div>
                     </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <p className="text-xs text-slate-500 line-clamp-1 italic max-w-xs">
-                      {council.agenda}
-                    </p>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => handleDownloadPDF(council)}
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors shadow-sm bg-white border border-slate-100"
-                        title="Scarica PDF"
-                      >
-                        <Download size={16} />
-                      </button>
-                      <button
-                        onClick={() => handleEdit(council)}
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors shadow-sm bg-white border border-slate-100"
-                        title="Modifica / Documento"
-                      >
-                        <Pencil size={16} />
-                      </button>
+
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-2 text-[10px] text-slate-500 font-bold italic truncate flex-1">
+                        <MapPin size={14} className="text-slate-400 shrink-0" />
+                        <span className="truncate">{council.location || 'Non specificato'}</span>
+                      </div>
                       <button
                         onClick={() => setCouncilToDelete(council.id)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors shadow-sm bg-white border border-slate-100"
-                        title="Elimina"
+                        className="p-3 text-red-600 bg-red-50 hover:bg-red-50 rounded-2xl border border-red-100"
                       >
                         <Trash2 size={16} />
                       </button>
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-24 bg-white px-6">
+              <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-inner">
+                <ClipboardList className="text-slate-300" size={40} strokeWidth={1} />
+              </div>
+              <h3 className="text-xl font-black text-slate-900 uppercase italic">Nessun verbale trovato</h3>
+              <p className="text-slate-500 max-w-xs mx-auto text-sm font-medium mt-2">Non sono ancora stati registrati verbali per le consulte parrocchiali.</p>
+            </div>
+          )}
         </div>
-      ) : (
-        <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-slate-300">
-          <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
-            <ClipboardList className="text-slate-300" size={32} />
-          </div>
-          <h3 className="text-lg font-bold text-slate-900">Nessun verbale trovato</h3>
-          <p className="text-slate-500 max-w-xs mx-auto">Non sono ancora stati registrati verbali per le consulte parrocchiali.</p>
-        </div>
-      )}
+      </div>
 
       {/* Attendance Modal */}
       {isAttendanceModalOpen && selectedCouncil && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
-          <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
-                  <Users size={24} />
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-0 md:p-4 z-[200]">
+          <div className="bg-white rounded-none md:rounded-[3.5rem] w-full h-full md:h-auto md:max-h-[85vh] md:max-w-4xl overflow-hidden shadow-2xl flex flex-col animate-in slide-in-from-bottom duration-300">
+            <div className="p-6 md:p-10 border-b border-slate-50 flex items-center justify-between shrink-0 bg-white shadow-sm z-10">
+              <div className="flex items-center gap-5">
+                <div className="w-12 h-12 md:w-16 md:h-16 bg-blue-50 text-blue-600 rounded-2xl md:rounded-3xl flex items-center justify-center border border-blue-100">
+                  <Users size={32} className="w-6 h-6 md:w-8 md:h-8" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-slate-900">Rilevazione Presenze</h2>
-                  <p className="text-xs text-slate-500 font-medium">Consulta N. {selectedCouncil.number}/{selectedCouncil.year}</p>
+                  <h2 className="text-xl md:text-2xl font-black text-slate-900 uppercase italic">Rilevazione Presenze</h2>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5 mt-1">Consulta N. {selectedCouncil.number}/{selectedCouncil.year} • {format(new Date(selectedCouncil.date), 'dd/MM/yyyy')}</p>
                 </div>
               </div>
               <button
                 onClick={() => setIsAttendanceModalOpen(false)}
-                className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+                className="p-2.5 hover:bg-slate-100 rounded-full transition-all text-slate-400 hover:text-slate-900"
               >
-                <X size={20} className="text-slate-400" />
+                <X size={28} />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
-              <div className="space-y-8">
-                {Object.entries(
-                  members.reduce((acc: Record<string, any[]>, member) => {
-                    const group = member.group || 'Altro';
-                    if (!acc[group]) acc[group] = [];
-                    acc[group].push(member);
-                    return acc;
-                  }, {})
-                ).sort(([a], [b]) => a === 'Altro' ? 1 : b === 'Altro' ? -1 : a.localeCompare(b))
-                .map(([group, groupMembers]) => (
-                  <div key={group} className="space-y-3">
-                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
-                      <div className="h-px flex-1 bg-slate-200"></div>
-                      {group}
-                      <div className="h-px flex-1 bg-slate-200"></div>
-                    </h3>
-                    <div className="space-y-3">
-                      {(groupMembers as any[]).sort((a, b) => a.lastName.localeCompare(b.lastName)).map(member => (
-                        <button
-                          key={member.id}
-                          onClick={() => toggleAttendance(member.id)}
-                          className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-all ${
-                            attendance[member.id] 
-                              ? 'bg-blue-50 border-blue-200 shadow-sm' 
-                              : 'bg-white border-slate-200 hover:border-blue-200'
-                          }`}
-                        >
-                          <div className="flex items-center gap-4">
-                            <div className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
-                              attendance[member.id] ? 'bg-blue-600 text-white' : 'bg-slate-100'
-                            }`}>
-                              {attendance[member.id] && <Check size={14} />}
-                            </div>
-                            <div className="text-left">
-                              <p className={`font-bold text-sm ${attendance[member.id] ? 'text-blue-900' : 'text-slate-900'}`}>
-                                {member.lastName} {member.firstName}
-                              </p>
-                              <p className="text-[10px] uppercase font-bold text-slate-400">{member.group || 'Nessun gruppo'}</p>
-                            </div>
-                          </div>
-                          <span className={`text-[10px] font-black tracking-widest uppercase ${
-                            attendance[member.id] ? 'text-blue-600' : 'text-slate-300'
+            <div className="flex-1 overflow-y-auto p-5 md:p-10 bg-slate-50/30 space-y-10 custom-scrollbar">
+              {Object.entries(
+                members.reduce((acc: Record<string, any[]>, member) => {
+                  const group = member.group || 'Altro';
+                  if (!acc[group]) acc[group] = [];
+                  acc[group].push(member);
+                  return acc;
+                }, {})
+              ).sort(([a], [b]) => a === 'Altro' ? 1 : b === 'Altro' ? -1 : a.localeCompare(b))
+              .map(([group, groupMembers]) => (
+                <div key={group} className="space-y-4">
+                  <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-4 italic">
+                    <div className="h-px flex-1 bg-slate-200"></div>
+                    {group}
+                    <div className="h-px flex-1 bg-slate-200"></div>
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {(groupMembers as any[]).sort((a, b) => a.lastName.localeCompare(b.lastName)).map(member => (
+                      <button
+                        key={member.id}
+                        onClick={() => toggleAttendance(member.id)}
+                        className={`w-full flex items-center justify-between p-5 rounded-3xl border transition-all ${
+                          attendance[member.id] 
+                            ? 'bg-blue-600 border-blue-600 text-white shadow-xl shadow-blue-500/20' 
+                            : 'bg-white border-slate-100 hover:border-blue-200 text-slate-900'
+                        }`}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
+                            attendance[member.id] ? 'bg-white/20 text-white' : 'bg-slate-50 text-slate-400'
                           }`}>
-                            {attendance[member.id] ? 'Presente' : 'Assente'}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
+                            <Users size={18} />
+                          </div>
+                          <div className="text-left leading-tight">
+                            <p className="font-black text-sm uppercase italic">
+                              {member.lastName} {member.firstName}
+                            </p>
+                          </div>
+                        </div>
+                        <div className={`w-6 h-6 rounded-lg flex items-center justify-center border-2 transition-all ${
+                          attendance[member.id] ? 'bg-white border-white text-blue-600' : 'border-slate-100 text-transparent bg-slate-50'
+                        }`}>
+                          {attendance[member.id] && <Check size={14} />}
+                        </div>
+                      </button>
+                    ))}
                   </div>
-                ))}
-                {members.length === 0 && (
-                  <div className="text-center py-10 bg-white rounded-2xl border border-dashed border-slate-300">
-                    <p className="text-slate-500 text-sm italic">Nessun partecipante configurato. <br/> Abilita i "membro della consulta {parishInfo.name}" dalla sezione Volontari.</p>
-                  </div>
-                )}
-              </div>
+                </div>
+              ))}
+              {members.length === 0 && (
+                <div className="text-center py-20 bg-white rounded-[2.5rem] border border-dashed border-slate-200">
+                  <p className="text-slate-500 text-sm italic font-medium">Nessun partecipante configurato. <br/> Abilita i membri della consulta dalla sezione Volontari.</p>
+                </div>
+              )}
             </div>
 
-            <div className="p-6 border-t border-slate-100 bg-white flex justify-end shrink-0">
+            <div className="p-6 md:p-10 border-t border-slate-100 bg-white shrink-0 flex gap-4 uppercase italic">
+              <button
+                onClick={() => setIsAttendanceModalOpen(false)}
+                className="flex-1 bg-white border border-slate-200 text-slate-600 py-5 rounded-full font-black text-[11px] tracking-widest hover:bg-slate-50 transition-all active:scale-95"
+              >
+                Annulla
+              </button>
               <button
                 onClick={handleSaveAttendance}
-                className="w-full px-8 py-3 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all text-sm uppercase tracking-wider"
+                className="flex-[2] bg-blue-600 text-white py-5 rounded-full font-black text-[11px] tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 active:scale-95"
               >
-                Salva Presenze
+                Salva Registro Presenze ({Object.values(attendance).filter(Boolean).length})
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal */}
+      {/* Main Form Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className={`bg-white rounded-3xl w-full ${isFullScreen ? 'max-w-full h-full' : 'max-w-5xl max-h-[90vh]'} overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col`}>
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
-              <div>
-                <h2 className="text-xl font-bold text-slate-900">{isEditing ? 'Modifica Verbale' : 'Nuovo Verbale Consulta'}</h2>
-                <p className="text-xs text-slate-500 font-medium">Inserisci i dettagli del verbale</p>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-0 md:p-4 z-[150]">
+          <div className={`bg-white rounded-none md:rounded-[3.5rem] w-full ${isFullScreen ? 'h-full' : 'max-w-6xl h-full md:h-auto md:max-h-[90vh]'} overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-300`}>
+            <div className="p-6 md:p-10 border-b border-slate-100 flex items-center justify-between bg-white shrink-0 shadow-sm z-10">
+              <div className="flex items-center gap-5">
+                <div className="w-12 h-12 md:w-16 md:h-16 bg-blue-50 text-blue-600 rounded-2xl md:rounded-3xl flex items-center justify-center border border-blue-100">
+                  <FileText size={32} className="w-6 h-6 md:w-8 md:h-8" />
+                </div>
+                <div>
+                  <h2 className="text-xl md:text-2xl font-black text-slate-900 uppercase italic">
+                    {isEditing ? 'Modifica Verbale' : 'Nuovo Verbale Consulta'}
+                  </h2>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 italic">Inserisci i dettagli e lo sviluppo della seduta</p>
+                </div>
               </div>
               <div className="flex items-center gap-3">
                 {isEditing && (
@@ -705,25 +772,27 @@ const Consulte: React.FC = () => {
                       const council = councils.find(c => c.id === editingId);
                       if (council) handleOpenAttendance(council);
                     }}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-blue-100 transition-colors"
+                    className="hidden md:flex items-center gap-3 px-6 py-3 bg-blue-50 text-blue-600 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-100 transition-all"
                   >
                     <Users size={16} /> Presenze
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={() => handlePreviewPDF(form)}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-blue-100 transition-colors"
-                >
-                  <FileText size={16} /> Documento
-                </button>
+                {!isFullScreen && (
+                  <button
+                    type="button"
+                    onClick={() => setIsFullScreen(true)}
+                    className="p-3 bg-slate-50 text-slate-400 hover:text-slate-900 rounded-2xl transition-all"
+                  >
+                    <Maximize2 size={22} />
+                  </button>
+                )}
                 {isFullScreen && (
                   <button
                     type="button"
                     onClick={() => setIsFullScreen(false)}
-                    className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-900"
+                    className="p-3 bg-slate-50 text-slate-400 hover:text-slate-900 rounded-2xl transition-all"
                   >
-                    <Minimize2 size={24} />
+                    <Minimize2 size={22} />
                   </button>
                 )}
                 <button
@@ -731,214 +800,216 @@ const Consulte: React.FC = () => {
                     setIsModalOpen(false);
                     setIsFullScreen(false);
                   }}
-                  className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+                  className="p-3 bg-slate-50 text-slate-400 hover:text-slate-900 rounded-2xl transition-all"
                 >
-                  <X size={20} className="text-slate-400" />
+                  <X size={28} />
                 </button>
               </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 flex flex-col min-h-0">
-              <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 mb-6 ${isFullScreen ? 'hidden' : ''}`}>
-                <div className="space-y-6">
-                  <div className="grid grid-cols-2 gap-4">
+            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 md:p-10 space-y-10 custom-scrollbar bg-slate-50/30">
+              <div className={`grid grid-cols-1 lg:grid-cols-2 gap-10 ${isFullScreen ? 'hidden' : ''}`}>
+                <div className="space-y-8 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                  <div className="flex items-center gap-4 border-b border-slate-50 pb-6 mb-2">
+                    <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
+                      <Calendar size={20} />
+                    </div>
+                    <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest italic">Riferimenti Seduta</h3>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                        Numero Consulta
-                      </label>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-4">N. Consulta</label>
                       <input
                         type="number"
                         required
                         value={form.number}
                         onChange={(e) => setForm({ ...form, number: e.target.value })}
-                        className="w-full px-4 py-3 rounded-xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                        className="w-full px-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:outline-none focus:border-blue-500/30 focus:bg-white transition-all text-slate-900 font-bold text-sm"
                         placeholder="es. 1"
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                        Stagione
-                      </label>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-4">Stagione</label>
                       <input
                         type="text"
                         required
                         value={form.year}
                         onChange={(e) => setForm({ ...form, year: e.target.value })}
-                        className="w-full px-4 py-3 rounded-xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                        className="w-full px-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:outline-none focus:border-blue-500/30 focus:bg-white transition-all text-slate-900 font-bold text-sm"
                         placeholder="es. 2024/25"
                       />
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                       Data e Ora
-                    </label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-4">Data e Ora Inizio</label>
                     <div className="relative">
-                      <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                      <Calendar className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                       <input
                         type="datetime-local"
                         required
                         value={form.date}
                         onChange={(e) => setForm({ ...form, date: e.target.value })}
-                        className="w-full pl-12 pr-4 py-3 rounded-xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                        className="w-full pl-14 pr-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:outline-none focus:border-blue-500/30 focus:bg-white transition-all text-slate-900 font-bold text-sm"
                       />
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                      Luogo
-                    </label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-4">Luogo della Riunione</label>
                     <div className="relative">
-                      <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                      <MapPin className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                       <input
                         type="text"
+                        required
                         value={form.location}
                         onChange={(e) => setForm({ ...form, location: e.target.value })}
-                        className="w-full pl-12 pr-4 py-3 rounded-xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                        className="w-full pl-14 pr-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:outline-none focus:border-blue-500/30 focus:bg-white transition-all text-slate-900 font-bold text-sm"
                         placeholder="es. Sala Consiliare, Oratorio..."
                       />
                     </div>
                   </div>
                 </div>
 
-                <div className="space-y-2 h-full flex flex-col">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                    Ordine del Giorno
-                  </label>
+                <div className="space-y-2 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col">
+                  <div className="flex items-center gap-4 border-b border-slate-50 pb-6 mb-6">
+                    <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
+                      <ClipboardList size={20} />
+                    </div>
+                    <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest italic">Ordine del Giorno</h3>
+                  </div>
                   <textarea
                     required
                     value={form.agenda}
                     onChange={(e) => setForm({ ...form, agenda: e.target.value })}
-                    className="flex-1 w-full px-4 py-3 rounded-xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-none min-h-[150px]"
-                    placeholder="Inserisci l'ordine del giorno..."
+                    className="flex-1 w-full px-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:outline-none focus:border-blue-500/30 focus:bg-white transition-all text-slate-900 font-bold text-sm resize-none min-h-[150px] leading-relaxed italic"
+                    placeholder="Elenca i punti trattati..."
                   />
                 </div>
               </div>
 
               {/* Sviluppo Verbale Section */}
-              <div className={`flex-1 flex flex-col min-h-0 ${isFullScreen ? 'h-full' : 'mt-2'}`}>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                    <FileText size={14} className="text-blue-500" />
+              <div className={`space-y-6 flex flex-col min-h-0 ${isFullScreen ? 'h-full' : ''}`}>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-black text-slate-900 uppercase tracking-[0.2em] italic flex items-center gap-3">
+                    <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
                     Sviluppo Verbale della Seduta
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setIsFullScreen(!isFullScreen)}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg font-bold text-[10px] uppercase tracking-wider hover:bg-slate-200 transition-colors"
-                  >
-                    {isFullScreen ? (
-                      <><Minimize2 size={14} /> Riduci</>
-                    ) : (
-                      <><Maximize2 size={14} /> Schermo Intero</>
-                    )}
-                  </button>
+                  </h3>
                 </div>
 
-                <div className="flex-1 flex flex-col bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                <div className="flex-1 bg-white rounded-[2.5rem] md:rounded-[3rem] border border-slate-200 overflow-hidden shadow-xl flex flex-col min-h-[500px]">
                   <ReactQuill
                     theme="snow"
                     value={form.fullMinutes}
                     onChange={(content) => setForm({ ...form, fullMinutes: content })}
                     modules={modules}
                     formats={formats}
-                    className={`flex-1 flex flex-col ${isFullScreen ? 'h-full' : 'min-h-[400px]'}`}
-                    placeholder="Approfondimento del verbale e decisioni prese..."
+                    className="flex-1 flex flex-col quill-modern"
+                    placeholder="Riporta qui il resoconto dettagliato della consulta..."
                   />
                 </div>
               </div>
 
-              {!isFullScreen && (
-                <div className="flex gap-4 pt-6 shrink-0">
+              <div className="flex flex-col sm:flex-row gap-4 pt-10 border-t border-slate-100 uppercase italic">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsModalOpen(false);
+                    setIsFullScreen(false);
+                  }}
+                  className="flex-1 bg-white border border-slate-200 text-slate-600 py-5 rounded-full font-black text-[11px] tracking-widest hover:bg-slate-50 transition-all active:scale-95"
+                >
+                  Annulla
+                </button>
+                <div className="flex-[2] flex gap-3">
                   <button
                     type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className="flex-1 px-6 py-3 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 transition-all text-sm uppercase tracking-wider"
+                    onClick={() => handlePreviewPDF(form)}
+                    className="flex-1 bg-slate-100 text-slate-900 py-5 rounded-full font-black text-[11px] tracking-widest hover:bg-slate-200 transition-all active:scale-95 flex items-center justify-center gap-2"
                   >
-                    Annulla
+                    <Download size={16} /> Anteprima PDF
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all text-sm uppercase tracking-wider"
+                    className="flex-[1.5] bg-blue-600 text-white py-5 rounded-full font-black text-[11px] tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 active:scale-95"
                   >
-                    {isEditing ? 'Salva Modifiche' : 'Crea Verbale'}
+                    {isEditing ? 'Aggiorna Documento' : 'Crea Verbale Ufficiale'}
                   </button>
                 </div>
-              )}
+              </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* PDF Preview Modal */}
+      {/* PDF View Modal */}
       {isPreviewModalOpen && previewPdfUrl && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[110]">
-          <div className="bg-white rounded-3xl w-full max-w-5xl h-[95vh] overflow-hidden shadow-2xl flex flex-col scale-in-95 duration-200">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
-                  <FileText size={24} />
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-0 md:p-6 z-[250]">
+          <div className="bg-white rounded-none md:rounded-[3.5rem] w-full h-full md:max-w-6xl overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-300">
+            <div className="p-6 md:p-10 border-b border-slate-100 flex items-center justify-between bg-white shrink-0 z-10 shadow-sm">
+              <div className="flex items-center gap-5">
+                <div className="w-12 h-12 md:w-16 md:h-16 bg-blue-50 text-blue-600 rounded-3xl flex items-center justify-center border border-blue-100 italic">
+                  <FileText size={32} />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-slate-900">Anteprima Documento</h2>
-                  <p className="text-xs text-slate-500 font-medium">Verbale della Consulta</p>
+                  <h2 className="text-xl md:text-2xl font-black text-slate-900 uppercase italic leading-none">Anteprima Documento</h2>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2">{selectedCouncil?.name || 'Verbale Consulta'}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-4">
                 <button
                   onClick={() => handleDownloadPDF(selectedCouncil || form)}
-                  className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
+                  className="bg-blue-600 text-white px-8 py-4 rounded-full font-black uppercase italic tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 active:scale-95 text-[11px] flex items-center gap-2"
                 >
-                  <Download size={18} /> Scarica PDF
+                  <Download size={20} /> <span className="hidden md:inline">Scarica Documento</span>
                 </button>
                 <button
                   onClick={() => {
                     setIsPreviewModalOpen(false);
                     setPreviewPdfUrl(null);
                   }}
-                  className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-900"
+                  className="p-3 hover:bg-slate-100 rounded-2xl transition-all text-slate-400"
                 >
-                  <X size={24} />
+                  <X size={32} />
                 </button>
               </div>
             </div>
-            <div className="flex-1 bg-slate-800 p-4">
-              <iframe
-                src={previewPdfUrl}
-                className="w-full h-full rounded-lg shadow-inner"
-                title="Anteprima PDF"
-              />
+            <div className="flex-1 bg-slate-800/20 p-4 md:p-10 overflow-hidden relative">
+              <div className="w-full h-full bg-white shadow-2xl rounded-2xl overflow-hidden">
+                <iframe
+                  src={previewPdfUrl}
+                  className="w-full h-full border-none"
+                  title="PDF Preview"
+                />
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Delete Council Confirmation Modal */}
+      {/* Delete Confirmation Overlay */}
       {councilToDelete && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-6 animate-in zoom-in-95 duration-200">
-            <div className="flex flex-col items-center text-center space-y-4">
-              <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center">
-                <Trash2 size={32} />
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-xl font-bold text-slate-900">Elimina Verbale</h3>
-                <p className="text-sm text-slate-500">Sei sicuro di voler eliminare questo verbale? L'operazione è definitiva.</p>
-              </div>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[300] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-[3rem] shadow-2xl p-10 text-center animate-in zoom-in-95 duration-200 border border-slate-100">
+            <div className="w-20 h-20 bg-red-50 text-red-600 rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-inner">
+              <Trash2 size={40} />
             </div>
-
-            <div className="flex gap-3">
+            <h2 className="text-xl font-black text-slate-900 mb-2 italic uppercase tracking-tight">Elimina Verbale</h2>
+            <p className="text-slate-500 text-sm font-medium mb-10 leading-relaxed italic">
+              Sei sicuro di voler eliminare definitivamente questo verbale?<br/>
+              <strong>L'operazione non è reversibile.</strong>
+            </p>
+            <div className="flex gap-4 uppercase italic">
               <button
                 onClick={() => setCouncilToDelete(null)}
-                className="flex-1 px-4 py-2 rounded-xl font-medium text-slate-600 hover:bg-slate-100 transition-colors border border-slate-200"
+                className="flex-1 bg-white border border-slate-200 text-slate-600 px-6 py-4 rounded-2xl font-black text-[10px] tracking-widest hover:bg-slate-50 transition-all active:scale-95"
               >
                 Annulla
               </button>
               <button
                 onClick={handleDelete}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors shadow-md shadow-red-100"
+                className="flex-1 bg-red-600 text-white px-6 py-4 rounded-2xl font-black text-[10px] tracking-widest hover:bg-red-700 transition-all shadow-xl shadow-red-500/20 active:scale-95"
               >
                 Elimina
               </button>

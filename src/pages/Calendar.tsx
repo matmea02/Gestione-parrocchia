@@ -9,7 +9,7 @@ import itLocale from '@fullcalendar/core/locales/it';
 import { collection, onSnapshot, addDoc, query, orderBy, deleteDoc, doc, updateDoc, writeBatch, setDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { useParish, useParishCollection, useParishDoc } from '../components/ParishContext';
-import { Plus, Trash2, X, Search, Calendar as CalendarIcon, Tag, Clock, MapPin, Check, PlusCircle, Palette, ChevronLeft, ChevronRight, LayoutGrid, List as ListIcon, Download, Settings2, FileDown, CalendarDays, Church, Heart, Pencil } from 'lucide-react';
+import { Plus, Trash2, X, Search, Calendar as CalendarIcon, Tag, Clock, MapPin, Check, PlusCircle, Palette, ChevronLeft, ChevronRight, LayoutGrid, List as ListIcon, Download, Settings2, FileDown, CalendarDays, Church, Heart, Pencil, Save } from 'lucide-react';
 import { format, startOfWeek, addDays, parseISO, startOfMonth, endOfMonth, isWithinInterval, eachDayOfInterval, endOfWeek, isSameDay, getDay, startOfDay, startOfYear, endOfYear, isBefore, setSeconds, setMinutes, setHours } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { jsPDF } from 'jspdf';
@@ -760,7 +760,7 @@ const Calendar: React.FC = () => {
         <div className="flex items-center gap-3 relative">
           <button
             onClick={() => setIsExportModalOpen(true)}
-            className="flex items-center gap-2 bg-white text-slate-700 px-4 py-2 rounded-xl font-medium hover:bg-slate-50 transition-colors border border-slate-200 shadow-sm"
+            className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 px-6 py-2.5 rounded-full font-bold uppercase italic tracking-wider hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[10px]"
           >
             <FileDown size={20} />
             Scarica PDF
@@ -769,7 +769,7 @@ const Calendar: React.FC = () => {
           <div className="relative">
             <button
               onClick={() => setIsCalendarMenuOpen(!isCalendarMenuOpen)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl font-medium transition-all border shadow-sm ${isCalendarMenuOpen ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+              className={`flex items-center gap-2 px-6 py-2.5 rounded-full font-bold uppercase italic tracking-wider transition-all border shadow-sm active:scale-95 text-[10px] ${isCalendarMenuOpen ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
             >
               <Settings2 size={20} />
               Gestisci Calendari
@@ -869,7 +869,7 @@ const Calendar: React.FC = () => {
               setForm({ ...initialEventState, calendarId: calendars[0]?.id || '' });
               setIsModalOpen(true);
             }}
-            className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2 rounded-xl font-medium hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200"
+            className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2.5 rounded-full font-bold uppercase italic tracking-wider hover:bg-blue-700 transition-all shadow-md hover:shadow-lg active:scale-95 text-[10px]"
           >
             <Plus size={20} />
             Nuovo Impegno
@@ -947,12 +947,12 @@ const Calendar: React.FC = () => {
                 </div>
                 <div>
                   <h2 className="text-xl font-black text-slate-900 tracking-tight">{liturgyActionData.title}</h2>
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{liturgyActionData.type === 'recurring' ? 'Orario Settimanale' : 'Celebrazione Speciale'}</p>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{liturgyActionData.type === 'recurring' ? 'Orario Settimanale' : 'Celebrazione Speciale'}</p>
                 </div>
               </div>
               <button 
                 onClick={() => setIsLiturgyActionModalOpen(false)} 
-                className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors"
+                className="p-2.5 hover:bg-slate-100 rounded-full transition-all text-slate-400 hover:text-slate-900"
               >
                 <X size={24} />
               </button>
@@ -1026,7 +1026,7 @@ const Calendar: React.FC = () => {
                     onClick={() => {
                       window.location.href = `/liturgie?edit=${liturgyActionData.id}&type=${liturgyActionData.type}`;
                     }}
-                    className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all uppercase tracking-widest text-[10px]"
+                    className="w-full py-4 bg-blue-600 text-white rounded-full font-bold uppercase italic tracking-widest hover:bg-blue-700 transition-all shadow-lg active:scale-95 text-[10px]"
                   >
                     Modifica Programmazione
                   </button>
@@ -1035,13 +1035,13 @@ const Calendar: React.FC = () => {
                     <>
                       <button
                         onClick={handleLiturgyDeleteOccurrence}
-                        className="w-full py-4 bg-amber-50 text-amber-700 border border-amber-200 rounded-2xl font-black hover:bg-amber-100 transition-all uppercase tracking-widest text-[10px]"
+                        className="w-full py-4 bg-white border border-slate-200 text-slate-600 rounded-full font-bold uppercase italic tracking-widest hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[10px]"
                       >
                         Rimuovi solo questa data
                       </button>
                       <button
                         onClick={handleLiturgyDeleteTemplate}
-                        className="w-full py-4 bg-red-50 text-red-700 border border-red-200 rounded-2xl font-black hover:bg-red-100 transition-all uppercase tracking-widest text-[10px]"
+                        className="w-full py-4 bg-red-50 text-red-700 border border-red-100 rounded-full font-bold uppercase italic tracking-widest hover:bg-red-100 transition-all active:scale-95 text-[10px]"
                       >
                         Elimina intera serie settimanale
                       </button>
@@ -1049,7 +1049,7 @@ const Calendar: React.FC = () => {
                   ) : (
                     <button
                       onClick={handleLiturgyDeleteSpecial}
-                      className="w-full py-4 bg-red-50 text-red-700 border border-red-200 rounded-2xl font-black hover:bg-red-100 transition-all uppercase tracking-widest text-[10px]"
+                      className="w-full py-4 bg-red-50 text-red-700 border border-red-100 rounded-full font-bold uppercase italic tracking-widest hover:bg-red-100 transition-all active:scale-95 text-[10px]"
                     >
                       Elimina Celebrazione
                     </button>
@@ -1065,15 +1065,15 @@ const Calendar: React.FC = () => {
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-              <h2 className="text-xl font-bold text-slate-900">
+            <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+              <h2 className="text-xl font-black text-slate-900 tracking-tight">
                 {isEditing ? 'Modifica Impegno' : 'Nuovo Impegno'}
               </h2>
-              <button onClick={closeModal} className="p-2 hover:bg-slate-100 rounded-full">
-                <X size={20} />
+              <button onClick={closeModal} className="p-2.5 hover:bg-slate-100 rounded-full transition-all text-slate-400 hover:text-slate-900">
+                <X size={24} />
               </button>
             </div>
-            <form onSubmit={handleSaveEvent} className="p-6 space-y-4">
+            <form onSubmit={handleSaveEvent} className="p-8 space-y-6">
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 uppercase">Titolo</label>
                 <input
@@ -1219,30 +1219,30 @@ const Calendar: React.FC = () => {
                 />
               </div>
 
-              <div className="flex gap-3 pt-4">
+              <div className="flex gap-4 pt-6">
                 {isEditing && (
                   confirmDeleteEvent ? (
-                    <div className="flex-1 flex gap-2 animate-in fade-in duration-200">
+                    <div className="flex-1 flex gap-4 animate-in fade-in duration-200">
                       <button
                         type="button"
                         onClick={handleDeleteEvent}
-                        className="flex-1 py-3 px-4 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-colors uppercase tracking-widest text-[10px]"
+                        className="bg-red-600 text-white px-6 py-4 rounded-full font-bold uppercase italic tracking-wider hover:bg-red-700 transition-all shadow-sm active:scale-95 text-[10px] flex-1"
                       >
                         Conferma
                       </button>
                       <button
                         type="button"
                         onClick={() => setConfirmDeleteEvent(false)}
-                        className="flex-1 py-3 px-4 border border-slate-200 text-slate-600 rounded-xl font-bold hover:bg-slate-50 transition-colors uppercase tracking-widest text-[10px]"
+                        className="bg-white border border-slate-200 text-slate-600 px-2 py-4 rounded-full font-bold uppercase italic tracking-wider hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[10px] flex-1 flex items-center justify-center"
                       >
-                        Annulla
+                        <X size={16} />
                       </button>
                     </div>
                   ) : (
                     <button
                       type="button"
                       onClick={() => setConfirmDeleteEvent(true)}
-                      className="flex-1 py-3 px-4 border border-red-200 text-red-600 rounded-xl font-bold hover:bg-red-50 transition-colors uppercase tracking-widest text-[10px]"
+                      className="bg-red-50 text-red-600 border border-red-100 px-6 py-4 rounded-full font-bold uppercase italic tracking-wider hover:bg-red-100 transition-all active:scale-95 text-[10px] flex-1"
                     >
                       Elimina
                     </button>
@@ -1250,19 +1250,11 @@ const Calendar: React.FC = () => {
                 )}
                 <button
                   type="submit"
-                  className={`${isEditing ? 'flex-[1.5]' : 'flex-[2]'} py-3 px-4 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-100 uppercase tracking-widest text-[10px]`}
+                  className="bg-blue-600 text-white px-10 py-4 rounded-full font-bold uppercase italic tracking-widest hover:bg-blue-700 transition-all shadow-lg active:scale-95 text-[10px] flex-[2] flex items-center justify-center gap-2"
                 >
+                  <Check size={18} />
                   {isEditing ? 'Salva Modifiche' : 'Salva Appuntamento'}
                 </button>
-                {!isEditing && (
-                  <button
-                    type="button"
-                    onClick={closeModal}
-                    className="flex-1 py-3 px-4 border border-slate-200 text-slate-500 rounded-xl font-bold hover:bg-slate-50 transition-colors uppercase tracking-widest text-[10px]"
-                  >
-                    Chiudi
-                  </button>
-                )}
               </div>
             </form>
           </div>
@@ -1273,8 +1265,8 @@ const Calendar: React.FC = () => {
       {isCalendarModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
           <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-900">
+            <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+              <h2 className="text-lg font-black text-slate-900 tracking-tight">
                 {editingCalendarId ? 'Modifica Calendario' : 'Nuovo Calendario'}
               </h2>
               <button 
@@ -1283,12 +1275,12 @@ const Calendar: React.FC = () => {
                   setEditingCalendarId(null);
                   setCalendarForm({ name: '', color: '#3b82f6' });
                 }} 
-                className="p-2 hover:bg-slate-100 rounded-full"
+                className="p-2.5 hover:bg-slate-100 rounded-full transition-all text-slate-400 hover:text-slate-900"
               >
-                <X size={20} />
+                <X size={24} />
               </button>
             </div>
-            <form onSubmit={handleSaveCalendar} className="p-6 space-y-4">
+            <form onSubmit={handleSaveCalendar} className="p-8 space-y-6">
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 uppercase">Nome</label>
                 <input
@@ -1314,8 +1306,9 @@ const Calendar: React.FC = () => {
               </div>
               <button
                 type="submit"
-                className="w-full py-4 bg-blue-600 text-white rounded-xl font-black shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all uppercase tracking-widest text-[10px]"
+                className="w-full py-4 bg-blue-600 text-white rounded-full font-bold uppercase italic tracking-widest hover:bg-blue-700 transition-all shadow-lg active:scale-95 text-[10px] flex items-center justify-center gap-2"
               >
+                <Save size={18} />
                 {editingCalendarId ? 'Salva Modifiche' : 'Crea Calendario'}
               </button>
             </form>
@@ -1327,19 +1320,19 @@ const Calendar: React.FC = () => {
       {isExportModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[110]">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+            <div className="p-8 border-b border-slate-100 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-50 rounded-xl text-blue-600">
+                <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl">
                   <FileDown size={24} />
                 </div>
-                <h2 className="text-xl font-bold text-slate-900">Configura Esportazione</h2>
+                <h2 className="text-xl font-black text-slate-900 tracking-tight">Esportazione</h2>
               </div>
-              <button onClick={() => setIsExportModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full">
-                <X size={20} />
+              <button onClick={() => setIsExportModalOpen(false)} className="p-2.5 hover:bg-slate-100 rounded-full transition-all text-slate-400 hover:text-slate-900">
+                <X size={24} />
               </button>
             </div>
             
-            <div className="p-6 space-y-6">
+            <div className="p-8 space-y-6">
               <div className="space-y-3">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center block">Scegli Formato</label>
                 <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
@@ -1422,8 +1415,9 @@ const Calendar: React.FC = () => {
               <button
                 onClick={generatePDF}
                 disabled={exportForm.selectedCalendars.length === 0}
-                className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all uppercase tracking-widest text-[10px] disabled:opacity-50 disabled:grayscale"
+                className="w-full py-4 bg-blue-600 text-white rounded-full font-bold uppercase italic tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 active:scale-95 text-[10px] disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-2"
               >
+                <Download size={18} />
                 Genera Documento PDF
               </button>
             </div>
