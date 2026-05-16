@@ -1,0 +1,44 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global helpers
+    function isSignedIn() { 
+      return request.auth != null && 
+             (request.auth.token.email_verified == true || request.auth.token.firebase.sign_in_provider == 'google.com'); 
+    }
+    
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-:]+$'); 
+    }
+
+    // Parishes rules
+    match /parishes/{parishId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+
+      // This matches any document in any subcollection of a parish
+      match /{subcollection}/{docId} {
+        allow read: if true;
+        allow write: if isSignedIn();
+        
+        // Deeply nested subcollections (e.g. settings/parish)
+        match /{allSubcollections=**} {
+          allow read: if true;
+          allow write: if isSignedIn();
+        }
+      }
+    }
+
+    // Portal Users rules
+    match /portal_users/{userId} {
+      allow read: if true; // Needed for login and Listing
+      allow write: if isSignedIn();
+    }
+
+    // Default deny for anything else
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

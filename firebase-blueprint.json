@@ -1,0 +1,370 @@
+{
+  "entities": {
+    "Settings": {
+      "title": "Parish Settings",
+      "description": "General information about the parish.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Name of the parish" },
+        "logoUrl": { "type": "string", "description": "URL of the parish logo" },
+        "address": { "type": "string", "description": "Physical address" },
+        "contactPerson": { "type": "string", "description": "Main contact person" },
+        "email": { "type": "string", "description": "Contact email" },
+        "phone": { "type": "string", "description": "Contact phone" }
+      },
+      "required": ["name"]
+    },
+    "Event": {
+      "title": "Parish Event",
+      "description": "Events organized by the parish.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "type": { "type": "string", "enum": ["Messa", "Oratorio", "Catechismo", "Altro"] },
+        "targetAudience": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "endDate": { "type": "string", "format": "date-time" },
+        "location": { "type": "string" },
+        "posterUrl": { "type": "string" },
+        "showInCalendar": { "type": "boolean" },
+        "calendarId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["title", "date", "type"]
+    },
+    "MaintenanceTicket": {
+      "title": "Maintenance Ticket",
+      "description": "Tickets for maintenance interventions.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "reporter": { "type": "string" },
+        "location": { "type": "string" },
+        "status": { "type": "string", "enum": ["Segnalato", "In Attesa", "In Corso", "Completato", "Annullato"] },
+        "label": { "type": "string", "enum": ["Sostituzione", "Riparazione", "Nuova Installazione", "Controllo", "Altro"] },
+        "notes": { "type": "string" },
+        "expenses": { "type": "number", "description": "Total expenses (sum of expensesList)" },
+        "expensesList": { 
+          "type": "array", 
+          "items": { 
+            "type": "object", 
+            "properties": { 
+              "amount": { "type": "number" }, 
+              "note": { "type": "string" }, 
+              "receiptUrl": { "type": "string" },
+              "id": { "type": "string" }
+            } 
+          } 
+        },
+        "updatesList": { 
+          "type": "array", 
+          "items": { 
+            "type": "object", 
+            "properties": { 
+              "note": { "type": "string" }, 
+              "author": { "type": "string" }, 
+              "date": { "type": "string", "format": "date-time" },
+              "id": { "type": "string" }
+            } 
+          } 
+        },
+        "ticketNumber": { "type": "number", "description": "Unique sequential ticket number" },
+        "attachments": { 
+          "type": "array", 
+          "items": { 
+            "type": "object", 
+            "properties": { 
+              "name": { "type": "string" }, 
+              "url": { "type": "string" },
+              "id": { "type": "string" }
+            } 
+          } 
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "status", "reporter"]
+    },
+    "MaintenanceLabel": {
+      "title": "Maintenance Label",
+      "description": "Tag labels for maintenance work types",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name"]
+    },
+    "Room": {
+      "title": "Parish Room",
+      "description": "Rooms available for booking.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "capacity": { "type": "number" },
+        "description": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "RoomBooking": {
+      "title": "Room Booking",
+      "description": "Bookings for parish rooms.",
+      "type": "object",
+      "properties": {
+        "roomId": { "type": "string" },
+        "roomName": { "type": "string" },
+        "requesterName": { "type": "string" },
+        "purpose": { "type": "string" },
+        "startTime": { "type": "string", "format": "date-time" },
+        "endTime": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["In Attesa", "Approvata", "Rifiutata"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["roomId", "requesterName", "startTime", "endTime", "status"]
+    },
+    "Council": {
+      "title": "Council Minutes",
+      "description": "Minutes of parish council meetings.",
+      "type": "object",
+      "properties": {
+        "number": { "type": "number", "description": "Consultation number" },
+        "year": { "type": "string", "description": "Consultation year/season" },
+        "date": { "type": "string", "format": "date-time", "description": "Date of meeting" },
+        "agenda": { "type": "string", "description": "Order of the day/agenda" },
+        "location": { "type": "string", "description": "Meeting location" },
+        "fullMinutes": { "type": "string", "description": "Full meeting minutes text" },
+        "attendance": { "type": "object", "description": "Map of memberId to presence status (true/false)" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["number", "year", "date", "agenda"]
+    },
+    "CouncilMember": {
+      "title": "Council Member",
+      "description": "Person who can attend parish council meetings.",
+      "type": "object",
+      "properties": {
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "group": { "type": "string", "description": "Group of belonging (e.g. Catechists, Choir, etc.)" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["firstName", "lastName"]
+    },
+    "Expense": {
+      "title": "Parish Expense",
+      "description": "Financial expenses tracked by the parish.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "amount": { "type": "number" },
+        "invoiceUrl": { "type": "string", "description": "URL of the uploaded PDF invoice" },
+        "payers": { 
+          "type": "object", 
+          "description": "Mapping of group IDs to their share of the expense",
+          "properties": {
+            "parrocchia": { "type": "object", "properties": { "checked": { "type": "boolean" }, "type": { "type": "string", "enum": ["percent", "fixed"] }, "value": { "type": "number" } } },
+            "bar": { "type": "object", "properties": { "checked": { "type": "boolean" }, "type": { "type": "string", "enum": ["percent", "fixed"] }, "value": { "type": "number" } } },
+            "asilo": { "type": "object", "properties": { "checked": { "type": "boolean" }, "type": { "type": "string", "enum": ["percent", "fixed"] }, "value": { "type": "number" } } },
+            "polisportiva": { "type": "object", "properties": { "checked": { "type": "boolean" }, "type": { "type": "string", "enum": ["percent", "fixed"] }, "value": { "type": "number" } } }
+          }
+        },
+        "notes": { "type": "string" },
+        "deadline": { "type": "string", "format": "date" },
+        "usage": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "amount", "date"]
+    },
+    "ExpenseCategory": {
+      "title": "Expense Category",
+      "description": "Categories for categorizing expenses.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name"]
+    },
+    "Volunteer": {
+      "title": "Parish Volunteers",
+      "description": "Information about parish volunteers and groups.",
+      "type": "object",
+      "properties": {
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "role": { "type": "string" },
+        "group": { "type": "string", "description": "Primary group (legacy)" },
+        "groups": { "type": "array", "items": { "type": "string" }, "description": "Groups the volunteer belongs to" },
+        "isCouncilMember": { "type": "boolean", "description": "Whether the volunteer is part of the council" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["firstName", "lastName"]
+    },
+    "VolunteerGroup": {
+      "title": "Volunteer Group",
+      "description": "Definition of a parish group.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name"]
+    },
+    "Calendar": {
+      "title": "Calendar Category",
+      "description": "Categories of calendars with specific colors.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "color": { "type": "string" },
+        "visible": { "type": "boolean" }
+      },
+      "required": ["name", "color"]
+    },
+    "CalendarEvent": {
+      "title": "Calendar Event",
+      "description": "Events scheduled on the calendar.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "start": { "type": "string", "format": "date-time" },
+        "end": { "type": "string", "format": "date-time" },
+        "calendarId": { "type": "string" },
+        "location": { "type": "string" },
+        "description": { "type": "string" },
+        "sourceEventId": { "type": "string", "description": "Optional reference to a main Event" },
+        "liturgyId": { "type": "string", "description": "Optional reference to a liturgy source" }
+      },
+      "required": ["title", "start", "end", "calendarId"]
+    },
+    "LiturgyTemplate": {
+      "title": "Recurring Liturgy Template",
+      "description": "Weekly patterns for masses and liturgies.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "schedule": { 
+          "type": "array", 
+          "items": {
+            "type": "object",
+            "properties": {
+              "day": { "type": "number", "description": "0-6 (Sun-Sat)" },
+              "times": { "type": "array", "items": { "type": "string" }, "description": "Array of HH:mm strings" }
+            },
+            "required": ["day", "times"]
+          }
+        },
+        "validFrom": { "type": "string", "format": "date" },
+        "validUntil": { "type": "string", "format": "date" },
+        "location": { "type": "string" },
+        "notes": { "type": "string" },
+        "calendarId": { "type": "string" }
+      },
+      "required": ["title", "schedule", "validFrom", "validUntil"]
+    },
+    "LiturgySpecial": {
+      "title": "Special Liturgy Event",
+      "description": "Specific one-off masses or events.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "start": { "type": "string", "format": "date-time" },
+        "end": { "type": "string", "format": "date-time" },
+        "location": { "type": "string" },
+        "notes": { "type": "string" },
+        "calendarId": { "type": "string" }
+      },
+      "required": ["title", "start", "end"]
+    },
+    "LiturgyException": {
+      "title": "Liturgy Exception",
+      "description": "Individual instances removed from recurring schedules",
+      "type": "object",
+      "properties": {
+        "templateId": { "type": "string" },
+        "date": { "type": "string", "description": "YYYY-MM-DD" },
+        "time": { "type": "string", "description": "HH:mm" }
+      },
+      "required": ["templateId", "date", "time"]
+    },
+    "LiturgyIntention": {
+      "title": "Liturgy Intention",
+      "description": "Deceased names for a specific mass instance",
+      "type": "object",
+      "properties": {
+        "liturgyId": { "type": "string", "description": "Template or Special ID" },
+        "date": { "type": "string", "format": "date" },
+        "time": { "type": "string" },
+        "names": { "type": "array", "items": { "type": "string" } },
+        "notes": { "type": "string" }
+      },
+      "required": ["liturgyId", "date", "time", "names"]
+    },
+    "CatechismGroup": {
+      "title": "Catechism Group",
+      "description": "Groups for religious education courses.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "year": { "type": "string", "description": "Birth year of children" },
+        "pathYear": { "type": "string", "description": "e.g. 1° anno" },
+        "catechismYear": { "type": "string", "description": "Catechism year e.g. 2025/26" },
+        "dayOfWeek": { "type": "string" },
+        "time": { "type": "string" },
+        "catechistIds": { "type": "array", "items": { "type": "string" } },
+        "catechistNames": { "type": "array", "items": { "type": "string" } },
+        "subscriberCount": { "type": "number" },
+        "notes": { "type": "string" },
+        "documents": { "type": "array", "items": { "type": "object" } },
+        "meetingDates": { "type": "array", "items": { "type": "string" } },
+        "calendarEventIds": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "year", "pathYear"]
+    },
+    "Parish": {
+      "title": "Parish",
+      "description": "A parish or service unit managed by the portal.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "color": { "type": "string" },
+        "address": { "type": "string" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name"]
+    }
+  },
+  "firestore": {
+    "/parishes": { "schema": "Parish", "description": "Global collection of parishes/services" },
+    "/parishes/{parishId}/settings/parish": { "schema": "Settings", "description": "Settings for a specific parish" },
+    "/parishes/{parishId}/events": { "schema": "Event", "description": "Events for a specific parish" },
+    "/parishes/{parishId}/maintenance": { "schema": "MaintenanceTicket", "description": "Maintenance for a specific parish" },
+    "/parishes/{parishId}/maintenance_labels": { "schema": "MaintenanceLabel", "description": "Labels for a specific parish" },
+    "/parishes/{parishId}/rooms": { "schema": "Room", "description": "Rooms for a specific parish" },
+    "/parishes/{parishId}/bookings": { "schema": "RoomBooking", "description": "Bookings for a specific parish" },
+    "/parishes/{parishId}/councils": { "schema": "Council", "description": "Councils for a specific parish" },
+    "/parishes/{parishId}/council_members": { "schema": "CouncilMember", "description": "Council members for a specific parish" },
+    "/parishes/{parishId}/expenses": { "schema": "Expense", "description": "Expenses for a specific parish" },
+    "/parishes/{parishId}/expense_categories": { "schema": "ExpenseCategory", "description": "Expense categories for a specific parish" },
+    "/parishes/{parishId}/volunteers": { "schema": "Volunteer", "description": "Volunteers for a specific parish" },
+    "/parishes/{parishId}/volunteer_groups": { "schema": "VolunteerGroup", "description": "Volunteer groups for a specific parish" },
+    "/parishes/{parishId}/calendars": { "schema": "Calendar", "description": "Calendars for a specific parish" },
+    "/parishes/{parishId}/calendar_events": { "schema": "CalendarEvent", "description": "Calendar events for a specific parish" },
+    "/parishes/{parishId}/liturgy_templates": { "schema": "LiturgyTemplate", "description": "Liturgy templates for a specific parish" },
+    "/parishes/{parishId}/liturgy_specials": { "schema": "LiturgySpecial", "description": "Liturgy specials for a specific parish" },
+    "/parishes/{parishId}/liturgy_exceptions": { "schema": "LiturgyException", "description": "Liturgy exceptions for a specific parish" },
+    "/parishes/{parishId}/liturgy_intentions": { "schema": "LiturgyIntention", "description": "Liturgy intentions for a specific parish" },
+    "/parishes/{parishId}/catechism_groups": { "schema": "CatechismGroup", "description": "Catechism groups for a specific parish" }
+  }
+}

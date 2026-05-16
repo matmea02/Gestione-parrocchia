@@ -1,0 +1,135 @@
+@import "tailwindcss";
+
+/* React Quill Overrides */
+.quill {
+  display: flex;
+  flex-direction: column;
+}
+
+.ql-toolbar.ql-snow {
+  border: none !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  border-top-left-radius: 1rem;
+  border-top-right-radius: 1rem;
+  background-color: white;
+  padding: 0.75rem !important;
+}
+
+.ql-container.ql-snow {
+  border: none !important;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 200px;
+}
+
+.ql-editor {
+  flex: 1;
+  padding: 1.5rem !important;
+  font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  font-size: 1.125rem;
+  line-height: 1.8;
+  color: #1e293b;
+}
+
+.ql-editor.ql-blank::before {
+  left: 1.5rem !important;
+  font-style: italic;
+  color: #94a3b8;
+}
+
+.ql-snow .ql-picker.ql-header {
+  width: 100px !important;
+}
+
+.ql-snow .ql-tooltip {
+  z-index: 100;
+}
+
+/* FullCalendar Customization */
+.fc {
+  --fc-border-color: #f1f5f9;
+  --fc-button-bg-color: #3b82f6;
+  --fc-button-border-color: #3b82f6;
+  --fc-button-hover-bg-color: #2563eb;
+  --fc-button-hover-border-color: #2563eb;
+  --fc-button-active-bg-color: #1d4ed8;
+  --fc-button-active-border-color: #1d4ed8;
+  --fc-today-bg-color: #eff6ff;
+  font-family: inherit;
+}
+
+.fc .fc-toolbar-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.fc .fc-button {
+  border-radius: 0.75rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  text-transform: capitalize;
+  padding: 0.5rem 1rem;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+.fc .fc-col-header-cell {
+  padding: 12px 0;
+  background-color: #f8fafc;
+}
+
+.fc .fc-col-header-cell-cushion {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #64748b;
+  letter-spacing: 0.05em;
+}
+
+.fc .fc-timegrid-slot {
+  height: 3rem !important;
+}
+
+.fc .fc-timegrid-slot-label-cushion {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.fc-event {
+  border-radius: 6px;
+  border: none !important;
+  padding: 2px 4px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  transition: transform 0.1s;
+}
+
+.fc-event:hover {
+  transform: scale(1.02);
+}
+
+.fc-event-main {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.fc-v-event .fc-event-main {
+  color: white;
+}
+
+.fc-h-event .fc-event-main {
+  color: white;
+}
+
+.fc .fc-daygrid-day-number {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #475569;
+  padding: 8px;
+}
+
+.fc .fc-list-event:hover td {
+  background-color: #f1f5f9 !important;
+}
