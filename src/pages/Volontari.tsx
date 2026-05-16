@@ -81,6 +81,7 @@ const Volontari: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
+  const [errorStatus, setErrorStatus] = useState<string | null>(null);
 
   // Groups Management Form
   const [newGroupName, setNewGroupName] = useState('');
@@ -102,6 +103,8 @@ const Volontari: React.FC = () => {
   });
 
   useEffect(() => {
+    if (!currentParish) return;
+
     const q = query(volunteersColl, orderBy('lastName', 'asc'));
     const unsub = onSnapshot(q, (snap) => {
       setVolunteers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Volunteer)));
@@ -128,13 +131,14 @@ const Volontari: React.FC = () => {
       unsubGroups();
       unsubParish();
     };
-  }, []);
+  }, [currentParish?.id]);
 
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string, name: string, type: 'volunteer' | 'group' } | null>(null);
 
   const handleAddGroupMaster = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newGroupName.trim()) return;
+    setErrorStatus(null);
     try {
       await addDoc(groupsColl, {
         name: newGroupName.trim(),
@@ -142,6 +146,8 @@ const Volontari: React.FC = () => {
       });
       setNewGroupName('');
     } catch (error) {
+      console.error('Error adding group:', error);
+      setErrorStatus('Errore durante la creazione del gruppo. Riprova.');
       handleFirestoreError(error, OperationType.WRITE, 'volunteer_groups');
     }
   };
@@ -516,6 +522,17 @@ const Volontari: React.FC = () => {
     name: groupName,
     members: groupedVolunteers[groupName].sort((a, b) => a.lastName.localeCompare(b.lastName))
   }));
+
+  if (!currentParish) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-slate-500 font-bold animate-pulse">Caricamento parrocchia...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -918,6 +935,16 @@ const Volontari: React.FC = () => {
                         <div className="flex flex-col items-center justify-center py-6 text-slate-300">
                           <Layers size={24} strokeWidth={1} />
                           <p className="text-[10px] uppercase font-black tracking-widest mt-2">Nessun gruppo disponibile</p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsModalOpen(false);
+                              setIsGroupsModalOpen(true);
+                            }}
+                            className="mt-4 text-[9px] font-black text-blue-600 uppercase tracking-widest hover:underline"
+                          >
+                            Configura i gruppi ora
+                          </button>
                         </div>
                       )}
                     </div>
@@ -1092,6 +1119,12 @@ const Volontari: React.FC = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 md:p-8 custom-scrollbar">
+              {errorStatus && (
+                <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-2xl border border-red-100 text-sm font-bold flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
+                  <X size={18} className="shrink-0 cursor-pointer" onClick={() => setErrorStatus(null)} />
+                  {errorStatus}
+                </div>
+              )}
               <form onSubmit={handleAddGroupMaster} className="flex gap-3 mb-10 items-end">
                 <div className="flex-1 space-y-2">
                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nuovo Gruppo Parrocchiale</label>
