@@ -4,8 +4,12 @@ service cloud.firestore {
     
     // Global helpers
     function isSignedIn() { 
-      return request.auth != null && 
-             (request.auth.token.email_verified == true || request.auth.token.firebase.sign_in_provider == 'google.com'); 
+      return request.auth != null; 
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && 
+             (request.auth.token.email_verified == true || request.auth.token.firebase.sign_in_provider == 'google.com');
     }
     
     function isValidId(id) { 

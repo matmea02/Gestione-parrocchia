@@ -30,7 +30,10 @@ import {
   Download,
   Mail,
   Shield,
-  Key
+  Key,
+  AlertCircle,
+  CheckCircle2,
+  Loader2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -82,6 +85,8 @@ const Volontari: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [errorStatus, setErrorStatus] = useState<string | null>(null);
+  const [successStatus, setSuccessStatus] = useState<string | null>(null);
+  const [isSavingGroup, setIsSavingGroup] = useState(false);
 
   // Groups Management Form
   const [newGroupName, setNewGroupName] = useState('');
@@ -137,18 +142,33 @@ const Volontari: React.FC = () => {
 
   const handleAddGroupMaster = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newGroupName.trim()) return;
+    const name = newGroupName.trim();
+    if (!name) return;
+    
     setErrorStatus(null);
+    setSuccessStatus(null);
+
+    // Check for duplicates
+    if (groupsMaster.some(g => g.name.toLowerCase() === name.toLowerCase())) {
+      setErrorStatus('Un gruppo con questo nome esiste già.');
+      return;
+    }
+
+    setIsSavingGroup(true);
     try {
       await addDoc(groupsColl, {
-        name: newGroupName.trim(),
+        name: name,
         createdAt: new Date().toISOString()
       });
       setNewGroupName('');
+      setSuccessStatus('Gruppo creato con successo!');
+      setTimeout(() => setSuccessStatus(null), 3000);
     } catch (error) {
       console.error('Error adding group:', error);
       setErrorStatus('Errore durante la creazione del gruppo. Riprova.');
       handleFirestoreError(error, OperationType.WRITE, 'volunteer_groups');
+    } finally {
+      setIsSavingGroup(false);
     }
   };
 
@@ -1121,8 +1141,15 @@ const Volontari: React.FC = () => {
             <div className="flex-1 overflow-y-auto p-6 md:p-8 custom-scrollbar">
               {errorStatus && (
                 <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-2xl border border-red-100 text-sm font-bold flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
-                  <X size={18} className="shrink-0 cursor-pointer" onClick={() => setErrorStatus(null)} />
-                  {errorStatus}
+                  <AlertCircle size={18} className="shrink-0" />
+                  <span className="flex-1">{errorStatus}</span>
+                  <X size={18} className="shrink-0 cursor-pointer hover:scale-110 transition-transform" onClick={() => setErrorStatus(null)} />
+                </div>
+              )}
+              {successStatus && (
+                <div className="mb-6 p-4 bg-green-50 text-green-600 rounded-2xl border border-green-100 text-sm font-bold flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
+                  <CheckCircle2 size={18} className="shrink-0" />
+                  <span className="flex-1">{successStatus}</span>
                 </div>
               )}
               <form onSubmit={handleAddGroupMaster} className="flex gap-3 mb-10 items-end">
@@ -1138,10 +1165,11 @@ const Volontari: React.FC = () => {
                 </div>
                 <button
                   type="submit"
-                  className="p-4 bg-blue-600 text-white rounded-2xl shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all active:scale-95"
+                  disabled={isSavingGroup}
+                  className="p-4 bg-blue-600 text-white rounded-2xl shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-50"
                   title="Aggiungi Gruppo"
                 >
-                  <Plus size={24} />
+                  {isSavingGroup ? <Loader2 size={24} className="animate-spin" /> : <Plus size={24} />}
                 </button>
               </form>
 

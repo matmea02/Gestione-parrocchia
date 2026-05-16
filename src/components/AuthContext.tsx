@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { auth, googleProvider, signInWithPopup, db } from '../firebase';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { onAuthStateChanged, User, signInAnonymously } from 'firebase/auth';
 import { collection, query, where, getDocs, doc, onSnapshot } from 'firebase/firestore';
 import { Shield, Key, User as UserIcon, Loader2, LogOut, Church, AlertCircle } from 'lucide-react';
 
@@ -98,6 +98,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } else {
       const userData = snap.docs[0].data();
       const pUser = { id: snap.docs[0].id, ...userData } as PortalUser;
+      
+      // Sign in anonymously to Firebase Auth to allow Firestore rules to work
+      if (!auth.currentUser) {
+        try {
+          await signInAnonymously(auth);
+        } catch (e) {
+          console.error("Portal login: Anonymous sign-in failed", e);
+        }
+      }
+      
       localStorage.setItem('portal_user', JSON.stringify(pUser));
       setPortalUser(pUser);
     }
