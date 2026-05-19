@@ -15,6 +15,7 @@ import Volontari from './pages/Volontari';
 import Calendar from './pages/Calendar';
 import Liturgies from './pages/Liturgies';
 import Catechism from './pages/Catechism';
+import OratorioFeriale from './pages/OratorioFeriale';
 import MasterDashboard from './pages/MasterDashboard';
 import Users from './pages/Users';
 import Login from './pages/Login';
@@ -67,6 +68,7 @@ const AppRoutes = () => {
         <Route path="/spese" element={<Spese />} />
         <Route path="/volontari" element={<Volontari />} />
         <Route path="/catechismo" element={<Catechism />} />
+        <Route path="/oratorio" element={<OratorioFeriale />} />
         <Route path="*" element={<Dashboard />} />
       </Route>
     </Routes>

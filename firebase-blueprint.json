@@ -330,6 +330,71 @@
       },
       "required": ["name", "year", "pathYear"]
     },
+    "OratorioAnimator": {
+      "title": "Oratorio Animator",
+      "description": "Animators for the Oratorio Feriale.",
+      "type": "object",
+      "properties": {
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["firstName", "lastName"]
+    },
+    "OratorioShift": {
+      "title": "Oratorio Shift",
+      "description": "Shifts for animators during Oratorio Feriale.",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "format": "date" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "activity": { "type": "string" },
+        "animatorIds": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["date", "startTime", "endTime"]
+    },
+    "OratorioTeam": {
+      "title": "Oratorio Team",
+      "description": "Teams for Oratorio Feriale children.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "color": { "type": "string" },
+        "animatorIds": { "type": "array", "items": { "type": "string" } },
+        "kids": { 
+          "type": "array", 
+          "items": { 
+            "type": "object", 
+            "properties": { 
+              "firstName": { "type": "string" }, 
+              "lastName": { "type": "string" },
+              "note": { "type": "string" }
+            } 
+          } 
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name"]
+    },
+    "OratorioAbsence": {
+      "title": "Oratorio Absence",
+      "description": "Absence records for animators.",
+      "type": "object",
+      "properties": {
+        "animatorId": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "reason": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["animatorId", "date"]
+    },
     "Parish": {
       "title": "Parish",
       "description": "A parish or service unit managed by the portal.",
@@ -365,6 +430,10 @@
     "/parishes/{parishId}/liturgy_specials": { "schema": "LiturgySpecial", "description": "Liturgy specials for a specific parish" },
     "/parishes/{parishId}/liturgy_exceptions": { "schema": "LiturgyException", "description": "Liturgy exceptions for a specific parish" },
     "/parishes/{parishId}/liturgy_intentions": { "schema": "LiturgyIntention", "description": "Liturgy intentions for a specific parish" },
-    "/parishes/{parishId}/catechism_groups": { "schema": "CatechismGroup", "description": "Catechism groups for a specific parish" }
+    "/parishes/{parishId}/catechism_groups": { "schema": "CatechismGroup", "description": "Catechism groups for a specific parish" },
+    "/parishes/{parishId}/oratorio_animators": { "schema": "OratorioAnimator", "description": "Animators for the Oratorio Feriale" },
+    "/parishes/{parishId}/oratorio_shifts": { "schema": "OratorioShift", "description": "Shifts for Oratorio Feriale" },
+    "/parishes/{parishId}/oratorio_teams": { "schema": "OratorioTeam", "description": "Teams for Oratorio Feriale" },
+    "/parishes/{parishId}/oratorio_absences": { "schema": "OratorioAbsence", "description": "Absences for Oratorio Feriale animators" }
   }
 }

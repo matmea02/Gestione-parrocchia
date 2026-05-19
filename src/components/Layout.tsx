@@ -19,7 +19,8 @@ import {
   Plus,
   Key,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Sun
 } from 'lucide-react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
@@ -74,6 +75,7 @@ const Layout: React.FC = () => {
     { id: 'rooms', path: '/sale', label: 'Gestione Sale', icon: DoorOpen },
     { id: 'liturgy', path: '/liturgie', label: 'Messe e Liturgie', icon: Church },
     { id: 'catechism', path: '/catechismo', label: 'Catechismo', icon: BookOpen },
+    { id: 'oratorio', path: '/oratorio', label: 'Oratorio Feriale', icon: Sun },
     { id: 'volunteers', path: '/volontari', label: 'Volontari', icon: Users },
     { id: 'expenses', path: '/spese', label: 'Gestione Spese', icon: Wallet },
     { id: 'maintenance', path: '/manutenzione', label: 'Manutenzione', icon: Wrench },
