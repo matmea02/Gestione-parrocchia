@@ -938,122 +938,140 @@ const Calendar: React.FC = () => {
 
       {/* Liturgy Action Modal */}
       {isLiturgyActionModalOpen && liturgyActionData && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[110]">
-          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
-            <div className="p-8 border-b border-slate-50 flex items-center justify-between shrink-0">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 md:p-6 z-[110]">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-4xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+            <div className="p-8 border-b border-slate-50 flex items-center justify-between shrink-0 bg-slate-50/30">
               <div className="flex items-center gap-4">
-                <div className={`p-3 rounded-2xl ${liturgyActionData.type === 'recurring' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'}`}>
-                  <Church size={24} />
+                <div className={`p-4 rounded-2xl shadow-lg shadow-purple-100 ${liturgyActionData.type === 'recurring' ? 'bg-purple-600 text-white' : 'bg-blue-600 text-white'}`}>
+                  <Church size={28} />
                 </div>
                 <div>
-                  <h2 className="text-xl font-black text-slate-900 tracking-tight">{liturgyActionData.title}</h2>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{liturgyActionData.type === 'recurring' ? 'Orario Settimanale' : 'Celebrazione Speciale'}</p>
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase italic">{liturgyActionData.title}</h2>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">
+                    {liturgyActionData.type === 'recurring' ? 'Programmazione Settimanale' : 'Evento Speciale / Celebrazione'}
+                  </p>
                 </div>
               </div>
               <button 
                 onClick={() => setIsLiturgyActionModalOpen(false)} 
-                className="p-2.5 hover:bg-slate-100 rounded-full transition-all text-slate-400 hover:text-slate-900"
+                className="p-3 hover:bg-white hover:shadow-sm rounded-full transition-all text-slate-300 hover:text-red-500 border border-transparent hover:border-slate-100"
               >
                 <X size={24} />
               </button>
             </div>
 
-            <div className="p-8 overflow-y-auto custom-scrollbar">
-              <div className="space-y-6">
-                <div className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100">
-                  <div className="flex items-center gap-4 mb-3">
-                    <div className="p-2 bg-white rounded-xl shadow-sm text-blue-600">
-                      <CalendarIcon size={20} />
+            <div className="p-10 overflow-y-auto custom-scrollbar flex-1">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                {/* Info Section */}
+                <div className="space-y-6">
+                  <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100 italic space-y-6">
+                    <div className="flex items-center gap-5">
+                      <div className="w-12 h-12 bg-white rounded-2xl shadow-sm flex items-center justify-center text-blue-600 border border-blue-50">
+                        <CalendarIcon size={24} />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-0.5">Data Celebrazione</p>
+                        <p className="text-lg font-black text-slate-800 leading-tight">
+                          {format(liturgyActionData.start, 'EEEE d MMMM yyyy', { locale: it })}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[10px] font-black uppercase text-blue-400 tracking-widest mb-0.5">Data Celebrazione</p>
-                      <p className="text-lg font-black text-slate-900 leading-none">
-                        {format(liturgyActionData.start, 'EEEE d MMMM yyyy', { locale: it })}
-                      </p>
+                    
+                    <div className="w-full h-px bg-slate-200/50" />
+
+                    <div className="flex items-center gap-5">
+                      <div className="w-12 h-12 bg-white rounded-2xl shadow-sm flex items-center justify-center text-purple-600 border border-purple-50">
+                        <Clock size={24} />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-0.5">Orario d'Inizio</p>
+                        <p className="text-xl font-black text-slate-800 leading-tight">
+                          ore {format(liturgyActionData.start, 'HH:mm', { locale: it })}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <div className="p-2 bg-white rounded-xl shadow-sm text-purple-600">
-                      <Clock size={20} />
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-black uppercase text-purple-400 tracking-widest mb-0.5">Orario</p>
-                      <p className="text-lg font-black text-slate-900 leading-none capitalize">
-                        dalle {format(liturgyActionData.start, 'HH:mm', { locale: it })}
-                      </p>
-                    </div>
+
+                  <div className="grid grid-cols-1 gap-3">
+                    <button
+                      onClick={() => {
+                        window.location.href = `/liturgie?edit=${liturgyActionData.id}&type=${liturgyActionData.type}`;
+                      }}
+                      className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black uppercase italic tracking-widest hover:bg-blue-600 transition-all shadow-xl shadow-slate-200 active:scale-95 text-[11px]"
+                    >
+                      Modifica Dettagli Programmazione
+                    </button>
                   </div>
                 </div>
 
-                {/* Intentions Section */}
-                {(() => {
-                  const dateStr = format(liturgyActionData.start, 'yyyy-MM-dd');
-                  const timeStr = format(liturgyActionData.start, 'HH:mm');
-                  const intention = liturgyIntentions.find(i => 
-                    i.liturgyId === liturgyActionData.id && 
-                    i.date === dateStr && 
-                    i.time === timeStr
-                  );
+                {/* Intentions / Actions Section */}
+                <div className="space-y-6">
+                  {(() => {
+                    const dateStr = format(liturgyActionData.start, 'yyyy-MM-dd');
+                    const timeStr = format(liturgyActionData.start, 'HH:mm');
+                    const intention = liturgyIntentions.find(i => 
+                      i.liturgyId === liturgyActionData.id && 
+                      i.date === dateStr && 
+                      i.time === timeStr
+                    );
 
-                  if (intention && intention.names && intention.names.length > 0) {
-                    return (
-                      <div className="bg-purple-50/50 p-6 rounded-2xl border border-purple-100">
-                        <div className="flex items-center gap-3 mb-4">
-                          <div className="p-2 bg-white rounded-xl shadow-sm text-purple-600">
-                            <Heart size={18} />
-                          </div>
-                          <div>
-                            <p className="text-[10px] font-black uppercase text-purple-400 tracking-widest mb-0.5">Messa a Suffragio per:</p>
-                            <p className="text-sm font-black text-slate-900 leading-none">Nomi dei Defunti</p>
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          {intention.names.map((name: string, idx: number) => (
-                            <div key={idx} className="flex items-center gap-3 bg-white/60 p-3 rounded-xl border border-purple-100/50">
-                              <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
-                              <span className="text-sm font-bold text-slate-700">{name}</span>
+                    if (intention && intention.names && intention.names.length > 0) {
+                      return (
+                        <div className="bg-purple-50/50 p-8 rounded-[2rem] border border-purple-100/50 animate-in fade-in duration-500">
+                          <div className="flex items-center gap-4 mb-6">
+                            <div className="p-2.5 bg-white rounded-xl shadow-sm text-purple-600 border border-purple-50">
+                              <Heart size={20} />
                             </div>
-                          ))}
+                            <div>
+                              <p className="text-[10px] font-black uppercase text-purple-400 tracking-widest mb-0.5 italic">Intenzioni di Preghiera</p>
+                              <h3 className="text-sm font-black text-slate-900 leading-none uppercase">Defunti Ricordati</h3>
+                            </div>
+                          </div>
+                          <div className="space-y-2.5">
+                            {intention.names.map((name: string, idx: number) => (
+                              <div key={idx} className="flex items-center gap-4 bg-white/80 p-4 rounded-2xl border border-purple-100/30 group hover:border-purple-300 transition-all">
+                                <div className="w-2 h-2 rounded-full bg-purple-400 shadow-[0_0_8px_rgba(168,85,247,0.4)]" />
+                                <span className="text-sm font-black text-slate-700 italic uppercase">{name}</span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
+                      );
+                    }
+                    return (
+                      <div className="bg-slate-50 p-8 rounded-[2rem] border border-dashed border-slate-200 flex flex-col items-center justify-center text-center italic min-h-[200px]">
+                        <Heart size={32} className="text-slate-200 mb-3" />
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-loose">Nessuna intenzione particolare<br/>registrata per questa data</p>
                       </div>
                     );
-                  }
-                  return null;
-                })()}
+                  })()}
 
-                <div className="grid grid-cols-1 gap-3">
-                  <button
-                    onClick={() => {
-                      window.location.href = `/liturgie?edit=${liturgyActionData.id}&type=${liturgyActionData.type}`;
-                    }}
-                    className="w-full py-4 bg-blue-600 text-white rounded-full font-bold uppercase italic tracking-widest hover:bg-blue-700 transition-all shadow-lg active:scale-95 text-[10px]"
-                  >
-                    Modifica Programmazione
-                  </button>
-
-                  {liturgyActionData.type === 'recurring' ? (
-                    <>
+                  <div className="space-y-3 pt-4">
+                    <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest text-center italic mb-4">Azioni Rapide</p>
+                    {liturgyActionData.type === 'recurring' ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-1 gap-3">
+                        <button
+                          onClick={handleLiturgyDeleteOccurrence}
+                          className="w-full py-4 bg-white border border-slate-200 text-slate-500 rounded-2xl font-black uppercase italic tracking-widest hover:bg-slate-50 hover:text-slate-900 transition-all shadow-sm active:scale-95 text-[10px]"
+                        >
+                          Rimuovi solo questa data
+                        </button>
+                        <button
+                          onClick={handleLiturgyDeleteTemplate}
+                          className="w-full py-4 bg-red-50 text-red-600 border border-red-100 rounded-2xl font-black uppercase italic tracking-widest hover:bg-red-100 transition-all active:scale-95 text-[10px]"
+                        >
+                          Elimina l'intera serie
+                        </button>
+                      </div>
+                    ) : (
                       <button
-                        onClick={handleLiturgyDeleteOccurrence}
-                        className="w-full py-4 bg-white border border-slate-200 text-slate-600 rounded-full font-bold uppercase italic tracking-widest hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[10px]"
+                        onClick={handleLiturgyDeleteSpecial}
+                        className="w-full py-4 bg-red-50 text-red-600 border border-red-100 rounded-2xl font-black uppercase italic tracking-widest hover:bg-red-100 transition-all active:scale-95 text-[10px]"
                       >
-                        Rimuovi solo questa data
+                        Elimina Celebrazione
                       </button>
-                      <button
-                        onClick={handleLiturgyDeleteTemplate}
-                        className="w-full py-4 bg-red-50 text-red-700 border border-red-100 rounded-full font-bold uppercase italic tracking-widest hover:bg-red-100 transition-all active:scale-95 text-[10px]"
-                      >
-                        Elimina intera serie settimanale
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      onClick={handleLiturgyDeleteSpecial}
-                      className="w-full py-4 bg-red-50 text-red-700 border border-red-100 rounded-full font-bold uppercase italic tracking-widest hover:bg-red-100 transition-all active:scale-95 text-[10px]"
-                    >
-                      Elimina Celebrazione
-                    </button>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1063,197 +1081,232 @@ const Calendar: React.FC = () => {
 
       {/* Event Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
-            <div className="p-8 border-b border-slate-100 flex items-center justify-between">
-              <h2 className="text-xl font-black text-slate-900 tracking-tight">
-                {isEditing ? 'Modifica Impegno' : 'Nuovo Impegno'}
-              </h2>
-              <button onClick={closeModal} className="p-2.5 hover:bg-slate-100 rounded-full transition-all text-slate-400 hover:text-slate-900">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 md:p-6 z-[100]">
+          <div className="bg-white rounded-[2rem] md:rounded-[3rem] w-full max-w-6xl shadow-2xl overflow-hidden flex flex-col max-h-full animate-in zoom-in-95 duration-200">
+            <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/50">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-blue-600 text-white rounded-2xl shadow-lg shadow-blue-100">
+                  <Plus size={24} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-slate-900 tracking-tight uppercase italic">
+                    {isEditing ? 'Modifica Impegno' : 'Nuovo Impegno'}
+                  </h2>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">Gestione Calendario Parrocchiale</p>
+                </div>
+              </div>
+              <button onClick={closeModal} className="p-3 hover:bg-white hover:shadow-sm rounded-full transition-all text-slate-400 hover:text-red-500 border border-transparent hover:border-slate-100">
                 <X size={24} />
               </button>
             </div>
-            <form onSubmit={handleSaveEvent} className="p-8 space-y-6">
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500 uppercase">Titolo</label>
-                <input
-                  type="text"
-                  required
-                  value={form.title}
-                  onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  className="w-full px-4 py-3 rounded-xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm font-medium"
-                  placeholder="Nome dell'impegno"
-                />
-              </div>
+            <form onSubmit={handleSaveEvent} className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-8">
+                {/* Left Column: Core Info */}
+                <div className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Titolo dell'Impegno</label>
+                    <input
+                      type="text"
+                      required
+                      value={form.title}
+                      onChange={(e) => setForm({ ...form, title: e.target.value })}
+                      className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm font-bold shadow-inner"
+                      placeholder="es. Incontro Consiglio Pastorale"
+                    />
+                  </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Inizio</label>
-                    <div className="flex gap-1">
-                      <button 
-                        type="button"
-                        onClick={() => {
-                          const now = new Date();
-                          const currentVal = form.start ? new Date(form.start) : now;
-                          const newVal = new Date(now.getFullYear(), now.getMonth(), now.getDate(), currentVal.getHours(), currentVal.getMinutes());
-                          setForm({ ...form, start: format(newVal, "yyyy-MM-dd'T'HH:mm") });
-                        }}
-                        className="text-[9px] font-black uppercase text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded hover:bg-blue-100"
-                      >
-                        Oggi
-                      </button>
-                      <button 
-                        type="button"
-                        onClick={() => {
-                          const tom = addDays(new Date(), 1);
-                          const currentVal = form.start ? new Date(form.start) : new Date();
-                          const newVal = new Date(tom.getFullYear(), tom.getMonth(), tom.getDate(), currentVal.getHours(), currentVal.getMinutes());
-                          setForm({ ...form, start: format(newVal, "yyyy-MM-dd'T'HH:mm") });
-                        }}
-                        className="text-[9px] font-black uppercase text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded hover:bg-blue-100"
-                      >
-                        Dom
-                      </button>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Calendario</label>
+                      <div className="relative">
+                        <Tag className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                        <select
+                          value={form.calendarId}
+                          onChange={(e) => setForm({ ...form, calendarId: e.target.value })}
+                          className="w-full pl-12 pr-4 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm font-bold appearance-none shadow-inner"
+                        >
+                          {calendars.map(cal => (
+                            <option key={cal.id} value={cal.id}>{cal.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Luogo (Opzionale)</label>
+                      <div className="relative">
+                        <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                        <input
+                          type="text"
+                          value={form.location}
+                          onChange={(e) => setForm({ ...form, location: e.target.value })}
+                          className="w-full pl-12 pr-4 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm font-bold shadow-inner"
+                          placeholder="es. Salone Parrocchiale"
+                        />
+                      </div>
                     </div>
                   </div>
-                  <input
-                    type="datetime-local"
-                    required
-                    value={form.start}
-                    onChange={(e) => setForm({ ...form, start: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm"
-                  />
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {['08:30', '10:00', '15:00', '18:00', '21:00'].map(t => (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => {
-                          const [h, m] = t.split(':').map(Number);
-                          const current = form.start ? new Date(form.start) : new Date();
-                          const newVal = setMinutes(setHours(current, h), m);
-                          setForm({ ...form, start: format(newVal, "yyyy-MM-dd'T'HH:mm") });
-                        }}
-                        className="text-[10px] font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg"
-                      >
-                        {t}
-                      </button>
-                    ))}
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Note e Dettagli</label>
+                    <textarea
+                      value={form.description}
+                      onChange={(e) => setForm({ ...form, description: e.target.value })}
+                      className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none h-32 resize-none text-sm font-medium shadow-inner"
+                      placeholder="Aggiungi ulteriori dettagli sull'appuntamento..."
+                    />
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Fine</label>
-                    <div className="flex gap-1">
-                      <button 
-                        type="button"
-                        onClick={() => {
-                          if (!form.start) return;
-                          const start = new Date(form.start);
-                          const end = new Date(start.getTime() + 60 * 60 * 1000); // +1h
-                          setForm({ ...form, end: format(end, "yyyy-MM-dd'T'HH:mm") });
-                        }}
-                        className="text-[9px] font-black uppercase text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded hover:bg-blue-100"
-                      >
-                        +1h
-                      </button>
-                      <button 
-                        type="button"
-                        onClick={() => {
-                          if (!form.start) return;
-                          const start = new Date(form.start);
-                          const end = new Date(start.getTime() + 120 * 60 * 1000); // +2h
-                          setForm({ ...form, end: format(end, "yyyy-MM-dd'T'HH:mm") });
-                        }}
-                        className="text-[9px] font-black uppercase text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded hover:bg-blue-100"
-                      >
-                        +2h
-                      </button>
+
+                {/* Right Column: Time Selection */}
+                <div className="space-y-8 bg-slate-50/50 p-6 md:p-8 rounded-[2.5rem] border border-slate-100 italic">
+                  <div className="grid grid-cols-1 gap-8">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                          <Clock size={14} className="text-blue-500" />
+                          Inizio Appuntamento
+                        </label>
+                        <div className="flex gap-2">
+                          <button 
+                            type="button"
+                            onClick={() => {
+                              const now = new Date();
+                              const currentVal = form.start ? new Date(form.start) : now;
+                              const newVal = new Date(now.getFullYear(), now.getMonth(), now.getDate(), currentVal.getHours(), currentVal.getMinutes());
+                              setForm({ ...form, start: format(newVal, "yyyy-MM-dd'T'HH:mm") });
+                            }}
+                            className="text-[9px] font-black uppercase text-blue-600 bg-white border border-blue-100 px-3 py-1 rounded-lg hover:bg-blue-50 transition-colors shadow-sm"
+                          >
+                            Oggi
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={() => {
+                              const tom = addDays(new Date(), 1);
+                              const currentVal = form.start ? new Date(form.start) : new Date();
+                              const newVal = new Date(tom.getFullYear(), tom.getMonth(), tom.getDate(), currentVal.getHours(), currentVal.getMinutes());
+                              setForm({ ...form, start: format(newVal, "yyyy-MM-dd'T'HH:mm") });
+                            }}
+                            className="text-[9px] font-black uppercase text-blue-600 bg-white border border-blue-100 px-3 py-1 rounded-lg hover:bg-blue-50 transition-colors shadow-sm"
+                          >
+                            Domani
+                          </button>
+                        </div>
+                      </div>
+                      <input
+                        type="datetime-local"
+                        required
+                        value={form.start}
+                        onChange={(e) => setForm({ ...form, start: e.target.value })}
+                        className="w-full px-5 py-4 rounded-2xl bg-white border border-slate-100 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm font-bold shadow-sm"
+                      />
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {['08:30', '10:00', '15:00', '18:00', '21:00'].map(t => (
+                          <button
+                            key={t}
+                            type="button"
+                            onClick={() => {
+                              const [h, m] = t.split(':').map(Number);
+                              const current = form.start ? new Date(form.start) : new Date();
+                              const newVal = setMinutes(setHours(current, h), m);
+                              setForm({ ...form, start: format(newVal, "yyyy-MM-dd'T'HH:mm") });
+                            }}
+                            className="text-[10px] font-black text-slate-500 bg-white border border-slate-200 hover:border-blue-300 hover:text-blue-600 px-3 py-2 rounded-xl transition-all shadow-sm"
+                          >
+                            {t}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                          <Clock size={14} className="text-red-500" />
+                          Fine Appuntamento
+                        </label>
+                        <div className="flex gap-2">
+                          <button 
+                            type="button"
+                            onClick={() => {
+                              if (!form.start) return;
+                              const start = new Date(form.start);
+                              const end = new Date(start.getTime() + 60 * 60 * 1000); // +1h
+                              setForm({ ...form, end: format(end, "yyyy-MM-dd'T'HH:mm") });
+                            }}
+                            className="text-[9px] font-black uppercase text-blue-600 bg-white border border-blue-100 px-3 py-1 rounded-lg hover:bg-blue-50 shadow-sm"
+                          >
+                            +1h
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={() => {
+                              if (!form.start) return;
+                              const start = new Date(form.start);
+                              const end = new Date(start.getTime() + 120 * 60 * 1000); // +2h
+                              setForm({ ...form, end: format(end, "yyyy-MM-dd'T'HH:mm") });
+                            }}
+                            className="text-[9px] font-black uppercase text-blue-600 bg-white border border-blue-100 px-3 py-1 rounded-lg hover:bg-blue-50 shadow-sm"
+                          >
+                            +2h
+                          </button>
+                        </div>
+                      </div>
+                      <input
+                        type="datetime-local"
+                        required
+                        value={form.end}
+                        onChange={(e) => setForm({ ...form, end: e.target.value })}
+                        className="w-full px-5 py-4 rounded-2xl bg-white border border-slate-100 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm font-bold shadow-sm"
+                      />
                     </div>
                   </div>
-                  <input
-                    type="datetime-local"
-                    required
-                    value={form.end}
-                    onChange={(e) => setForm({ ...form, end: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm"
-                  />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500 uppercase">Calendario</label>
-                <select
-                  value={form.calendarId}
-                  onChange={(e) => setForm({ ...form, calendarId: e.target.value })}
-                  className="w-full px-4 py-3 rounded-xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm font-bold"
-                >
-                  {calendars.map(cal => (
-                    <option key={cal.id} value={cal.id}>{cal.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500 uppercase">Luogo (Opzionale)</label>
-                <div className="relative">
-                  <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                  <input
-                    type="text"
-                    value={form.location}
-                    onChange={(e) => setForm({ ...form, location: e.target.value })}
-                    className="w-full pl-12 pr-4 py-3 rounded-xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm"
-                    placeholder="Luogo dell'attività"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500 uppercase">Note (Opzionale)</label>
-                <textarea
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  className="w-full px-4 py-3 rounded-xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none h-24 resize-none text-sm"
-                  placeholder="Dettagli aggiuntivi..."
-                />
-              </div>
-
-              <div className="flex gap-4 pt-6">
+              <div className="flex flex-col md:flex-row gap-4 pt-12 border-t border-slate-50 mt-8">
                 {isEditing && (
                   confirmDeleteEvent ? (
-                    <div className="flex-1 flex gap-4 animate-in fade-in duration-200">
+                    <div className="flex-1 flex gap-2 animate-in slide-in-from-left-2 duration-200">
                       <button
                         type="button"
                         onClick={handleDeleteEvent}
-                        className="bg-red-600 text-white px-6 py-4 rounded-full font-bold uppercase italic tracking-wider hover:bg-red-700 transition-all shadow-sm active:scale-95 text-[10px] flex-1"
+                        className="bg-red-600 text-white px-8 py-5 rounded-2xl font-black uppercase italic tracking-widest hover:bg-red-700 transition-all shadow-xl shadow-red-100 active:scale-95 text-[11px] flex-1"
                       >
-                        Conferma
+                        Conferma Eliminazione
                       </button>
                       <button
                         type="button"
                         onClick={() => setConfirmDeleteEvent(false)}
-                        className="bg-white border border-slate-200 text-slate-600 px-2 py-4 rounded-full font-bold uppercase italic tracking-wider hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[10px] flex-1 flex items-center justify-center"
+                        className="bg-white border border-slate-200 text-slate-400 px-6 py-5 rounded-2xl font-black uppercase italic tracking-widest hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[11px]"
                       >
-                        <X size={16} />
+                        Annulla
                       </button>
                     </div>
                   ) : (
                     <button
                       type="button"
                       onClick={() => setConfirmDeleteEvent(true)}
-                      className="bg-red-50 text-red-600 border border-red-100 px-6 py-4 rounded-full font-bold uppercase italic tracking-wider hover:bg-red-100 transition-all active:scale-95 text-[10px] flex-1"
+                      className="bg-red-50 text-red-600 border border-red-100 px-10 py-5 rounded-2xl font-black uppercase italic tracking-widest hover:bg-red-100 transition-all active:scale-95 text-[11px] md:w-auto"
                     >
                       Elimina
                     </button>
                   )
                 )}
+                <div className="flex-1"></div>
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="px-10 py-5 rounded-2xl text-[11px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-all italic border border-slate-100"
+                >
+                  Indietro
+                </button>
                 <button
                   type="submit"
-                  className="bg-blue-600 text-white px-10 py-4 rounded-full font-bold uppercase italic tracking-widest hover:bg-blue-700 transition-all shadow-lg active:scale-95 text-[10px] flex-[2] flex items-center justify-center gap-2"
+                  className="bg-slate-900 text-white px-12 py-5 rounded-2xl font-black uppercase italic tracking-widest shadow-2xl shadow-slate-200 hover:bg-blue-600 transition-all active:scale-95 text-[11px]"
                 >
-                  <Check size={18} />
-                  {isEditing ? 'Salva Modifiche' : 'Salva Appuntamento'}
+                  {isEditing ? 'Salva Modifiche' : 'Crea Appuntamento'}
                 </button>
               </div>
             </form>
