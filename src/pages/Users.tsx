@@ -28,6 +28,7 @@ const MODULES = [
   { id: 'rooms', label: 'Gestione Sale' },
   { id: 'liturgy', label: 'Messe e Liturgie' },
   { id: 'catechism', label: 'Catechismo' },
+  { id: 'oratorio', label: 'Oratorio Feriale' },
   { id: 'volunteers', label: 'Volontari' },
   { id: 'expenses', label: 'Gestione Spese' },
   { id: 'maintenance', label: 'Manutenzione' },

@@ -29,7 +29,8 @@ import {
   UserX,
   Phone,
   Mail,
-  Info
+  Info,
+  Check
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -103,6 +104,15 @@ const OratorioFeriale: React.FC = () => {
 
   // Animators State
   const [animatorForm, setAnimatorForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    notes: ''
+  });
+
+  const [editingAnimatorId, setEditingAnimatorId] = useState<string | null>(null);
+  const [editingAnimatorForm, setEditingAnimatorForm] = useState({
     firstName: '',
     lastName: '',
     email: '',
@@ -288,126 +298,263 @@ const OratorioFeriale: React.FC = () => {
 
       <div className="grid grid-cols-1 gap-6">
         {activeTab === 'animators' && (
-          <div className="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="p-8 border-b border-slate-50 bg-blue-50/10">
-              <h3 className="text-sm font-black text-slate-900 uppercase italic tracking-widest flex items-center gap-3">
-                <Users size={18} className="text-blue-600" />
-                Elenco Rapido Animatori
-              </h3>
-            </div>
-            <div className="overflow-x-auto overflow-y-visible">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="bg-slate-50/30 border-b border-slate-100 italic">
-                    <th className="px-8 py-5 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Nome</th>
-                    <th className="px-8 py-5 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Cognome</th>
-                    <th className="px-8 py-5 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Telefono (opz)</th>
-                    <th className="px-8 py-5 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Email (opz)</th>
-                    <th className="px-8 py-5 text-right text-[10px] font-black uppercase tracking-widest text-slate-400">Azioni</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {/* Insertion Row */}
-                  <tr className="bg-blue-50/5 group">
-                    <td className="px-6 py-4">
-                      <input 
-                        type="text" 
-                        value={animatorForm.firstName} 
-                        onChange={e => setAnimatorForm({...animatorForm, firstName: e.target.value})} 
-                        className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-100 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-xs font-bold" 
-                        placeholder="Nome..."
-                      />
-                    </td>
-                    <td className="px-6 py-4">
-                      <input 
-                        type="text" 
-                        value={animatorForm.lastName} 
-                        onChange={e => setAnimatorForm({...animatorForm, lastName: e.target.value})} 
-                        className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-100 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-xs font-bold" 
-                        placeholder="Cognome..."
-                      />
-                    </td>
-                    <td className="px-6 py-4">
-                      <input 
-                        type="tel" 
-                        value={animatorForm.phone} 
-                        onChange={e => setAnimatorForm({...animatorForm, phone: e.target.value})} 
-                        className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-100 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-xs font-mono font-bold" 
-                        placeholder="Telefono..."
-                      />
-                    </td>
-                    <td className="px-6 py-4">
-                      <input 
-                        type="email" 
-                        value={animatorForm.email} 
-                        onChange={e => setAnimatorForm({...animatorForm, email: e.target.value})} 
-                        className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-100 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-xs font-bold" 
-                        placeholder="Email..."
-                      />
-                    </td>
-                    <td className="px-8 py-4 text-right">
-                      <button
-                        onClick={async () => {
-                          if (!animatorForm.firstName || !animatorForm.lastName) return;
-                          setIsSaving(true);
-                          try {
-                            await addDoc(animatorsColl, { 
-                              ...animatorForm, 
-                              createdAt: new Date().toISOString() 
-                            });
-                            setAnimatorForm({ firstName: '', lastName: '', email: '', phone: '', notes: '' });
-                            setSuccessStatus('Animatore aggiunto!');
-                            setTimeout(() => setSuccessStatus(null), 2000);
-                          } catch (err) {
-                            setErrorStatus('Errore durante il salvataggio.');
-                          } finally {
-                            setIsSaving(false);
-                          }
-                        }}
-                        disabled={isSaving || !animatorForm.firstName || !animatorForm.lastName}
-                        className="p-3 bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all disabled:opacity-30 active:scale-95"
-                      >
-                        {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
-                      </button>
-                    </td>
-                  </tr>
+          <div className="space-y-4">
+            {successStatus && (
+              <div className="bg-emerald-50 border border-emerald-100/50 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 text-xs font-bold animate-in fade-in duration-300">
+                <CheckCircle2 size={16} className="text-emerald-500 animate-bounce" />
+                <span>{successStatus}</span>
+              </div>
+            )}
+            {errorStatus && (
+              <div className="bg-rose-50 border border-rose-100/50 p-4 rounded-2xl flex items-center gap-3 text-rose-800 text-xs font-bold animate-in fade-in duration-300">
+                <AlertCircle size={16} className="text-rose-500" />
+                <span>{errorStatus}</span>
+              </div>
+            )}
 
-                  {/* List Rows */}
-                  {animators.length > 0 ? animators.map(a => (
-                    <tr key={a.id} className="hover:bg-slate-50/50 transition-colors group">
-                      <td className="px-8 py-4">
-                        <span className="text-xs font-bold text-slate-700 italic uppercase">{a.firstName}</span>
+            <div className="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="p-8 border-b border-slate-50 bg-blue-50/10">
+                <h3 className="text-sm font-black text-slate-900 uppercase italic tracking-widest flex items-center gap-3">
+                  <Users size={18} className="text-blue-600" />
+                  Elenco Rapido Animatori (Griglia Gestibile)
+                </h3>
+              </div>
+              <div className="overflow-x-auto overflow-y-visible">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50/30 border-b border-slate-100 italic">
+                      <th className="px-8 py-5 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Nome</th>
+                      <th className="px-8 py-5 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Cognome</th>
+                      <th className="px-8 py-5 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Telefono (opz)</th>
+                      <th className="px-8 py-5 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Email (opz)</th>
+                      <th className="px-8 py-5 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Note / Info (opz)</th>
+                      <th className="px-8 py-5 text-right text-[10px] font-black uppercase tracking-widest text-slate-400">Azioni</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {/* Insertion Row */}
+                    <tr className="bg-blue-50/5 group">
+                      <td className="px-6 py-4">
+                        <input 
+                          type="text" 
+                          value={animatorForm.firstName} 
+                          onChange={e => setAnimatorForm({...animatorForm, firstName: e.target.value})} 
+                          className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-100 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-xs font-bold shadow-sm" 
+                          placeholder="Aggiungi Nome..."
+                        />
                       </td>
-                      <td className="px-8 py-4">
-                        <span className="text-xs font-black text-slate-900 italic uppercase">{a.lastName}</span>
+                      <td className="px-6 py-4">
+                        <input 
+                          type="text" 
+                          value={animatorForm.lastName} 
+                          onChange={e => setAnimatorForm({...animatorForm, lastName: e.target.value})} 
+                          className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-100 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-xs font-bold shadow-sm" 
+                          placeholder="Aggiungi Cognome..."
+                        />
                       </td>
-                      <td className="px-8 py-4">
-                        <span className="text-xs font-mono font-bold text-slate-500">{a.phone || '-'}</span>
+                      <td className="px-6 py-4">
+                        <input 
+                          type="tel" 
+                          value={animatorForm.phone} 
+                          onChange={e => setAnimatorForm({...animatorForm, phone: e.target.value})} 
+                          className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-100 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-xs font-mono font-bold shadow-sm" 
+                          placeholder="Telefono..."
+                        />
                       </td>
-                      <td className="px-8 py-4">
-                        <span className="text-xs font-bold text-slate-400 italic">{a.email || '-'}</span>
+                      <td className="px-6 py-4">
+                        <input 
+                          type="email" 
+                          value={animatorForm.email} 
+                          onChange={e => setAnimatorForm({...animatorForm, email: e.target.value})} 
+                          className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-100 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-xs font-bold shadow-sm" 
+                          placeholder="Email..."
+                        />
+                      </td>
+                      <td className="px-6 py-4">
+                        <input 
+                          type="text" 
+                          value={animatorForm.notes} 
+                          onChange={e => setAnimatorForm({...animatorForm, notes: e.target.value})} 
+                          className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-100 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-xs font-bold shadow-sm" 
+                          placeholder="Note, allergie..."
+                        />
                       </td>
                       <td className="px-8 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => handleOpenModal('animators', a)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Modifica dettagli/note">
-                            <Pencil size={14} />
-                          </button>
-                          <button onClick={() => handleDelete(a.id, animatorsColl)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
+                        <button
+                          onClick={async () => {
+                            if (!animatorForm.firstName || !animatorForm.lastName) return;
+                            setIsSaving(true);
+                            try {
+                              await addDoc(animatorsColl, { 
+                                ...animatorForm, 
+                                createdAt: new Date().toISOString() 
+                              });
+                              setAnimatorForm({ firstName: '', lastName: '', email: '', phone: '', notes: '' });
+                              setSuccessStatus('Animatore aggiunto con successo!');
+                              setTimeout(() => setSuccessStatus(null), 2000);
+                            } catch (err) {
+                              setErrorStatus('Errore durante il salvataggio.');
+                              setTimeout(() => setErrorStatus(null), 3000);
+                            } finally {
+                              setIsSaving(false);
+                            }
+                          }}
+                          disabled={isSaving || !animatorForm.firstName || !animatorForm.lastName}
+                          className="p-3 bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all disabled:opacity-30 active:scale-95"
+                          title="Aggiungi ora"
+                        >
+                          {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
+                        </button>
                       </td>
                     </tr>
-                  )) : (
-                    <tr>
-                      <td colSpan={5} className="py-20 text-center">
-                        <Users size={40} className="mx-auto text-slate-100 mb-4" />
-                        <p className="text-slate-300 font-black uppercase tracking-widest text-[9px]">Nessun animatore registrato</p>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+
+                    {/* List Rows */}
+                    {animators.length > 0 ? animators.map(a => {
+                      const isEditingThisRow = a.id === editingAnimatorId;
+
+                      return (
+                        <tr key={a.id} className="hover:bg-slate-50/50 transition-colors group">
+                          {isEditingThisRow ? (
+                            <>
+                              <td className="px-6 py-3">
+                                <input 
+                                  type="text"
+                                  value={editingAnimatorForm.firstName}
+                                  onChange={e => setEditingAnimatorForm({...editingAnimatorForm, firstName: e.target.value})}
+                                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-xs font-bold shadow-sm"
+                                  placeholder="Nome"
+                                />
+                              </td>
+                              <td className="px-6 py-3">
+                                <input 
+                                  type="text"
+                                  value={editingAnimatorForm.lastName}
+                                  onChange={e => setEditingAnimatorForm({...editingAnimatorForm, lastName: e.target.value})}
+                                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-xs font-bold shadow-sm"
+                                  placeholder="Cognome"
+                                />
+                              </td>
+                              <td className="px-6 py-3">
+                                <input 
+                                  type="tel"
+                                  value={editingAnimatorForm.phone}
+                                  onChange={e => setEditingAnimatorForm({...editingAnimatorForm, phone: e.target.value})}
+                                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-xs font-mono font-bold shadow-sm"
+                                  placeholder="Telefono"
+                                />
+                              </td>
+                              <td className="px-6 py-3">
+                                <input 
+                                  type="email"
+                                  value={editingAnimatorForm.email}
+                                  onChange={e => setEditingAnimatorForm({...editingAnimatorForm, email: e.target.value})}
+                                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-xs font-bold shadow-sm"
+                                  placeholder="Email"
+                                />
+                              </td>
+                              <td className="px-6 py-3">
+                                <input 
+                                  type="text"
+                                  value={editingAnimatorForm.notes}
+                                  onChange={e => setEditingAnimatorForm({...editingAnimatorForm, notes: e.target.value})}
+                                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-xs font-bold shadow-sm"
+                                  placeholder="Note o allergie"
+                                />
+                              </td>
+                              <td className="px-8 py-3 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    onClick={async () => {
+                                      if (!editingAnimatorForm.firstName || !editingAnimatorForm.lastName) return;
+                                      setIsSaving(true);
+                                      try {
+                                        await updateDoc(doc(animatorsColl, a.id), {
+                                          ...editingAnimatorForm,
+                                          updatedAt: new Date().toISOString()
+                                        });
+                                        setEditingAnimatorId(null);
+                                        setSuccessStatus('Membro salvato con successo!');
+                                        setTimeout(() => setSuccessStatus(null), 2000);
+                                      } catch (err) {
+                                        setErrorStatus('Errore nel salvataggio delle modifiche.');
+                                        setTimeout(() => setErrorStatus(null), 3000);
+                                      } finally {
+                                        setIsSaving(false);
+                                      }
+                                    }}
+                                    disabled={isSaving || !editingAnimatorForm.firstName || !editingAnimatorForm.lastName}
+                                    className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-all disabled:opacity-30 active:scale-95"
+                                    title="Conferma Modifiche"
+                                  >
+                                    {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                                  </button>
+                                  <button
+                                    onClick={() => setEditingAnimatorId(null)}
+                                    className="p-2 bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-200 transition-all active:scale-95"
+                                    title="Annulla"
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                </div>
+                              </td>
+                            </>
+                          ) : (
+                            <>
+                              <td className="px-8 py-4">
+                                <span className="text-xs font-bold text-slate-700 italic uppercase">{a.firstName}</span>
+                              </td>
+                              <td className="px-8 py-4">
+                                <span className="text-xs font-black text-slate-900 italic uppercase">{a.lastName}</span>
+                              </td>
+                              <td className="px-8 py-4">
+                                <span className="text-xs font-mono font-bold text-slate-500">{a.phone || '-'}</span>
+                              </td>
+                              <td className="px-8 py-4">
+                                <span className="text-xs font-bold text-slate-400 italic">{a.email || '-'}</span>
+                              </td>
+                              <td className="px-8 py-4">
+                                <span className="text-xs font-bold text-slate-400 italic max-w-[200px] inline-block truncate" title={a.notes}>
+                                  {a.notes || '-'}
+                                </span>
+                              </td>
+                              <td className="px-8 py-4 text-right">
+                                <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button 
+                                    onClick={() => {
+                                      setEditingAnimatorId(a.id);
+                                      setEditingAnimatorForm({
+                                        firstName: a.firstName,
+                                        lastName: a.lastName,
+                                        email: a.email || '',
+                                        phone: a.phone || '',
+                                        notes: a.notes || ''
+                                      });
+                                    }} 
+                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" 
+                                    title="Modifica dettagli direttamente"
+                                  >
+                                    <Pencil size={14} />
+                                  </button>
+                                  <button onClick={() => handleDelete(a.id, animatorsColl)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Elimina">
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              </td>
+                            </>
+                          )}
+                        </tr>
+                      );
+                    }) : (
+                      <tr>
+                        <td colSpan={6} className="py-20 text-center">
+                          <Users size={40} className="mx-auto text-slate-100 mb-4" />
+                          <p className="text-slate-300 font-black uppercase tracking-widest text-[9px]">Nessun animatore registrato</p>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}

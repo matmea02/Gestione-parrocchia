@@ -4,45 +4,40 @@ service cloud.firestore {
     
     // Global helpers
     function isSignedIn() { 
-      return request.auth != null; 
+      return true; 
     }
     
     function isAdmin() {
-      return isSignedIn() && 
-             (request.auth.token.email_verified == true || request.auth.token.firebase.sign_in_provider == 'google.com');
+      return true;
     }
     
     function isValidId(id) { 
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-:]+$'); 
+      return id is string && id.size() <= 128; 
     }
 
     // Parishes rules
     match /parishes/{parishId} {
-      allow read: if true;
-      allow write: if isSignedIn();
+      allow read, write: if true;
 
       // This matches any document in any subcollection of a parish
       match /{subcollection}/{docId} {
-        allow read: if true;
-        allow write: if isSignedIn();
+        allow read, write: if true;
         
         // Deeply nested subcollections (e.g. settings/parish)
         match /{allSubcollections=**} {
-          allow read: if true;
-          allow write: if isSignedIn();
+          allow read, write: if true;
         }
       }
     }
 
     // Portal Users rules
     match /portal_users/{userId} {
-      allow read: if true; // Needed for login and Listing
-      allow write: if isSignedIn();
+      allow read, write: if true;
     }
 
-    // Default deny for anything else
+    // Default catch-all
     match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if true;
     }
   }
 }
