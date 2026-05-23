@@ -822,7 +822,7 @@ const Volontari: React.FC = () => {
 
       {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-0 md:p-4 bg-slate-900/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-0 md:p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white w-full h-full md:h-auto md:max-h-[90vh] md:max-w-4xl md:rounded-[3rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 border border-white/20 flex flex-col">
             <div className="bg-white p-6 md:p-10 flex items-center justify-between border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-4">
@@ -1118,7 +1118,7 @@ const Volontari: React.FC = () => {
 
       {/* Groups Management Modal */}
       {isGroupsModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-0 md:p-4 bg-slate-900/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-0 md:p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white w-full h-full md:h-auto md:max-h-[85vh] md:max-w-xl md:rounded-[3rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col">
             <div className="bg-slate-50/50 p-6 md:p-8 flex items-center justify-between border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-4">
@@ -1250,7 +1250,7 @@ const Volontari: React.FC = () => {
 
       {/* Delete Confirmation Overlays */}
       {deleteConfirm && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md">
+        <div className="fixed inset-0 z-[220] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md">
           <div className="bg-white w-full max-w-sm rounded-[3rem] shadow-2xl p-8 md:p-10 text-center animate-in fade-in zoom-in duration-200 border border-white/20">
             <div className="w-24 h-24 bg-red-50 text-red-600 rounded-[2rem] flex items-center justify-center mx-auto mb-8 shadow-inner shadow-red-100/50 rotate-3">
               <Trash2 size={48} strokeWidth={2.5} />

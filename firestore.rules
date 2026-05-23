@@ -4,11 +4,11 @@ service cloud.firestore {
     
     // Global helpers
     function isSignedIn() { 
-      return true; 
+      return request.auth != null; 
     }
     
     function isAdmin() {
-      return true;
+      return isSignedIn();
     }
     
     function isValidId(id) { 
@@ -17,27 +17,32 @@ service cloud.firestore {
 
     // Parishes rules
     match /parishes/{parishId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isSignedIn();
 
       // This matches any document in any subcollection of a parish
       match /{subcollection}/{docId} {
-        allow read, write: if true;
+        allow read: if true;
+        allow write: if isSignedIn();
         
         // Deeply nested subcollections (e.g. settings/parish)
         match /{allSubcollections=**} {
-          allow read, write: if true;
+          allow read: if true;
+          allow write: if isSignedIn();
         }
       }
     }
 
     // Portal Users rules
     match /portal_users/{userId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isSignedIn();
     }
 
     // Default catch-all
     match /{document=**} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isSignedIn();
     }
   }
 }

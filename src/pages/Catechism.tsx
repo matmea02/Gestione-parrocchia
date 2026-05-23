@@ -535,7 +535,7 @@ const Catechism: React.FC = () => {
 
       {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 md:p-4 bg-slate-900/60 backdrop-blur-sm overflow-hidden">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-2 md:p-4 bg-slate-900/60 backdrop-blur-sm overflow-hidden">
           <div className="bg-white w-full max-w-5xl rounded-[2rem] md:rounded-[2.5rem] lg:rounded-[3rem] shadow-2xl h-[95vh] md:h-[90vh] flex flex-col animate-in fade-in zoom-in duration-300">
             <div className="p-6 md:p-8 flex items-center justify-between border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-4">

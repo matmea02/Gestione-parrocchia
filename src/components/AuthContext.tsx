@@ -49,6 +49,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const initialUser = JSON.parse(savedPortalUser);
       setPortalUser(initialUser);
 
+      // Sign in anonymously if firebase auth isn't already active to satisfy security rules
+      if (!auth.currentUser) {
+        signInAnonymously(auth).catch(e => console.error("Session restore anonymous sign-in failed", e));
+      }
+
       // Setup real-time listener for the portal user document
       portalUnsub = onSnapshot(doc(db, 'portal_users', initialUser.id), (docSnap) => {
         if (docSnap.exists()) {

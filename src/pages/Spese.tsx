@@ -779,7 +779,7 @@ const Spese: React.FC = () => {
 
       {/* Main Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-[200]">
           <div className="bg-white rounded-[3rem] w-full max-w-7xl max-h-[95vh] overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-300">
             <div className="p-6 md:p-10 border-b border-slate-100 flex items-center justify-between">
               <div>
@@ -988,7 +988,7 @@ const Spese: React.FC = () => {
 
       {/* Categories Modal */}
       {isCategoryModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[200]">
           <div className="bg-white rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl flex flex-col">
             <div className="p-6 border-b border-slate-100 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
@@ -1049,7 +1049,7 @@ const Spese: React.FC = () => {
 
       {/* Delete Confirmation Modal */}
       {expenseToDelete && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[220]">
           <div className="bg-white rounded-2xl w-full max-w-xl p-6 shadow-2xl space-y-6 animate-in zoom-in-95 duration-200">
             <div className="flex flex-col items-center text-center space-y-4">
               <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center font-bold">

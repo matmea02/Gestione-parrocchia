@@ -846,13 +846,13 @@ export default function Liturgies() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsIntentionsModalOpen(false)}
-              className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50"
+              className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200]"
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="fixed inset-0 md:inset-auto md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 w-full md:max-w-2xl bg-white md:rounded-[2.5rem] shadow-2xl z-[60] overflow-hidden flex flex-col md:h-auto md:max-h-[85vh]"
+              className="fixed inset-0 md:inset-auto md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 w-full md:max-w-2xl bg-white md:rounded-[2.5rem] shadow-2xl z-[210] overflow-hidden flex flex-col md:h-auto md:max-h-[85vh]"
             >
               <div className="p-6 md:p-8 border-b border-slate-50 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-4">
@@ -1002,13 +1002,13 @@ export default function Liturgies() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsModalOpen(false)}
-              className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50"
+              className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200]"
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="fixed inset-0 md:inset-auto md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 w-full md:max-w-2xl bg-white md:rounded-[2.5rem] shadow-2xl z-[60] overflow-hidden flex flex-col h-full md:h-auto md:max-h-[90vh]"
+              className="fixed inset-0 md:inset-auto md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 w-full md:max-w-2xl bg-white md:rounded-[2.5rem] shadow-2xl z-[210] overflow-hidden flex flex-col h-full md:h-auto md:max-h-[90vh]"
             >
               <div className="p-6 md:p-8 flex items-center justify-between border-b border-slate-100 shrink-0">
                 <div className="flex items-center gap-4">

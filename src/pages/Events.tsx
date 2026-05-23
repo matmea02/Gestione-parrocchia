@@ -1066,7 +1066,7 @@ const Events: React.FC = () => {
 
       {/* Registrations Management Modal */}
       {selectedEventForRegistrations && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-0 md:p-4 z-[55]">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-0 md:p-4 z-[200]">
           <div className="bg-white md:rounded-[2.5rem] w-full max-w-6xl h-full md:max-h-[95vh] overflow-hidden shadow-2xl flex flex-col">
             {/* Header */}
             <div className="p-6 md:p-8 border-b border-slate-100 flex items-center justify-between bg-white z-10 shrink-0">
@@ -1296,7 +1296,7 @@ const Events: React.FC = () => {
 
       {/* Delete Confirmation Modal */}
       {deleteConfirmation && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 z-[70]">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 z-[220]">
           <div className="bg-white rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl space-y-8 text-center">
             <div className="flex flex-col items-center space-y-4">
               <div className="w-20 h-20 bg-red-50 text-red-600 rounded-[2rem] flex items-center justify-center shadow-inner">
@@ -1331,7 +1331,7 @@ const Events: React.FC = () => {
 
       {/* Registration Delete Confirmation Modal */}
       {registrationToDelete && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 z-[80]">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 z-[230]">
           <div className="bg-white rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl space-y-8 text-center">
             <div className="flex flex-col items-center space-y-4">
               <div className="w-20 h-20 bg-red-50 text-red-600 rounded-[2rem] flex items-center justify-center shadow-inner">
@@ -1366,7 +1366,7 @@ const Events: React.FC = () => {
 
       {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[200]">
           <div className="bg-white rounded-2xl w-full max-w-6xl max-h-[90vh] overflow-auto shadow-2xl">
             <div className="p-6 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white z-10">
               <h2 className="text-xl font-bold text-slate-900">

@@ -24,6 +24,7 @@ const Dashboard: React.FC = () => {
   }, [settingsDoc]);
 
   const hasModule = (moduleId: string) => {
+    if (user) return true;
     if (portalUser?.isAdmin) return true;
     if (!currentParish || !portalUser) return false;
     const pData = portalUser.permissions?.[currentParish.id];
