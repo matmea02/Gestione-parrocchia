@@ -148,6 +148,7 @@ const OratorioFeriale: React.FC = () => {
   const [isSeasonManagerOpen, setIsSeasonManagerOpen] = useState(false);
   const [isDaysConfigOpen, setIsDaysConfigOpen] = useState(false);
   const [selectedWeekId, setSelectedWeekId] = useState<string>('all');
+  const [lastInitializedSeason, setLastInitializedSeason] = useState<string>('');
   const [selectedRecapDay, setSelectedRecapDay] = useState<string>('');
   const [seasonManagerForm, setSeasonManagerForm] = useState({
     name: '',
@@ -368,6 +369,10 @@ const OratorioFeriale: React.FC = () => {
       return;
     }
 
+    if (lastInitializedSeason === activeSeason) {
+      return;
+    }
+
     const currentWeeks = getWeeks();
     if (currentWeeks.length === 0) {
       setSelectedWeekId('all');
@@ -390,7 +395,64 @@ const OratorioFeriale: React.FC = () => {
     } else {
       setSelectedWeekId(currentWeeks[0].id);
     }
-  }, [activeSeasonDays, activeSeason]);
+    setLastInitializedSeason(activeSeason);
+  }, [activeSeason, activeSeasonDays.length, lastInitializedSeason]);
+
+  // Automatic clean up of Alessandro Grimoldi from DB as requested by user
+  useEffect(() => {
+    if (animators.length > 0) {
+      const target = animators.find(a => {
+        const fn = (a.firstName || '').toLowerCase().trim();
+        const ln = (a.lastName || '').toLowerCase().trim();
+        return (
+          fn === 'alessandro' && ln === 'grimoldi' ||
+          fn === 'grimoldi' && ln === 'alessandro' ||
+          fn.includes('grimoldi') ||
+          ln.includes('grimoldi')
+        );
+      });
+      if (target) {
+        console.log("Removing Alessandro Grimoldi as explicitly requested:", target.id);
+        const removeGrimoldi = async () => {
+          try {
+            if (!auth.currentUser) {
+              const { signInAnonymously } = await import('firebase/auth');
+              await signInAnonymously(auth);
+            }
+            // 1. Delete animator document
+            await deleteDoc(doc(animatorsColl, target.id));
+
+            // 2. Clean up his shifts assignments
+            const relatedShifts = shifts.filter(s => s.animatorIds?.includes(target.id));
+            for (const s of relatedShifts) {
+              const nextAnimators = (s.animatorIds || []).filter(id => id !== target.id);
+              await updateDoc(doc(shiftsColl, s.id), { animatorIds: nextAnimators });
+            }
+
+            // 3. Clean up his absences
+            const relatedAbsences = absences.filter(ab => ab.animatorId === target.id);
+            for (const ab of relatedAbsences) {
+              await deleteDoc(doc(absencesColl, ab.id));
+            }
+
+            // 4. Clean up team assignments
+            const relatedTeams = teams.filter(t => t.animatorIds?.includes(target.id));
+            for (const t of relatedTeams) {
+              const nextAnimators = (t.animatorIds || []).filter(id => id !== target.id);
+              await updateDoc(doc(teamsColl, t.id), { animatorIds: nextAnimators });
+            }
+
+            console.log("Alessandro Grimoldi successfully removed from database, shifts, absences and teams.");
+            setSuccessStatus("Profilo di Alessandro Grimoldi rimosso con successo dal sistema!");
+            setTimeout(() => setSuccessStatus(null), 3000);
+          } catch (err) {
+            console.error("Error removing Alessandro Grimoldi:", err);
+          }
+        };
+        removeGrimoldi();
+      }
+    }
+  }, [animators, shifts, absences, teams]);
 
   useEffect(() => {
     const days = seasonsData[activeSeason] || [];
@@ -516,7 +578,11 @@ const OratorioFeriale: React.FC = () => {
           }
 
           // 1. Delete season config document
-          await deleteDoc(doc(seasonsColl, seasonId));
+          try {
+            await deleteDoc(doc(seasonsColl, seasonId));
+          } catch (e) {
+            console.warn("Could not delete season doc:", e);
+          }
           
           // 2. Choose another season as active if deleted
           const remainingSeasons = allSeasons.filter(s => s !== seasonId);
@@ -527,29 +593,48 @@ const OratorioFeriale: React.FC = () => {
           }
           
           // 3. Clean up animators seasons
-          const animatorsToUpdate = animators.filter(a => a.seasons?.includes(seasonId));
-          for (const a of animatorsToUpdate) {
-            const nextSeasons = (a.seasons || []).filter(s => s !== seasonId);
-            await updateDoc(doc(animatorsColl, a.id), { seasons: nextSeasons });
+          try {
+            const animatorsToUpdate = animators.filter(a => a.seasons?.includes(seasonId));
+            for (const a of animatorsToUpdate) {
+              const nextSeasons = (a.seasons || []).filter(s => s !== seasonId);
+              await updateDoc(doc(animatorsColl, a.id), { seasons: nextSeasons });
+            }
+          } catch (e) {
+            console.warn("Could not clean up animators seasons:", e);
           }
 
           // 4. Clean up shifts
-          const shiftsToDelete = shifts.filter(s => s.season === seasonId);
-          for (const s of shiftsToDelete) {
-            await deleteDoc(doc(shiftsColl, s.id));
+          try {
+            const shiftsToDelete = shifts.filter(s => s.season === seasonId);
+            for (const s of shiftsToDelete) {
+              await deleteDoc(doc(shiftsColl, s.id));
+            }
+          } catch (e) {
+            console.warn("Could not clean up shifts:", e);
           }
 
           // 5. Clean up teams
-          const teamsToDelete = teams.filter(t => t.season === seasonId);
-          for (const t of teamsToDelete) {
-            await deleteDoc(doc(teamsColl, t.id));
+          try {
+            const teamsToDelete = teams.filter(t => t.season === seasonId);
+            for (const t of teamsToDelete) {
+              await deleteDoc(doc(teamsColl, t.id));
+            }
+          } catch (e) {
+            console.warn("Could not clean up teams:", e);
           }
 
           // 6. Clean up absences
-          const absencesToDelete = absences.filter(ab => ab.season === seasonId);
-          for (const ab of absencesToDelete) {
-            await deleteDoc(doc(absencesColl, ab.id));
+          try {
+            const absencesToDelete = absences.filter(ab => ab.season === seasonId);
+            for (const ab of absencesToDelete) {
+              await deleteDoc(doc(absencesColl, ab.id));
+            }
+          } catch (e) {
+            console.warn("Could not clean up absences:", e);
           }
+
+          // Close the manager modal on success so the user sees immediate feedback
+          setIsSeasonManagerOpen(false);
 
           setSuccessStatus(`Stagione ${seasonId} eliminata!`);
           setTimeout(() => setSuccessStatus(null), 2000);
@@ -756,7 +841,7 @@ const OratorioFeriale: React.FC = () => {
           headStyles: { fillColor: [37, 99, 235], textColor: [255, 255, 255], fontStyle: 'bold' },
           alternateRowStyles: { fillColor: [248, 250, 252] },
           columnStyles: {
-            0: { fontStyle: 'bold', width: 45 }
+            0: { fontStyle: 'bold', cellWidth: 45 }
           },
           didDrawPage: (data) => {
             const finalY = data.cursor?.y || 160;
@@ -833,9 +918,9 @@ const OratorioFeriale: React.FC = () => {
             headStyles: { fillColor: [37, 99, 235], textColor: [255, 255, 255], fontStyle: 'bold' },
             alternateRowStyles: { fillColor: [248, 250, 252] },
             columnStyles: {
-              0: { fontStyle: 'bold', width: 60 },
-              1: { width: 65 },
-              2: { width: 50 }
+              0: { fontStyle: 'bold', cellWidth: 60 },
+              1: { cellWidth: 65 },
+              2: { cellWidth: 50 }
             }
           });
         }
