@@ -270,6 +270,41 @@ const Calendar: React.FC = () => {
     }
   };
 
+  const handleEventDropOrResize = async (info: any) => {
+    const isVirtual = info.event.extendedProps?.isVirtual || 
+                     info.event.extendedProps?.isCatechism || 
+                     info.event.extendedProps?.isRoomBooking || 
+                     info.event.id?.startsWith('virtual-') || 
+                     info.event.id?.startsWith('room-');
+                     
+    if (isVirtual) {
+      alert("Le funzioni liturgiche, gli impegni delle aule e i gruppi di catechismo non possono essere spostati tramite trascinamento. Modificali direttamente nelle loro sezioni dedicate.");
+      info.revert();
+      return;
+    }
+
+    try {
+      const eventId = info.event.id;
+      const startStr = info.event.startStr.slice(0, 16);
+      let endStr = info.event.endStr ? info.event.endStr.slice(0, 16) : null;
+      
+      if (!endStr) {
+        const startDate = new Date(info.event.start);
+        startDate.setHours(startDate.getHours() + 1);
+        endStr = startDate.toISOString().slice(0, 16);
+      }
+
+      await updateDoc(doc(calEventsColl, eventId), {
+        start: startStr,
+        end: endStr
+      });
+    } catch (error) {
+      console.error("Errore durante lo spostamento o ridimensionamento dell'evento:", error);
+      alert("Errore durante il salvataggio dell'orario modificato. L'operazione è stata annullata.");
+      info.revert();
+    }
+  };
+
   const handleDeleteEvent = async () => {
     if (!selectedEvent?.id) {
       alert("Errore: ID evento non trovato.");
@@ -894,6 +929,8 @@ const Calendar: React.FC = () => {
             editable={true}
             select={handleDateSelect}
             eventClick={handleEventClick}
+            eventDrop={handleEventDropOrResize}
+            eventResize={handleEventDropOrResize}
             eventContent={(eventInfo) => {
               const { isRoomBooking, requesterName, rooms, purpose, isCatechism, catechistName, year, name } = eventInfo.event.extendedProps;
               

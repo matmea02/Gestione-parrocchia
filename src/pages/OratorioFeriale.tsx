@@ -422,8 +422,12 @@ const OratorioFeriale: React.FC = () => {
         const removeGrimoldi = async () => {
           try {
             if (!auth.currentUser) {
-              const { signInAnonymously } = await import('firebase/auth');
-              await signInAnonymously(auth);
+              try {
+                const { signInAnonymously } = await import('firebase/auth');
+                await signInAnonymously(auth);
+              } catch (authErr: any) {
+                console.warn("Silent anonymous sign-in skipped (auth disabled or restricted):", authErr.message || authErr);
+              }
             }
             // 1. Delete animator document
             await deleteDoc(doc(animatorsColl, target.id));
@@ -581,9 +585,13 @@ const OratorioFeriale: React.FC = () => {
         try {
           if (!auth.currentUser) {
             console.log("Nessun utente autenticato su Firebase. Tentativo di sign-in anonimo...");
-            const { signInAnonymously } = await import('firebase/auth');
-            await signInAnonymously(auth);
-            console.log("Sign-in anonimo completato con successo!");
+            try {
+              const { signInAnonymously } = await import('firebase/auth');
+              await signInAnonymously(auth);
+              console.log("Sign-in anonimo completato con successo!");
+            } catch (authErr: any) {
+              console.warn("Sign-in anonimo saltato (disabilitato o limitato):", authErr.message || authErr);
+            }
           }
 
           console.log(`[Season delete] Executing resilient deletion/cleanup of season ${seasonId}`);
@@ -682,9 +690,13 @@ const OratorioFeriale: React.FC = () => {
     try {
       if (!auth.currentUser) {
         console.log("Nessun utente autenticato su Firebase. Tentativo di sign-in anonimo...");
-        const { signInAnonymously } = await import('firebase/auth');
-        await signInAnonymously(auth);
-        console.log("Sign-in anonimo completato con successo!");
+        try {
+          const { signInAnonymously } = await import('firebase/auth');
+          await signInAnonymously(auth);
+          console.log("Sign-in anonimo completato con successo!");
+        } catch (authErr: any) {
+          console.warn("Sign-in anonimo saltato (disabilitato o limitato):", authErr.message || authErr);
+        }
       }
 
       const targetAnimators = animators.filter(belongsToSeason);
@@ -1592,9 +1604,13 @@ const OratorioFeriale: React.FC = () => {
         try {
           if (!auth.currentUser) {
             console.log("Nessun utente autenticato su Firebase. Tentativo di sign-in anonimo...");
-            const { signInAnonymously } = await import('firebase/auth');
-            await signInAnonymously(auth);
-            console.log("Sign-in anonimo completato con successo!");
+            try {
+              const { signInAnonymously } = await import('firebase/auth');
+              await signInAnonymously(auth);
+              console.log("Sign-in anonimo completato con successo!");
+            } catch (authErr: any) {
+              console.warn("Sign-in anonimo saltato (disabilitato o limitato):", authErr.message || authErr);
+            }
           }
           console.log(`Eliminazione in corso di docId: ${id} nel percorso: ${coll.path}. Utente auth: ${auth.currentUser?.uid || 'Nessuno'}`);
           await deleteDoc(doc(coll, id));

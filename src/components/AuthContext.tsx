@@ -51,7 +51,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Sign in anonymously if firebase auth isn't already active to satisfy security rules
       if (!auth.currentUser) {
-        signInAnonymously(auth).catch(e => console.error("Session restore anonymous sign-in failed", e));
+        signInAnonymously(auth).catch(e => console.warn("Session restore anonymous sign-in skipped/disabled:", e.message || e));
       }
 
       // Setup real-time listener for the portal user document
@@ -139,8 +139,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!auth.currentUser) {
         try {
           await signInAnonymously(auth);
-        } catch (e) {
-          console.error("Portal login: Anonymous sign-in failed", e);
+        } catch (e: any) {
+          console.warn("Portal login: Anonymous sign-in skipped/disabled (using local public rules instead):", e.message || e);
         }
       }
       
