@@ -85,6 +85,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setPortalUser(null);
   };
 
+  useEffect(() => {
+    if (!user && !portalUser) return;
+
+    const INACTIVITY_LIMIT = 10 * 60 * 1000; // 10 minutes
+    let timeoutId: any;
+
+    const logoutUser = () => {
+      logout();
+    };
+
+    const resetTimer = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(logoutUser, INACTIVITY_LIMIT);
+    };
+
+    const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
+
+    resetTimer();
+
+    events.forEach(event => {
+      window.addEventListener(event, resetTimer);
+    });
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      events.forEach(event => {
+        window.removeEventListener(event, resetTimer);
+      });
+    };
+  }, [user, portalUser]);
+
   const loginWithGoogle = async () => {
     await signInWithPopup(auth, googleProvider);
   };

@@ -1,48 +1,8 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Global helpers
-    function isSignedIn() { 
-      return request.auth != null; 
-    }
-    
-    function isAdmin() {
-      return isSignedIn();
-    }
-    
-    function isValidId(id) { 
-      return id is string && id.size() <= 128; 
-    }
-
-    // Parishes rules
-    match /parishes/{parishId} {
-      allow read: if true;
-      allow write: if isSignedIn();
-
-      // This matches any document in any subcollection of a parish
-      match /{subcollection}/{docId} {
-        allow read: if true;
-        allow write: if isSignedIn();
-        
-        // Deeply nested subcollections (e.g. settings/parish)
-        match /{allSubcollections=**} {
-          allow read: if true;
-          allow write: if isSignedIn();
-        }
-      }
-    }
-
-    // Portal Users rules
-    match /portal_users/{userId} {
-      allow read: if true;
-      allow write: if isSignedIn();
-    }
-
-    // Default catch-all
     match /{document=**} {
-      allow read: if true;
-      allow write: if isSignedIn();
+      allow read, write: if true;
     }
   }
 }

@@ -8,7 +8,8 @@ import {
   updateDoc, 
   setDoc,
   query, 
-  orderBy 
+  orderBy,
+  writeBatch 
 } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { useParish, useParishCollection, useParishDoc } from '../components/ParishContext';
@@ -179,6 +180,8 @@ const OratorioFeriale: React.FC = () => {
     onConfirm: () => Promise<void>;
   } | null>(null);
 
+  const [deleteModalError, setDeleteModalError] = useState<string | null>(null);
+
   // Forms
   const [animatorForm, setAnimatorForm] = useState({
     firstName: '',
@@ -312,9 +315,6 @@ const OratorioFeriale: React.FC = () => {
     ...animators.flatMap(a => a.seasons || [])
   ])).filter(s => s && s.trim() !== '');
 
-  if (allSeasons.length === 0) {
-    allSeasons.push('2026', '2025');
-  }
   allSeasons.sort((a, b) => b.localeCompare(a));
 
   useEffect(() => {
@@ -343,6 +343,12 @@ const OratorioFeriale: React.FC = () => {
       });
       setSeasonsData(result);
       setLoading(false);
+
+      // Auto-provision a default season '2026' only if the collection is completely empty
+      if (snap.empty) {
+        setDoc(doc(seasonsColl, '2026'), { days: [], createdAt: new Date().toISOString() })
+          .catch(err => console.error("Could not create default season in Firebase", err));
+      }
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'oratorio_seasons'));
 
     const unsubParish = onSnapshot(parishSettingsDoc, (docSnap) => {
@@ -563,12 +569,15 @@ const OratorioFeriale: React.FC = () => {
   };
 
   const handleDeleteSeason = (seasonId: string) => {
+    setDeleteModalError(null);
     setDeleteConfirmation({
       isOpen: true,
       title: 'Elimina Stagione',
       message: `Sei sicuro di voler eliminare la stagione "${seasonId}"? Questo eliminerà i dati di configurazione dei giorni della stagione feriale, le iscrizioni degli animatori, i turni, le squadre e le assenze associate.`,
       onConfirm: async () => {
         setIsSaving(true);
+        setDeleteModalError(null);
+        setErrorStatus(null);
         try {
           if (!auth.currentUser) {
             console.log("Nessun utente autenticato su Firebase. Tentativo di sign-in anonimo...");
@@ -577,73 +586,91 @@ const OratorioFeriale: React.FC = () => {
             console.log("Sign-in anonimo completato con successo!");
           }
 
+          console.log(`[Season delete] Executing resilient deletion/cleanup of season ${seasonId}`);
+
           // 1. Delete season config document
           try {
             await deleteDoc(doc(seasonsColl, seasonId));
-          } catch (e) {
-            console.warn("Could not delete season doc:", e);
+            console.log(`[Season delete] Season config deleted`);
+          } catch (e: any) {
+            console.error("[Season delete] Error deleting season doc:", e);
+            throw new Error(`Impossibile eliminare la configurazione della stagione: ${e.message || e}`);
           }
-          
-          // 2. Choose another season as active if deleted
+
+          // 2. Clean up animators seasons
+          const animatorsToUpdate = animators.filter(a => a.seasons?.includes(seasonId));
+          console.log(`[Season delete] Updating ${animatorsToUpdate.length} animators`);
+          await Promise.all(
+            animatorsToUpdate.map(async (a) => {
+              try {
+                const nextSeasons = (a.seasons || []).filter(s => s !== seasonId);
+                await updateDoc(doc(animatorsColl, a.id), { seasons: nextSeasons });
+              } catch (e: any) {
+                console.warn(`[Season delete] Could not update seasons for animator ${a.id}:`, e);
+              }
+            })
+          );
+
+          // 3. Clean up shifts
+          const shiftsToDelete = shifts.filter(s => s.season === seasonId);
+          console.log(`[Season delete] Deleting ${shiftsToDelete.length} shifts`);
+          await Promise.all(
+            shiftsToDelete.map(async (s) => {
+              try {
+                await deleteDoc(doc(shiftsColl, s.id));
+              } catch (e: any) {
+                console.warn(`[Season delete] Could not delete shift ${s.id}:`, e);
+              }
+            })
+          );
+
+          // 4. Clean up teams
+          const teamsToDelete = teams.filter(t => t.season === seasonId);
+          console.log(`[Season delete] Deleting ${teamsToDelete.length} teams`);
+          await Promise.all(
+            teamsToDelete.map(async (t) => {
+              try {
+                await deleteDoc(doc(teamsColl, t.id));
+              } catch (e: any) {
+                console.warn(`[Season delete] Could not delete team ${t.id}:`, e);
+              }
+            })
+          );
+
+          // 5. Clean up absences
+          const absencesToDelete = absences.filter(ab => ab.season === seasonId);
+          console.log(`[Season delete] Deleting ${absencesToDelete.length} absences`);
+          await Promise.all(
+            absencesToDelete.map(async (ab) => {
+              try {
+                await deleteDoc(doc(absencesColl, ab.id));
+              } catch (e: any) {
+                console.warn(`[Season delete] Could not delete absence ${ab.id}:`, e);
+              }
+            })
+          );
+
+          console.log(`[Season delete] Resilient cleanup completed successfully!`);
+
+          // 6. Choose another season as active if deleted
           const remainingSeasons = allSeasons.filter(s => s !== seasonId);
           if (activeSeason === seasonId) {
             const fallback = remainingSeasons[0] || '2026';
             setActiveSeason(fallback);
             localStorage.setItem('oratorio_active_season', fallback);
           }
-          
-          // 3. Clean up animators seasons
-          try {
-            const animatorsToUpdate = animators.filter(a => a.seasons?.includes(seasonId));
-            for (const a of animatorsToUpdate) {
-              const nextSeasons = (a.seasons || []).filter(s => s !== seasonId);
-              await updateDoc(doc(animatorsColl, a.id), { seasons: nextSeasons });
-            }
-          } catch (e) {
-            console.warn("Could not clean up animators seasons:", e);
-          }
-
-          // 4. Clean up shifts
-          try {
-            const shiftsToDelete = shifts.filter(s => s.season === seasonId);
-            for (const s of shiftsToDelete) {
-              await deleteDoc(doc(shiftsColl, s.id));
-            }
-          } catch (e) {
-            console.warn("Could not clean up shifts:", e);
-          }
-
-          // 5. Clean up teams
-          try {
-            const teamsToDelete = teams.filter(t => t.season === seasonId);
-            for (const t of teamsToDelete) {
-              await deleteDoc(doc(teamsColl, t.id));
-            }
-          } catch (e) {
-            console.warn("Could not clean up teams:", e);
-          }
-
-          // 6. Clean up absences
-          try {
-            const absencesToDelete = absences.filter(ab => ab.season === seasonId);
-            for (const ab of absencesToDelete) {
-              await deleteDoc(doc(absencesColl, ab.id));
-            }
-          } catch (e) {
-            console.warn("Could not clean up absences:", e);
-          }
 
           // Close the manager modal on success so the user sees immediate feedback
           setIsSeasonManagerOpen(false);
+          setDeleteConfirmation(null);
 
           setSuccessStatus(`Stagione ${seasonId} eliminata!`);
           setTimeout(() => setSuccessStatus(null), 2000);
         } catch (err: any) {
-          console.error(err);
-          setErrorStatus(`Errore durante l'eliminazione della stagione: ${err?.message || err?.toString() || ""}`);
+          console.error('[Season delete error]', err);
+          setDeleteModalError(`Errore durante l'eliminazione: ${err?.message || err?.toString() || ""}`);
         } finally {
           setIsSaving(false);
-          setDeleteConfirmation(null);
         }
       }
     });
@@ -694,7 +721,7 @@ const OratorioFeriale: React.FC = () => {
     }
   };
 
-  const generateAbsencesPDF = (mode: 'weekly' | 'totals') => {
+  const generateAbsencesPDF = (mode: 'daily' | 'weekly' | 'totals') => {
     try {
       const doc = new jsPDF({
         orientation: 'landscape',
@@ -705,6 +732,11 @@ const OratorioFeriale: React.FC = () => {
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 14;
+
+      // Determine active target day for daily mode
+      const targetDay = displayedDays.includes(selectedRecapDay)
+        ? selectedRecapDay
+        : (displayedDays[0] || selectedRecapDay || activeSeasonDays[0]);
 
       const drawHeader = (pdf: jsPDF) => {
         const blueColor = [37, 99, 235];
@@ -755,10 +787,10 @@ const OratorioFeriale: React.FC = () => {
         }
         
         // Blue Info Box at Top Right
-        const boxWidth = 85;
-        const boxHeight = 20;
+        const boxWidth = 95;
+        const boxHeight = 22;
         const boxX = pageWidth - margin - boxWidth;
-        const boxY = 7;
+        const boxY = 5;
 
         pdf.setFillColor(blueColor[0], blueColor[1], blueColor[2]);
         pdf.roundedRect(boxX, boxY, boxWidth, boxHeight, 2, 2, 'F');
@@ -768,18 +800,33 @@ const OratorioFeriale: React.FC = () => {
         pdf.setTextColor(255, 255, 255);
         pdf.setFont('helvetica', 'bold');
         pdf.text('RILEVAMENTO ASSENZE', boxX + boxWidth / 2, boxY + 6, { align: 'center' });
-        pdf.text('ANIMATORI CAMP feriale', boxX + boxWidth / 2, boxY + 10, { align: 'center' });
+        pdf.text('ANIMATORI CAMP FERIALE', boxX + boxWidth / 2, boxY + 10, { align: 'center' });
         
         // Active Season or Week range inside info box
         pdf.setFontSize(8);
         pdf.setFont('helvetica', 'normal');
-        const subtitleText = mode === 'weekly' 
-          ? `Settimana: ${selectedWeekId === 'all' ? 'Tutte' : (weeks.find(w => w.id === selectedWeekId)?.label || '')}`
-          : 'Report Totale Camp feriale';
+        let subtitleText = '';
+        if (mode === 'daily') {
+          let formattedDate = targetDay;
+          if (targetDay) {
+            const parts = targetDay.split('-');
+            if (parts.length === 3) {
+              const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 12, 0, 0);
+              formattedDate = format(d, 'eeee dd/MM/yyyy', { locale: it }).toUpperCase();
+            }
+          } else {
+            formattedDate = 'Nessuna Giornata';
+          }
+          subtitleText = `Giornata: ${formattedDate}`;
+        } else if (mode === 'weekly') {
+          subtitleText = `Settimana: ${selectedWeekId === 'all' ? 'Tutte' : (weeks.find(w => w.id === selectedWeekId)?.label || '')}`;
+        } else {
+          subtitleText = 'Report Totale Camp feriale';
+        }
         pdf.text(subtitleText, boxX + boxWidth / 2, boxY + 14.5, { align: 'center' });
         pdf.setFont('helvetica', 'italic');
         pdf.setFontSize(7);
-        pdf.text(`Stagione: ${activeSeason}`, boxX + boxWidth / 2, boxY + 18, { align: 'center' });
+        pdf.text(`Stagione feriale: ${activeSeason}`, boxX + boxWidth / 2, boxY + 18.5, { align: 'center' });
 
         // Bottom Decorative Line
         pdf.setDrawColor(blueColor[0], blueColor[1], blueColor[2]);
@@ -789,6 +836,67 @@ const OratorioFeriale: React.FC = () => {
 
       // Call header block
       drawHeader(doc);
+
+      if (mode === 'daily') {
+        if (!targetDay) {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(12);
+          doc.setTextColor(100, 116, 139);
+          doc.text('Selezionare una giornata per scaricare il report giornaliero delle assenze.', margin, 45);
+          doc.save(`assenze_oratorio_${activeSeason}_giornaliero.pdf`);
+          return;
+        }
+
+        const colHeaders = ['ANIMATORE', 'PRESENZA / STATO', 'SPECIFICA ORARIO', 'NOTE / MOTIVAZIONE'];
+        const tableRows = activeSeasonAnimatorsList.map(anim => {
+          const matchingAbs = absences.find(ab => ab.animatorId === anim.id && ab.date === targetDay);
+          const name = `${anim.lastName.toUpperCase()} ${anim.firstName}`;
+          
+          if (!matchingAbs) {
+            return [name, 'PRESENTE', 'Intera Giornata (Standard)', '-'];
+          }
+          
+          let statusText = 'ASSENTE';
+          let timeText = 'Intero Giorno';
+          if (matchingAbs.reason === 'Solo Mattina') {
+            statusText = 'PARZIALE';
+            timeText = 'Solo Mattina (8:30 - 13:30)';
+          } else if (matchingAbs.reason === 'Solo Pomeriggio') {
+            statusText = 'PARZIALE';
+            timeText = 'Solo Pomeriggio (13:30 - 17:30)';
+          } else if (matchingAbs.startTime || matchingAbs.endTime) {
+            statusText = 'ORARIO SPECIFICO';
+            timeText = `${matchingAbs.startTime || ''} - ${matchingAbs.endTime || ''}`;
+          }
+          
+          const detailText = matchingAbs.reason || '-';
+          return [name, statusText, timeText, detailText];
+        });
+
+        autoTable(doc, {
+          startY: 40,
+          head: [colHeaders],
+          body: tableRows,
+          theme: 'grid',
+          styles: { fontSize: 8.5, cellPadding: 3.5, font: 'helvetica' },
+          headStyles: { fillColor: [37, 99, 235], textColor: [255, 255, 255], fontStyle: 'bold' },
+          alternateRowStyles: { fillColor: [248, 250, 252] },
+          columnStyles: {
+            0: { fontStyle: 'bold', cellWidth: 60 },
+            1: { cellWidth: 40 },
+            2: { cellWidth: 60 }
+          }
+        });
+        
+        const parts = targetDay.split('-');
+        let formattedFilenameDate = targetDay;
+        if (parts.length === 3) {
+          const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 12, 0, 0);
+          formattedFilenameDate = format(d, 'dd-MM-yyyy');
+        }
+        doc.save(`Report_Assenze_Camp_${activeSeason}_Giornaliero_${formattedFilenameDate}.pdf`);
+        return;
+      }
 
       // Days selection
       const daysToPrint = mode === 'weekly' 
@@ -926,10 +1034,448 @@ const OratorioFeriale: React.FC = () => {
         }
       }
 
-      doc.save(`Report_Assenze_Camp_${activeSeason}_${mode === 'weekly' ? 'Settimana' : 'Totale'}.pdf`);
+      doc.save(`Report_Assenze_Camp_${activeSeason}_${mode === 'weekly' ? 'Settimanale' : 'Stagionale'}.pdf`);
     } catch (err) {
       console.error('PDF Generation Error:', err);
       setErrorStatus('Impossibile generare il file PDF. Verificare i dati.');
+    }
+  };
+
+  const generateDailyTeamsPDF = (targetDay: string) => {
+    try {
+      if (!targetDay) {
+        setErrorStatus('Selezionare una giornata per scaricare il report giornaliero delle squadre.');
+        return;
+      }
+
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 14;
+
+      const drawHeader = (pdf: jsPDF, titleName: string) => {
+        const blueColor = [37, 99, 235];
+
+        // Header Background
+        pdf.setFillColor(248, 250, 252);
+        pdf.rect(0, 0, pageWidth, 32, 'F');
+        
+        // Parish Logo
+        if (parishInfo.logoUrl) {
+          try {
+            pdf.addImage(parishInfo.logoUrl, 'PNG', margin, 6, 20, 20);
+          } catch (e) {
+            pdf.setDrawColor(30, 58, 138);
+            pdf.circle(margin + 10, 16, 10, 'S');
+          }
+        }
+
+        const textStartX = parishInfo.logoUrl ? 38 : margin;
+
+        // Parish Info Header
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(11);
+        pdf.setTextColor(51, 65, 85);
+        pdf.text(parishInfo.name || 'Parrocchia', textStartX, 10);
+        
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8);
+        pdf.setTextColor(100, 116, 139);
+
+        let hRowY = 14;
+        if (parishInfo.diocese) {
+          pdf.text(parishInfo.diocese, textStartX, hRowY);
+          hRowY += 3.5;
+        }
+        if (parishInfo.pastoralCommunity) {
+          pdf.text(parishInfo.pastoralCommunity, textStartX, hRowY);
+          hRowY += 3.5;
+        }
+        pdf.text(parishInfo.address || '', textStartX, hRowY);
+        
+        // Blue Info Box at Top Right
+        const boxWidth = 92;
+        const boxHeight = 22;
+        const boxX = pageWidth - margin - boxWidth;
+        const boxY = 5;
+
+        pdf.setFillColor(blueColor[0], blueColor[1], blueColor[2]);
+        pdf.roundedRect(boxX, boxY, boxWidth, boxHeight, 2, 2, 'F');
+
+        // Status / Title inside info box
+        pdf.setFontSize(8.5);
+        pdf.setTextColor(255, 255, 255);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text(titleName, boxX + boxWidth / 2, boxY + 6, { align: 'center' });
+        
+        pdf.setFontSize(7.5);
+        pdf.setFont('helvetica', 'normal');
+        const dObj = new Date(targetDay);
+        const formattedFullDate = format(dObj, "eeee dd MMMM yyyy", { locale: it }).toUpperCase();
+        pdf.text(formattedFullDate, boxX + boxWidth / 2, boxY + 11.5, { align: 'center' });
+        pdf.setFont('helvetica', 'italic');
+        pdf.setFontSize(7);
+        pdf.text(`Stagione: ${activeSeason}`, boxX + boxWidth / 2, boxY + 17, { align: 'center' });
+
+        // Bottom Decorative Line
+        pdf.setDrawColor(blueColor[0], blueColor[1], blueColor[2]);
+        pdf.setLineWidth(0.6);
+        pdf.line(0, 32, pageWidth, 32);
+      };
+
+      drawHeader(doc, 'REPORT GIORNALIERO SQUADRE');
+
+      // Add actual title
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.setTextColor(30, 41, 59);
+      doc.text('ELENCO PRESENTI PER SQUADRE', margin, 42);
+
+      // Gather present animators grouped by team
+      const presentRows: any[] = [];
+      filteredTeams.forEach(t => {
+        t.animatorIds.forEach(aid => {
+          const anim = animators.find(a => a.id === aid);
+          if (!anim) return;
+          const isAbsent = absences.find(ab => ab.animatorId === aid && ab.date === targetDay);
+          if (!isAbsent) {
+            presentRows.push([
+              t.name.toUpperCase(),
+              `${anim.lastName.toUpperCase()} ${anim.firstName}`,
+              'PRESENTE'
+            ]);
+          }
+        });
+      });
+
+      if (presentRows.length === 0) {
+        presentRows.push(['-', 'Nessun animatore presente registrato', '-']);
+      }
+
+      autoTable(doc, {
+        startY: 46,
+        head: [['SQUADRA', 'NOME E COGNOME ANIMATORE', 'PRESENZA']],
+        body: presentRows,
+        theme: 'grid',
+        styles: { fontSize: 8.5, cellPadding: 3, font: 'helvetica' },
+        headStyles: { fillColor: [37, 99, 235], textColor: [255, 255, 255], fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 50 },
+          1: { cellWidth: 90 },
+          2: { fontStyle: 'italic', cellWidth: 40, textColor: [16, 185, 129] }
+        }
+      });
+
+      // Now add absent animators of that day
+      const finalYBeforeAbs = (doc as any).lastAutoTable?.finalY || 100;
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(220, 38, 38);
+      doc.text('ELENCO ASSENTI DEL GIORNO (TUTTE LE SQUADRE)', margin, finalYBeforeAbs + 10);
+
+      const absentRows: any[] = [];
+      filteredTeams.forEach(t => {
+        t.animatorIds.forEach(aid => {
+          const anim = animators.find(a => a.id === aid);
+          if (!anim) return;
+          const isAbsent = absences.find(ab => ab.animatorId === aid && ab.date === targetDay);
+          if (isAbsent) {
+            let details = 'Tutto il giorno';
+            if (isAbsent.reason === 'Solo Mattina') {
+              details = 'Assente Pomeriggio (Fa Solo Mattina)';
+            } else if (isAbsent.reason === 'Solo Pomeriggio') {
+              details = 'Assente Mattina (Fa Solo Pomeriggio)';
+            } else if (isAbsent.startTime || isAbsent.endTime) {
+              details = `${isAbsent.startTime || ''} - ${isAbsent.endTime || ''}`;
+            }
+            if (isAbsent.reason && isAbsent.reason !== 'Solo Mattina' && isAbsent.reason !== 'Solo Pomeriggio') {
+              details += ` (${isAbsent.reason})`;
+            }
+
+            absentRows.push([
+              t.name.toUpperCase(),
+              `${anim.lastName.toUpperCase()} ${anim.firstName}`,
+              details
+            ]);
+          }
+        });
+      });
+
+      if (absentRows.length === 0) {
+        absentRows.push(['-', 'Nessun animatore assente registrato', '-']);
+      }
+
+      autoTable(doc, {
+        startY: finalYBeforeAbs + 14,
+        head: [['SQUADRA', 'NOME E COGNOME ANIMATORE', 'DETTAGLIO ASSENZA']],
+        body: absentRows,
+        theme: 'grid',
+        styles: { fontSize: 8.5, cellPadding: 3, font: 'helvetica' },
+        headStyles: { fillColor: [220, 38, 38], textColor: [255, 255, 255], fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [254, 242, 242] },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 50 },
+          1: { cellWidth: 70 },
+          2: { cellWidth: 60 }
+        }
+      });
+
+      const parts = targetDay.split('-');
+      let formattedFilenameDate = targetDay;
+      if (parts.length === 3) {
+        const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 12, 0, 0);
+        formattedFilenameDate = format(d, 'dd-MM-yyyy');
+      }
+
+      setSuccessStatus('Download completato!');
+      setTimeout(() => setSuccessStatus(null), 2000);
+
+      doc.save(`Report_Presenze_Squadre_Giornaliero_${activeSeason}_${formattedFilenameDate}.pdf`);
+    } catch (err) {
+      console.error('PDF Generation Error:', err);
+      setErrorStatus('Impossibile generare il PDF giornaliero delle squadre.');
+    }
+  };
+
+  const generateWeeklyTeamsPDF = () => {
+    try {
+      const daysToPrint = selectedWeekId === 'all' 
+        ? activeSeasonDays.slice(0, 10)
+        : (weeks.find(w => w.id === selectedWeekId)?.days || []);
+
+      if (daysToPrint.length === 0) {
+        setErrorStatus('Nessun giorno feriale programmato per la settimana selezionata.');
+        return;
+      }
+
+      const doc = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 14;
+
+      const drawHeader = (pdf: jsPDF, titleName: string) => {
+        const blueColor = [37, 99, 235];
+
+        // Header Background
+        pdf.setFillColor(248, 250, 252);
+        pdf.rect(0, 0, pageWidth, 32, 'F');
+        
+        // Parish Logo
+        if (parishInfo.logoUrl) {
+          try {
+            pdf.addImage(parishInfo.logoUrl, 'PNG', margin, 6, 20, 20);
+          } catch (e) {
+            pdf.setDrawColor(30, 58, 138);
+            pdf.circle(margin + 10, 16, 10, 'S');
+          }
+        }
+
+        const textStartX = parishInfo.logoUrl ? 38 : margin;
+
+        // Parish Info Header
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(11);
+        pdf.setTextColor(51, 65, 85);
+        pdf.text(parishInfo.name || 'Parrocchia', textStartX, 10);
+        
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8);
+        pdf.setTextColor(100, 116, 139);
+
+        let hRowY = 14;
+        if (parishInfo.diocese) {
+          pdf.text(parishInfo.diocese, textStartX, hRowY);
+          hRowY += 3.5;
+        }
+        if (parishInfo.pastoralCommunity) {
+          pdf.text(parishInfo.pastoralCommunity, textStartX, hRowY);
+          hRowY += 3.5;
+        }
+        pdf.text(parishInfo.address || '', textStartX, hRowY);
+        
+        // Blue Info Box at Top Right
+        const boxWidth = 92;
+        const boxHeight = 22;
+        const boxX = pageWidth - margin - boxWidth;
+        const boxY = 5;
+
+        pdf.setFillColor(blueColor[0], blueColor[1], blueColor[2]);
+        pdf.roundedRect(boxX, boxY, boxWidth, boxHeight, 2, 2, 'F');
+
+        // Status / Title inside info box
+        pdf.setFontSize(8.5);
+        pdf.setTextColor(255, 255, 255);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text(titleName, boxX + boxWidth / 2, boxY + 6, { align: 'center' });
+        
+        pdf.setFontSize(7.5);
+        pdf.setFont('helvetica', 'normal');
+        const weekLabel = selectedWeekId === 'all' ? 'Tutta la Stagione' : (weeks.find(w => w.id === selectedWeekId)?.label || '');
+        pdf.text(`Riferimento: ${weekLabel}`, boxX + boxWidth / 2, boxY + 11.5, { align: 'center' });
+        pdf.setFont('helvetica', 'italic');
+        pdf.setFontSize(7);
+        pdf.text(`Stagione: ${activeSeason}`, boxX + boxWidth / 2, boxY + 17, { align: 'center' });
+
+        // Bottom Decorative Line
+        pdf.setDrawColor(blueColor[0], blueColor[1], blueColor[2]);
+        pdf.setLineWidth(0.6);
+        pdf.line(0, 32, pageWidth, 32);
+      };
+
+      drawHeader(doc, 'REPORT SETTIMANALE SQUADRE');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(30, 41, 59);
+      doc.text('RIEPILOGO SETTIMANALE PRESENZE SQUADRE', margin, 42);
+
+      // Build Headers: SQUADRA, ANIMATORE, then the days
+      const colHeaders = [
+        'SQUADRA',
+        'ANIMATORE',
+        ...daysToPrint.map(dayStr => {
+          const parts = dayStr.split('-');
+          const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 12, 0, 0);
+          return `${format(d, 'eee dd/MM', { locale: it }).toUpperCase()}`;
+        })
+      ];
+
+      const rows: any[] = [];
+      filteredTeams.forEach(t => {
+        t.animatorIds.forEach(aid => {
+          const anim = animators.find(a => a.id === aid);
+          if (!anim) return;
+          const rowData = [
+            t.name.toUpperCase(),
+            `${anim.lastName.toUpperCase()} ${anim.firstName}`
+          ];
+
+          daysToPrint.forEach(day => {
+            const ab = absences.find(a => a.animatorId === aid && a.date === day);
+            if (!ab) {
+              rowData.push('PRESENTE');
+            } else if (ab.reason === 'Solo Mattina') {
+              rowData.push('Solo Mat.');
+            } else if (ab.reason === 'Solo Pomeriggio') {
+              rowData.push('Solo Pom.');
+            } else if (ab.startTime || ab.endTime) {
+              rowData.push(`Parz: ${ab.startTime || ''}-${ab.endTime || ''}`);
+            } else {
+              rowData.push('ASSENTE');
+            }
+          });
+
+          rows.push(rowData);
+        });
+      });
+
+      if (rows.length === 0) {
+        rows.push(['-', 'Nessun animatore associato', ...daysToPrint.map(() => '-')]);
+      }
+
+      autoTable(doc, {
+        startY: 46,
+        head: [colHeaders],
+        body: rows,
+        theme: 'grid',
+        styles: { fontSize: 7.5, cellPadding: 2, font: 'helvetica' },
+        headStyles: { fillColor: [37, 99, 235], textColor: [255, 255, 255], fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 35 },
+          1: { fontStyle: 'bold', cellWidth: 50 }
+        }
+      });
+
+      // Now add weekly absences summary section
+      const finalYBeforeAbs = (doc as any).lastAutoTable?.finalY || 100;
+      let nextY = finalYBeforeAbs + 8;
+      
+      // If bottom of page is near, put on a new page
+      if (nextY > pageHeight - 35) {
+        doc.addPage();
+        drawHeader(doc, 'REPORT SETTIMANALE SQUADRE');
+        nextY = 40;
+      }
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(220, 38, 38);
+      doc.text('RIEPILOGO ASSENZE DELLA SETTIMANA', margin, nextY);
+
+      const weeklyAbsenceRows: any[] = [];
+      daysToPrint.forEach(day => {
+        const dObj = new Date(day);
+        const dayLabel = format(dObj, "eeee dd/MM", { locale: it }).toUpperCase();
+
+        filteredTeams.forEach(t => {
+          t.animatorIds.forEach(aid => {
+            const anim = animators.find(a => a.id === aid);
+            if (!anim) return;
+            const ab = absences.find(a => a.animatorId === aid && a.date === day);
+            if (ab) {
+              let details = 'Tutto il giorno';
+              if (ab.reason === 'Solo Mattina') {
+                details = 'Solo Mattina';
+              } else if (ab.reason === 'Solo Pomeriggio') {
+                details = 'Solo Pomeriggio';
+              } else if (ab.startTime || ab.endTime) {
+                details = `${ab.startTime || ''} - ${ab.endTime || ''}`;
+              }
+              if (ab.reason && ab.reason !== 'Solo Mattina' && ab.reason !== 'Solo Pomeriggio') {
+                details += ` (${ab.reason})`;
+              }
+
+              weeklyAbsenceRows.push([
+                dayLabel,
+                t.name.toUpperCase(),
+                `${anim.lastName.toUpperCase()} ${anim.firstName}`,
+                details
+              ]);
+            }
+          });
+        });
+      });
+
+      if (weeklyAbsenceRows.length === 0) {
+        weeklyAbsenceRows.push(['-', '-', 'Nessuna assenza registrata questa settimana', '-']);
+      }
+
+      autoTable(doc, {
+        startY: nextY + 4,
+        head: [['GIORNO feriale', 'SQUADRA', 'ANIMATORE ASSENTE', 'DETTAGLIO ASSENZA']],
+        body: weeklyAbsenceRows,
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 2.5, font: 'helvetica' },
+        headStyles: { fillColor: [220, 38, 38], textColor: [255, 255, 255], fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [254, 242, 242] },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 45 },
+          1: { fontStyle: 'bold', cellWidth: 40 },
+          2: { cellWidth: 65 }
+        }
+      });
+
+      setSuccessStatus('Download completato!');
+      setTimeout(() => setSuccessStatus(null), 2000);
+
+      const weekFilename = selectedWeekId === 'all' ? 'stagione' : selectedWeekId;
+      doc.save(`Report_Presenze_Squadre_Settimanale_${activeSeason}_${weekFilename}.pdf`);
+    } catch (err) {
+      console.error('PDF Generation Error:', err);
+      setErrorStatus('Impossibile generare il PDF settimanale delle squadre.');
     }
   };
 
@@ -1516,99 +2062,226 @@ const OratorioFeriale: React.FC = () => {
 
         {/* Squadre Tab */}
         {activeTab === 'teams' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {filteredTeams.length > 0 ? filteredTeams.map((t, idx) => (
-              <div key={`${t.id}-${idx}`} className="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col hover:shadow-lg transition-all border-t-8" style={{ borderTopColor: t.color }}>
-                <div className="p-8 pb-4 flex items-start justify-between">
-                  <div>
-                    <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tight">{t.name}</h2>
-                    <div className="flex flex-wrap gap-2 mt-4">
-                      {t.animatorIds.map((aid, itemIdx) => {
-                        const anim = animators.find(a => a.id === aid);
-                        return anim ? (
-                          <span key={`${t.id}-anim-${aid}-${itemIdx}`} className="text-[9px] font-black uppercase tracking-widest px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg border border-blue-100 italic flex items-center gap-1.5">
-                            <UserCheck size={10} />
-                            {anim.lastName} {anim.firstName[0]}.
-                          </span>
-                        ) : null;
-                      })}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button onClick={() => handleOpenModal('teams', t)} className="p-3 text-blue-600 hover:bg-blue-50 rounded-2xl transition-colors"><Pencil size={20} /></button>
-                    <button onClick={() => handleDelete(t.id, teamsColl)} className="p-3 text-red-600 hover:bg-red-50 rounded-2xl transition-colors"><Trash2 size={20} /></button>
-                  </div>
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* Day Selector and PDF export panel */}
+            <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col xl:flex-row items-center justify-between gap-6">
+              <div className="flex-1 space-y-2 w-full">
+                <h3 className="text-sm font-black text-slate-900 uppercase italic tracking-widest flex items-center gap-2">
+                  <Calendar size={18} className="text-blue-600" />
+                  Rilevamento Squadre per il giorno:
+                </h3>
+                
+                {/* Scrollable Day Selection Pills */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-2 pt-1 scrollbar-thin scrollbar-thumb-slate-200">
+                  {activeSeasonDays.map(day => {
+                    const isSel = day === activeRecapDay;
+                    const dayObj = new Date(day);
+                    const formattedDateStr = format(dayObj, 'eee dd/MM', { locale: it });
+                    return (
+                      <button
+                        key={`teams-day-${day}`}
+                        type="button"
+                        onClick={() => setSelectedRecapDay(day)}
+                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider shrink-0 transition-all ${
+                          isSel 
+                            ? 'bg-blue-600 text-white shadow-md shadow-blue-100 scale-102 font-bold' 
+                            : 'bg-slate-50 text-slate-600 border border-slate-100 hover:border-slate-300'
+                        }`}
+                      >
+                        {formattedDateStr}
+                      </button>
+                    );
+                  })}
+                  {activeSeasonDays.length === 0 && (
+                    <span className="text-xs text-slate-400 font-bold italic">Nessun giorno impostato nella stagione.</span>
+                  )}
                 </div>
+                
+                {activeRecapDay && (
+                  <p className="text-xs font-bold text-slate-400 uppercase italic tracking-wider flex items-center gap-1">
+                    🟢 Visualizzazione date del Camp: <span className="text-slate-800 font-black ml-1 uppercase">{format(new Date(activeRecapDay), 'eeee dd MMMM yyyy', { locale: it })}</span>
+                  </p>
+                )}
+              </div>
 
-                {/* Absences Tracker Grid inside Team Cards */}
-                <div className="px-8 pb-4">
-                  <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl flex flex-col gap-2">
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pb-1 border-b border-white flex items-center gap-2">
-                      <UserX size={12} className="text-red-500 animate-pulse" />
-                      Assenze feriali animatori della squadra
-                    </span>
-                    {t.animatorIds.length > 0 ? t.animatorIds.map((aid, itemIdx) => {
-                      const anim = animators.find(a => a.id === aid);
-                      if (!anim) return null;
-                      return (
-                        <div key={`${t.id}-absence-${aid}-${itemIdx}`} className="flex flex-col md:flex-row md:items-center justify-between gap-2 py-2 border-b border-dashed border-slate-200/50 last:border-none">
-                          <span className="text-[11px] font-bold text-slate-700 italic shrink-0">{anim.lastName} {anim.firstName[0]}.</span>
-                          <div className="flex items-center gap-1 overflow-x-auto py-0.5 max-w-full">
-                            {activeSeasonDays.map(day => {
-                              const isAbsent = absences.some(ab => ab.animatorId === aid && ab.date === day);
-                              const weekdayStr = format(new Date(day), 'eeeee d', { locale: it });
-                              return (
-                                <div 
-                                  key={day}
-                                  className={`w-7 h-7 rounded-lg flex flex-col items-center justify-center text-[8px] font-black transition-all shrink-0 ${
-                                    isAbsent 
-                                      ? 'bg-red-500 text-white ring-2 ring-red-100' 
-                                      : 'bg-emerald-500 text-white ring-2 ring-emerald-100'
-                                  }`}
-                                  title={`${format(new Date(day), 'dd/MM/yyyy')}: ${isAbsent ? 'Assente' : 'Presente'}`}
-                                >
-                                  <span className="text-[5px] uppercase opacity-75">{weekdayStr[0]}</span>
-                                  <span className="leading-none">{format(new Date(day), 'd')}</span>
-                                </div>
-                              );
-                            })}
-                            {activeSeasonDays.length === 0 && (
-                              <span className="text-[9px] text-slate-400 font-bold italic">Nessun giorno feriale impostato</span>
+              {/* PDF Actions */}
+              <div className="flex flex-wrap gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => generateDailyTeamsPDF(activeRecapDay)}
+                  className="flex items-center gap-2 bg-indigo-50 border border-indigo-150 text-indigo-700 hover:bg-indigo-100 px-4 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all shadow-sm active:scale-95"
+                >
+                  <Download size={13} className="text-indigo-600" />
+                  Scarica Presenti/Assenti Oggi
+                </button>
+                <button
+                  type="button"
+                  onClick={() => generateWeeklyTeamsPDF()}
+                  className="flex items-center gap-2 bg-emerald-50 border border-emerald-150 text-emerald-700 hover:bg-emerald-100 px-4 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all shadow-sm active:scale-95"
+                >
+                  <Download size={13} className="text-emerald-600" />
+                  Scarica Settimanale Squadre
+                </button>
+              </div>
+            </div>
+
+            {/* Teams Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {filteredTeams.length > 0 ? filteredTeams.map((t, idx) => {
+                const teamAnimators = t.animatorIds.map(aid => animators.find(a => a.id === aid)).filter(Boolean) as Animator[];
+                const presentToday = teamAnimators.filter(anim => !absences.some(ab => ab.animatorId === anim.id && ab.date === activeRecapDay));
+                const absentToday = teamAnimators.filter(anim => absences.some(ab => ab.animatorId === anim.id && ab.date === activeRecapDay));
+
+                return (
+                  <div key={`${t.id}-${idx}`} className="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col hover:shadow-lg transition-all border-t-8" style={{ borderTopColor: t.color }}>
+                    <div className="p-8 pb-4 flex items-start justify-between">
+                      <div>
+                        <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tight">{t.name}</h2>
+                        <div className="flex flex-wrap gap-2 mt-4">
+                          {teamAnimators.map((anim, itemIdx) => (
+                            <span key={`${t.id}-anim-${anim.id}-${itemIdx}`} className="text-[9px] font-black uppercase tracking-widest px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg border border-blue-100 italic flex items-center gap-1.5">
+                              <UserCheck size={10} />
+                              {anim.lastName} {anim.firstName[0]}.
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => handleOpenModal('teams', t)} className="p-3 text-blue-600 hover:bg-blue-50 rounded-2xl transition-colors"><Pencil size={20} /></button>
+                        <button onClick={() => handleDelete(t.id, teamsColl)} className="p-3 text-red-600 hover:bg-red-50 rounded-2xl transition-colors"><Trash2 size={20} /></button>
+                      </div>
+                    </div>
+
+                    {/* Dynamic Present / Absent Animators lists for Selected Day */}
+                    <div className="px-8 pb-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-5 rounded-3xl border border-slate-100">
+                        {/* Present Block */}
+                        <div className="space-y-2">
+                          <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest flex items-center gap-1.5 bg-emerald-50 px-2.5 py-1 rounded-full w-fit">
+                            <CheckCircle2 size={11} className="text-emerald-500 animate-pulse" />
+                            Presenti oggi ({presentToday.length})
+                          </span>
+                          <div className="space-y-1.5 max-h-36 overflow-y-auto custom-scrollbar">
+                            {presentToday.map(anim => (
+                              <div key={anim.id} className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5 py-0.5 italic">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                                <span className="truncate">{anim.lastName} {anim.firstName}</span>
+                              </div>
+                            ))}
+                            {presentToday.length === 0 && (
+                              <p className="text-[10px] text-slate-400 font-extrabold uppercase italic">Nessuno presente</p>
                             )}
                           </div>
                         </div>
-                      );
-                    }) : (
-                      <p className="text-[10px] text-slate-400 uppercase font-black italic py-1 text-center">Nessun animatore associato</p>
-                    )}
-                  </div>
-                </div>
 
-                <div className="p-8 pt-2 flex-grow">
-                  <div className="bg-slate-50/50 rounded-2xl p-4 border border-slate-100">
-                    <div className="flex items-center justify-between mb-4">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic flex items-center gap-2">
-                        <Users size={12} /> Elenco Ragazzi ({t.kids?.length || 0})
-                      </span>
-                    </div>
-                    <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar pr-2">
-                      {t.kids && t.kids.map((k, idx) => (
-                        <div key={idx} className="flex items-center justify-between py-2 border-b border-white last:border-0">
-                          <span className="text-xs font-bold text-slate-700 italic">{k.lastName} {k.firstName}</span>
-                          {k.note && <span className="text-[9px] text-slate-400 italic truncate max-w-[120px]">{k.note}</span>}
+                        {/* Absent Block */}
+                        <div className="space-y-2 border-t sm:border-t-0 sm:border-l border-slate-200/50 pt-3 sm:pt-0 sm:pl-4">
+                          <span className="text-[10px] font-black text-red-650 uppercase tracking-widest flex items-center gap-1.5 bg-red-50 px-2.5 py-1 rounded-full w-fit">
+                            <AlertCircle size={11} className="text-red-500" />
+                            Assenti oggi ({absentToday.length})
+                          </span>
+                          <div className="space-y-1.5 max-h-36 overflow-y-auto custom-scrollbar">
+                            {absentToday.map(anim => {
+                              const ab = absences.find(a => a.animatorId === anim.id && a.date === activeRecapDay);
+                              let spec = 'Tutto il giorno';
+                              if (ab?.reason === 'Solo Mattina') {
+                                spec = 'Solo Mattina';
+                              } else if (ab?.reason === 'Solo Pomeriggio') {
+                                spec = 'Solo Pomeriggio';
+                              } else if (ab?.startTime || ab?.endTime) {
+                                spec = `${ab.startTime || ''}-${ab.endTime || ''}`;
+                              }
+                              const reason = ab?.reason && ab.reason !== 'Solo Mattina' && ab.reason !== 'Solo Pomeriggio' ? `(${ab.reason})` : '';
+
+                              return (
+                                <div key={anim.id} className="text-[11px] font-medium text-slate-550 flex flex-col gap-0.5 py-0.5 border-b border-dashed border-slate-100 last:border-none">
+                                  <span className="font-bold text-red-650 flex items-center gap-1.5 italic">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0 animate-ping" />
+                                    {anim.lastName} {anim.firstName[0]}.
+                                  </span>
+                                  <span className="text-[9px] text-slate-400 font-mono pl-3 italic">
+                                    {spec} {reason}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                            {absentToday.length === 0 && (
+                              <p className="text-[10px] text-slate-400 font-extrabold uppercase italic">Nessun assente</p>
+                            )}
+                          </div>
                         </div>
-                      ))}
-                      {(!t.kids || t.kids.length === 0) && <p className="text-[10px] text-slate-300 uppercase font-black italic py-4 text-center">Nessun ragazzo assegnato</p>}
+                      </div>
+                    </div>
+
+                    {/* Absences Tracker Grid inside Team Cards Row */}
+                    <div className="px-8 pb-4">
+                      <div className="bg-slate-50 border border-slate-100 p-4 rounded-3xl flex flex-col gap-2">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pb-1 border-b border-white flex items-center gap-2">
+                          <UserX size={12} className="text-red-500" />
+                          Storico presenze nel Camp
+                        </span>
+                        {teamAnimators.length > 0 ? teamAnimators.map((anim, itemIdx) => {
+                          return (
+                            <div key={`${t.id}-absence-${anim.id}-${itemIdx}`} className="flex flex-col md:flex-row md:items-center justify-between gap-2 py-2 border-b border-dashed border-slate-200/50 last:border-none">
+                              <span className="text-[11px] font-bold text-slate-700 italic shrink-0">{anim.lastName} {anim.firstName[0]}.</span>
+                              <div className="flex items-center gap-1 overflow-x-auto py-0.5 max-w-full">
+                                {activeSeasonDays.map(day => {
+                                  const isAbsent = absences.some(ab => ab.animatorId === anim.id && ab.date === day);
+                                  const weekdayStr = format(new Date(day), 'eeeee d', { locale: it });
+                                  return (
+                                    <div 
+                                      key={day}
+                                      className={`w-7 h-7 rounded-lg flex flex-col items-center justify-center text-[8px] font-black transition-all shrink-0 ${
+                                        isAbsent 
+                                          ? 'bg-red-500 text-white ring-2 ring-red-105' 
+                                          : 'bg-emerald-500 text-white ring-2 ring-emerald-105'
+                                      }`}
+                                      title={`${format(new Date(day), 'dd/MM/yyyy')}: ${isAbsent ? 'Assente' : 'Presente'}`}
+                                    >
+                                      <span className="text-[5px] uppercase opacity-75">{weekdayStr[0]}</span>
+                                      <span className="leading-none">{format(new Date(day), 'd')}</span>
+                                    </div>
+                                  );
+                                })}
+                                {activeSeasonDays.length === 0 && (
+                                  <span className="text-[9px] text-slate-400 font-bold italic">Nessun giorno feriale impostato</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        }) : (
+                          <p className="text-[10px] text-slate-400 uppercase font-black italic py-1 text-center">Nessun animatore associato</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="p-8 pt-2 flex-grow">
+                      <div className="bg-slate-50/50 rounded-3xl p-4 border border-slate-100 font-normal">
+                        <div className="flex items-center justify-between mb-4">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic flex items-center gap-2">
+                            <Users size={12} /> Elenco Ragazzi ({t.kids?.length || 0})
+                          </span>
+                        </div>
+                        <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar pr-2">
+                          {t.kids && t.kids.map((k, idx) => (
+                            <div key={idx} className="flex items-center justify-between py-2 border-b border-white last:border-0">
+                              <span className="text-xs font-bold text-slate-700 italic">{k.lastName} {k.firstName}</span>
+                              {k.note && <span className="text-[9px] text-slate-400 italic truncate max-w-[120px]">{k.note}</span>}
+                            </div>
+                          ))}
+                          {(!t.kids || t.kids.length === 0) && <p className="text-[10px] text-slate-300 uppercase font-black italic py-4 text-center">Nessun ragazzo assegnato</p>}
+                        </div>
+                      </div>
                     </div>
                   </div>
+                );
+              }) : (
+                <div className="col-span-full py-20 text-center bg-white rounded-[3rem] border-2 border-dashed border-slate-100">
+                  <Trophy size={48} className="mx-auto text-slate-200 mb-4" />
+                  <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Nessuna squadra attiva per la stagione {activeSeason}</p>
                 </div>
-              </div>
-            )) : (
-              <div className="col-span-full py-20 text-center bg-white rounded-[3rem] border-2 border-dashed border-slate-100">
-                <Trophy size={48} className="mx-auto text-slate-200 mb-4" />
-                <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Nessuna squadra attiva per la stagione {activeSeason}</p>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
 
@@ -1654,6 +2327,15 @@ const OratorioFeriale: React.FC = () => {
                 <div className="flex flex-wrap gap-2 pt-2 lg:pt-0">
                   <button
                     type="button"
+                    onClick={() => generateAbsencesPDF('daily')}
+                    className="flex items-center gap-2 bg-white text-slate-700 border border-slate-200 hover:border-blue-300 hover:text-blue-600 px-4 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all shadow-sm active:scale-95"
+                    title="Scarica in formato PDF l'elenco delle presenze e assenze per la giornata selezionata"
+                  >
+                    <Download size={13} className="text-amber-500" />
+                    Scarica Report Giornaliero
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => generateAbsencesPDF('weekly')}
                     className="flex items-center gap-2 bg-white text-slate-700 border border-slate-200 hover:border-blue-300 hover:text-blue-600 px-4 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all shadow-sm active:scale-95"
                     title="Scarica in formato PDF la settimana di assenze correntemente visualizzata"
@@ -1668,7 +2350,7 @@ const OratorioFeriale: React.FC = () => {
                     title="Scarica in formato PDF il riepilogo totale di tutte le assenze della stagione"
                   >
                     <Download size={13} className="text-white" />
-                    Scarica Griglia Totale
+                    Scarica Report Stagionale
                   </button>
                 </div>
               </div>
@@ -2417,6 +3099,12 @@ const OratorioFeriale: React.FC = () => {
               </button>
             </div>
             <div className="p-8 space-y-6">
+              {errorStatus && (
+                <div className="bg-red-50 border border-red-100 p-4 rounded-2xl flex items-center gap-3 text-red-800 text-xs font-bold animate-in fade-in duration-300">
+                  <AlertCircle size={16} className="text-red-500 shrink-0 cursor-pointer" onClick={() => setErrorStatus(null)} />
+                  <span className="text-[10px] leading-snug">{errorStatus}</span>
+                </div>
+              )}
               {/* Form editing / creation */}
               {seasonManagerForm.isEditing ? (
                 <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 space-y-3">
@@ -2907,23 +3595,32 @@ const OratorioFeriale: React.FC = () => {
               <p className="text-xs font-bold text-slate-500 leading-relaxed uppercase tracking-wider">
                 {deleteConfirmation.message}
               </p>
+
+              {deleteModalError && (
+                <div className="bg-red-50 border border-red-100 p-4 rounded-xl flex items-start gap-2.5 text-red-800 text-xs font-bold animate-in fade-in duration-300">
+                  <AlertCircle size={14} className="text-red-500 shrink-0 mt-0.5" />
+                  <span className="text-[10px] leading-snug">{deleteModalError}</span>
+                </div>
+              )}
               
               <div className="flex gap-2 justify-end pt-2">
                 <button
                   type="button"
+                  disabled={isSaving}
                   onClick={() => setDeleteConfirmation(null)}
-                  className="bg-slate-105 text-slate-600 border border-slate-100 text-[9px] font-black uppercase tracking-widest px-5 py-3 rounded-full hover:bg-slate-100 transition active:scale-95"
+                  className="bg-slate-105 text-slate-600 border border-slate-100 text-[9px] font-black uppercase tracking-widest px-5 py-3 rounded-full hover:bg-slate-100 transition active:scale-95 disabled:opacity-50"
                 >
                   Annulla
                 </button>
                 <button
                   type="button"
+                  disabled={isSaving}
                   onClick={async () => {
                     await deleteConfirmation.onConfirm();
                   }}
-                  className="bg-red-500 hover:bg-red-650 text-white text-[9px] font-black uppercase tracking-widest px-5 py-3 rounded-full hover:shadow-lg hover:shadow-red-50 transition active:scale-95"
+                  className="bg-red-500 hover:bg-red-650 text-white text-[9px] font-black uppercase tracking-widest px-5 py-3 rounded-full hover:shadow-lg hover:shadow-red-50 transition active:scale-95 disabled:opacity-50 min-w-[80px] text-center"
                 >
-                  Elimina
+                  {isSaving ? 'Eliminazione...' : 'Elimina'}
                 </button>
               </div>
             </div>

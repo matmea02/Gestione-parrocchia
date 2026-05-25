@@ -368,11 +368,7 @@ const Dashboard: React.FC = () => {
     return result.sort((a, b) => a.date.getTime() - b.date.getTime()).slice(0, 5);
   };
 
-  const todaysAgenda = getTodaysAgenda().filter(item => {
-    if (item.type === 'calendar') return hasModule('calendar');
-    if (item.type === 'liturgy') return hasModule('liturgy');
-    return true;
-  });
+  const todaysAgenda = getTodaysAgenda();
   const upcomingLiturgies = getUpcomingLiturgies();
   const upcomingCatechism = getUpcomingCatechism();
 
