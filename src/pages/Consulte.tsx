@@ -330,116 +330,248 @@ const Consulte: React.FC = () => {
       const docHtml = parser.parseFromString(html, 'text/html');
       const body = docHtml.body;
 
-      let currentX = 20;
+      interface TextSegment {
+        text: string;
+        fontSize: number;
+        fontStyle: string;
+      }
 
-      const walk = (node: Node, styles: any) => {
+      interface Token {
+        text: string;
+        fontSize: number;
+        fontStyle: string;
+      }
+
+      const collectSegments = (node: Node, parentStyles: { fontSize: number; fontStyle: string }): TextSegment[] => {
+        let segments: TextSegment[] = [];
+        
         if (node.nodeType === Node.TEXT_NODE) {
           const text = node.textContent || '';
-          if (!text.trim() && text.length === 0) return;
-          
-          doc.setFontSize(styles.fontSize || 10);
-          doc.setFont('helvetica', styles.fontStyle || 'normal');
-          
-          const align = styles.align || 'left';
-          
-          // Special case: if we are at the start of a block, reset X and potentially move Y
-          if (styles.isBlockStart) {
-            currentY += (styles.fontSize * 0.5) + 2;
-            currentX = align === 'center' ? 105 : (align === 'right' ? 190 : 20);
-            styles.isBlockStart = false;
+          if (text.length > 0) {
+            segments.push({
+              text,
+              fontSize: parentStyles.fontSize,
+              fontStyle: parentStyles.fontStyle
+            });
           }
-
-          const maxWidth = 170;
-          const splitLines = doc.splitTextToSize(text, maxWidth);
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+          const el = node as HTMLElement;
+          const currentStyles = { ...parentStyles };
           
-          splitLines.forEach((line: string, index: number) => {
-            if (currentY > pageHeight - 20) {
-              doc.addPage();
-              currentY = 20;
-            }
-            
-            doc.text(line, currentX, currentY, { align: align });
-            
-            if (index < splitLines.length - 1) {
-              currentY += (styles.fontSize * 0.5) + 3;
-              currentX = align === 'center' ? 105 : (align === 'right' ? 190 : 20);
+          const tag = el.tagName.toLowerCase();
+          if (tag === 'strong' || tag === 'b') {
+            currentStyles.fontStyle = currentStyles.fontStyle.includes('italic') ? 'bolditalic' : 'bold';
+          } else if (tag === 'em' || tag === 'i') {
+            currentStyles.fontStyle = currentStyles.fontStyle.includes('bold') ? 'bolditalic' : 'italic';
+          }
+          
+          el.childNodes.forEach(child => {
+            segments = segments.concat(collectSegments(child, currentStyles));
+          });
+        }
+        
+        return segments;
+      };
+
+      const wrapTokens = (tokens: Token[], maxWidth: number): Token[][] => {
+        const resultLines: Token[][] = [];
+        let currentLine: Token[] = [];
+        let currentLineWidth = 0;
+        
+        for (let i = 0; i < tokens.length; i++) {
+          const token = tokens[i];
+          
+          doc.setFontSize(token.fontSize);
+          doc.setFont('helvetica', token.fontStyle);
+          const tokenWidth = doc.getTextWidth(token.text);
+          
+          const isWhitespace = /^\s+$/.test(token.text);
+          if (isWhitespace && currentLine.length === 0) {
+            continue;
+          }
+          
+          if (currentLineWidth + tokenWidth <= maxWidth) {
+            currentLine.push(token);
+            currentLineWidth += tokenWidth;
+          } else {
+            if (isWhitespace) {
+              if (currentLine.length > 0) {
+                resultLines.push(currentLine);
+                currentLine = [];
+                currentLineWidth = 0;
+              }
             } else {
-              // For the last line, update X for potential inline brothers
-              if (align === 'left') {
-                currentX += doc.getTextWidth(line) + 1;
+              if (currentLine.length > 0) {
+                resultLines.push(currentLine);
+                currentLine = [token];
+                currentLineWidth = tokenWidth;
+              } else {
+                currentLine.push(token);
+                resultLines.push(currentLine);
+                currentLine = [];
+                currentLineWidth = 0;
               }
             }
-          });
-          return;
+          }
         }
+        
+        if (currentLine.length > 0) {
+          resultLines.push(currentLine);
+        }
+        
+        return resultLines;
+      };
 
+      interface BlockItem {
+        node: Node;
+        isListItem: boolean;
+        baseStyles: { fontSize: number; fontStyle: string };
+        align: string;
+      }
+
+      const blocks: BlockItem[] = [];
+
+      const processNodeForBlocks = (node: Node, parentAlign: string) => {
         if (node.nodeType === Node.ELEMENT_NODE) {
           const el = node as HTMLElement;
-          const newStyles = { ...styles };
-          let isBlock = false;
-
-          // Alignment
-          if (el.classList.contains('ql-align-center')) newStyles.align = 'center';
-          else if (el.classList.contains('ql-align-right')) newStyles.align = 'right';
-          else if (el.classList.contains('ql-align-justify')) newStyles.align = 'justify';
-
-          switch (el.tagName.toLowerCase()) {
-            case 'h1':
-              newStyles.fontSize = 16;
-              newStyles.fontStyle = 'bold';
-              isBlock = true;
-              break;
-            case 'h2':
-              newStyles.fontSize = 14;
-              newStyles.fontStyle = 'bold';
-              isBlock = true;
-              break;
-            case 'h3':
-              newStyles.fontSize = 12;
-              newStyles.fontStyle = 'bold';
-              isBlock = true;
-              break;
-            case 'strong':
-            case 'b':
-              newStyles.fontStyle = (newStyles.fontStyle === 'italic') ? 'bolditalic' : 'bold';
-              break;
-            case 'em':
-            case 'i':
-              newStyles.fontStyle = (newStyles.fontStyle === 'bold') ? 'bolditalic' : 'italic';
-              break;
-            case 'p':
-            case 'div':
-              isBlock = true;
-              newStyles.fontSize = 10;
-              break;
-            case 'li':
-              isBlock = true;
-              currentY += 2;
-              doc.setFontSize(10);
-              doc.setFont('helvetica', 'normal');
-              doc.text('•', 15, currentY + 5);
-              currentX = 20;
-              break;
-            case 'br':
-              currentY += 5;
-              currentX = 20;
-              break;
-          }
-
-          if (isBlock) {
-            newStyles.isBlockStart = true;
-          }
-
-          el.childNodes.forEach(child => walk(child, newStyles));
+          const tag = el.tagName.toLowerCase();
           
-          if (isBlock) {
-            currentY += 2;
-            currentX = 20;
+          let currentAlign = parentAlign;
+          if (el.classList.contains('ql-align-center')) currentAlign = 'center';
+          else if (el.classList.contains('ql-align-right')) currentAlign = 'right';
+          else if (el.classList.contains('ql-align-justify')) currentAlign = 'justify';
+
+          if (tag === 'p' || tag === 'div' || tag === 'h1' || tag === 'h2' || tag === 'h3' || tag === 'li' || tag === 'blockquote') {
+            let fontSize = 10;
+            let fontStyle = 'normal';
+            if (tag === 'h1') { fontSize = 16; fontStyle = 'bold'; }
+            else if (tag === 'h2') { fontSize = 14; fontStyle = 'bold'; }
+            else if (tag === 'h3') { fontSize = 12; fontStyle = 'bold'; }
+            
+            blocks.push({
+              node: el,
+              isListItem: tag === 'li',
+              baseStyles: { fontSize, fontStyle },
+              align: currentAlign
+            });
+          } else if (tag === 'ul' || tag === 'ol') {
+            el.childNodes.forEach(child => processNodeForBlocks(child, currentAlign));
+          } else if (tag === 'br') {
+            blocks.push({
+              node: el,
+              isListItem: false,
+              baseStyles: { fontSize: 10, fontStyle: 'normal' },
+              align: currentAlign
+            });
+          } else {
+            const hasDirectText = Array.from(el.childNodes).some(c => c.nodeType === Node.TEXT_NODE && c.textContent?.trim());
+            if (hasDirectText) {
+              blocks.push({
+                node: el,
+                isListItem: false,
+                baseStyles: { fontSize: 10, fontStyle: 'normal' },
+                align: currentAlign
+              });
+            } else {
+              el.childNodes.forEach(child => processNodeForBlocks(child, currentAlign));
+            }
+          }
+        } else if (node.nodeType === Node.TEXT_NODE) {
+          const text = node.textContent || '';
+          if (text.trim().length > 0) {
+            blocks.push({
+              node,
+              isListItem: false,
+              baseStyles: { fontSize: 10, fontStyle: 'normal' },
+              align: parentAlign
+            });
           }
         }
       };
 
-      walk(body, { fontSize: 10, fontStyle: 'normal', align: 'left', isBlockStart: false });
+      body.childNodes.forEach(child => processNodeForBlocks(child, 'left'));
+
+      blocks.forEach(block => {
+        if (block.node.nodeName.toLowerCase() === 'br') {
+          currentY += 5;
+          return;
+        }
+
+        const segments = collectSegments(block.node, block.baseStyles);
+        if (segments.length === 0) {
+          currentY += 4;
+          return;
+        }
+
+        const tokens: Token[] = [];
+        segments.forEach(seg => {
+          const parts = seg.text.split(/(\s+)/);
+          parts.forEach(part => {
+            if (part) {
+              tokens.push({
+                text: part,
+                fontSize: seg.fontSize,
+                fontStyle: seg.fontStyle
+              });
+            }
+          });
+        });
+
+        if (tokens.length === 0) {
+          currentY += 4;
+          return;
+        }
+
+        const wrappedLines = wrapTokens(tokens, 170);
+
+        if (block.isListItem) {
+          currentY += 1.5;
+        } else {
+          currentY += 3;
+        }
+
+        wrappedLines.forEach((line, idx) => {
+          const maxFS = Math.max(...line.map(t => t.fontSize), 10);
+          const lineHeight = maxFS * 0.3527 * 1.35;
+
+          if (currentY + lineHeight > pageHeight - 15) {
+            doc.addPage();
+            currentY = 20;
+          }
+
+          if (block.isListItem && idx === 0) {
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(51, 65, 85);
+            doc.text('•', 15, currentY + (10 * 0.3527 * 1.0));
+          }
+
+          let totalW = 0;
+          line.forEach(t => {
+            doc.setFontSize(t.fontSize);
+            doc.setFont('helvetica', t.fontStyle);
+            totalW += doc.getTextWidth(t.text);
+          });
+
+          let startX = 20;
+          if (block.align === 'center') {
+            startX = 105 - (totalW / 2);
+          } else if (block.align === 'right') {
+            startX = 190 - totalW;
+          }
+
+          let drawX = startX;
+          line.forEach(t => {
+            doc.setFontSize(t.fontSize);
+            doc.setFont('helvetica', t.fontStyle);
+            doc.setTextColor(51, 65, 85);
+            doc.text(t.text, drawX, currentY + (maxFS * 0.3527 * 1.0));
+            drawX += doc.getTextWidth(t.text);
+          });
+
+          currentY += lineHeight;
+        });
+      });
     };
 
     renderHTMLToPDF(council.fullMinutes || '<p>Nessun verbale inserito.</p>');
