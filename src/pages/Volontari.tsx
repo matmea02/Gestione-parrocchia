@@ -51,6 +51,7 @@ interface Volunteer {
   groups?: string[];
   isCouncilMember?: boolean;
   councilGroup?: string;
+  councilGroups?: string[];
   isPortalUser?: boolean;
   portalUsername?: string;
   portalPassword?: string;
@@ -102,6 +103,7 @@ const Volontari: React.FC = () => {
     groups: [] as string[],
     isCouncilMember: false,
     councilGroup: '',
+    councilGroups: [] as string[],
     isPortalUser: false,
     portalUsername: '',
     portalPassword: ''
@@ -247,7 +249,8 @@ const Volontari: React.FC = () => {
         role: form.role,
         groups: form.groups,
         isCouncilMember: form.isCouncilMember,
-        councilGroup: form.isCouncilMember ? form.councilGroup : '',
+        councilGroup: form.isCouncilMember && form.councilGroups.length > 0 ? form.councilGroups[0] : '',
+        councilGroups: form.isCouncilMember ? form.councilGroups : [],
         isPortalUser: form.isPortalUser,
         portalUsername: form.portalUsername,
         portalPassword: form.portalPassword,
@@ -339,6 +342,7 @@ const Volontari: React.FC = () => {
         groups: v.groups || (v.group ? [v.group] : []),
         isCouncilMember: v.isCouncilMember || false,
         councilGroup: v.councilGroup || '',
+        councilGroups: v.councilGroups || (v.councilGroup ? [v.councilGroup] : []),
         isPortalUser: v.isPortalUser || false,
         portalUsername: v.portalUsername || '',
         portalPassword: v.portalPassword || ''
@@ -354,6 +358,7 @@ const Volontari: React.FC = () => {
         groups: [], 
         isCouncilMember: false,
         councilGroup: '',
+        councilGroups: [] as string[],
         isPortalUser: false,
         portalUsername: '',
         portalPassword: ''
@@ -374,6 +379,7 @@ const Volontari: React.FC = () => {
       groups: [], 
       isCouncilMember: false,
       councilGroup: '', 
+      councilGroups: [] as string[],
       isPortalUser: false,
       portalUsername: '',
       portalPassword: ''
@@ -998,21 +1004,38 @@ const Volontari: React.FC = () => {
                       
                       {form.isCouncilMember && (
                         <div className="space-y-3 animate-in slide-in-from-top-4 duration-300">
-                           <label className="text-[10px] font-black uppercase tracking-widest text-blue-600 ml-1">Gruppo di Riferimento</label>
-                           <select
-                            required
-                            value={form.councilGroup}
-                            onChange={(e) => setForm({ ...form, councilGroup: e.target.value })}
-                            className="w-full px-5 py-4 rounded-2xl bg-blue-50 border border-blue-100 shadow-sm focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-sm font-black text-blue-900 appearance-none italic"
-                           >
-                             <option value="">Scegli il tuo gruppo...</option>
-                             {form.groups.map(g => (
-                               <option key={g} value={g}>{g}</option>
-                             ))}
-                             {form.councilGroup && !form.groups.includes(form.councilGroup) && (
-                               <option value={form.councilGroup}>{form.councilGroup}</option>
-                             )}
-                           </select>
+                           <label className="text-[10px] font-black uppercase tracking-widest text-blue-600 ml-1">Gruppi di Riferimento in Consulta (Seleziona uno o più)</label>
+                           <div className="p-5 bg-blue-50/50 rounded-3xl border border-blue-100 shadow-inner min-h-[100px] overflow-y-auto custom-scrollbar">
+                             <div className="flex flex-wrap gap-2">
+                               {form.groups.map(g => (
+                                 <button
+                                   key={g}
+                                   type="button"
+                                   onClick={() => {
+                                     const newCouncilGroups = form.councilGroups.includes(g)
+                                       ? form.councilGroups.filter(cg => cg !== g)
+                                       : [...form.councilGroups, g];
+                                     setForm({ ...form, councilGroups: newCouncilGroups });
+                                   }}
+                                   className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border shadow-sm active:scale-95 ${
+                                     form.councilGroups.includes(g)
+                                       ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-200'
+                                       : 'bg-white text-blue-500 border-blue-100 hover:border-blue-400'
+                                   }`}
+                                 >
+                                   {g}
+                                 </button>
+                               ))}
+                               {form.groups.length === 0 && (
+                                 <p className="text-[10px] font-black uppercase tracking-wider text-blue-400 italic p-2 text-center w-full">
+                                   Seleziona prima i gruppi di appartenenza sopra!
+                                 </p>
+                               )}
+                             </div>
+                           </div>
+                           <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest italic ml-1">
+                             La stessa persona può rappresentare più gruppi all'interno della Consulta Parrocchiale.
+                           </p>
                         </div>
                       )}
                     </div>

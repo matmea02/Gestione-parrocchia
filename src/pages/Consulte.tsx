@@ -88,16 +88,28 @@ const Consulte: React.FC = () => {
     });
 
     const unsubVolunteers = onSnapshot(query(volunteersColl, orderBy('lastName', 'asc')), (snap) => {
-      const volCouncil = snap.docs
+      const volDocs = snap.docs
         .map(doc => ({ id: doc.id, ...doc.data() } as any))
-        .filter(v => v.isCouncilMember === true)
-        .map(v => ({ 
-          id: v.id, 
-          firstName: v.firstName, 
-          lastName: v.lastName, 
-          group: v.councilGroup || ((v.groups && v.groups.length > 0) ? v.groups.join(', ') : (v.group || 'Volontario')),
-          source: 'volunteer' 
-        }));
+        .filter(v => v.isCouncilMember === true);
+
+      const volCouncil: any[] = [];
+      volDocs.forEach(v => {
+        const reprGroups: string[] = v.councilGroups && v.councilGroups.length > 0 
+          ? v.councilGroups 
+          : [v.councilGroup || ((v.groups && v.groups.length > 0) ? v.groups[0] : (v.group || 'Volontario'))];
+
+        reprGroups.forEach((g: string) => {
+          volCouncil.push({
+            id: `${v.id}_${g}`,
+            volunteerId: v.id,
+            firstName: v.firstName,
+            lastName: v.lastName,
+            group: g,
+            source: 'volunteer'
+          });
+        });
+      });
+
       setMembers(volCouncil);
       setLoading(false);
     }, (error) => {
@@ -168,7 +180,18 @@ const Consulte: React.FC = () => {
 
   const handleOpenAttendance = (council: any) => {
     setSelectedCouncil(council);
-    setAttendance(council.attendance || {});
+    const apiAttendance = council.attendance || {};
+    const preparedAttendance: Record<string, boolean> = {};
+    members.forEach(m => {
+      if (apiAttendance[m.id] !== undefined) {
+        preparedAttendance[m.id] = apiAttendance[m.id];
+      } else if (m.volunteerId && apiAttendance[m.volunteerId] !== undefined) {
+        preparedAttendance[m.id] = apiAttendance[m.volunteerId];
+      } else {
+        preparedAttendance[m.id] = false;
+      }
+    });
+    setAttendance(preparedAttendance);
     setIsAttendanceModalOpen(true);
   };
 
@@ -302,7 +325,9 @@ const Consulte: React.FC = () => {
         doc.addPage();
         currentY = 20;
       }
-      const isPresent = councilAttendance[member.id];
+      const isPresent = councilAttendance[member.id] !== undefined 
+        ? councilAttendance[member.id] 
+        : (member.volunteerId && councilAttendance[member.volunteerId] !== undefined ? councilAttendance[member.volunteerId] : false);
       doc.text(`${member.lastName} ${member.firstName}`, 25, currentY + 5);
       doc.text(member.group || '-', 90, currentY + 5);
       doc.text(isPresent ? 'PRESENTE' : 'ASSENTE', 160, currentY + 5);
