@@ -282,11 +282,11 @@ const Events: React.FC = () => {
 
       // Header: Parish Info
       doc.setFillColor(248, 250, 252); // slate-50
-      doc.rect(0, 0, 210, 25, 'F');
+      doc.rect(0, 0, 210, 32, 'F');
       
       if (parishInfo.logoUrl) {
         try {
-          doc.addImage(parishInfo.logoUrl, 'PNG', 14, 4, 18, 18);
+          doc.addImage(parishInfo.logoUrl, 'PNG', 14, 5, 22, 22);
         } catch (e) {
           console.error('Could not add logo to PDF', e);
         }
@@ -295,7 +295,7 @@ const Events: React.FC = () => {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
       doc.setTextColor(51, 65, 85); // slate-700
-      doc.text(parishInfo.name, parishInfo.logoUrl ? 36 : 14, 8);
+      doc.text(parishInfo.name, parishInfo.logoUrl ? 40 : 14, 8);
       
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
@@ -303,17 +303,22 @@ const Events: React.FC = () => {
       
       let headerY = 12;
       if (parishInfo.diocese) {
-        doc.text(parishInfo.diocese, parishInfo.logoUrl ? 36 : 14, headerY);
+        doc.text(parishInfo.diocese, parishInfo.logoUrl ? 40 : 14, headerY);
         headerY += 3.5;
       }
       if (parishInfo.pastoralCommunity) {
-        doc.text(parishInfo.pastoralCommunity, parishInfo.logoUrl ? 36 : 14, headerY);
+        doc.text(parishInfo.pastoralCommunity, parishInfo.logoUrl ? 40 : 14, headerY);
         headerY += 3.5;
       }
-      doc.text(parishInfo.address, parishInfo.logoUrl ? 36 : 14, headerY);
-      if (parishInfo.phone) {
+      if (parishInfo.address) {
+        doc.text(parishInfo.address, parishInfo.logoUrl ? 40 : 14, headerY);
         headerY += 3.5;
-        doc.text(`Tel: ${parishInfo.phone}`, parishInfo.logoUrl ? 36 : 14, headerY);
+      }
+      const contacts: string[] = [];
+      if (parishInfo.phone) contacts.push(`Tel: ${parishInfo.phone}`);
+      if (parishInfo.email) contacts.push(`Email: ${parishInfo.email}`);
+      if (contacts.length > 0) {
+        doc.text(contacts.join(' - '), parishInfo.logoUrl ? 40 : 14, headerY);
       }
 
       // Date Box top right
@@ -322,35 +327,35 @@ const Events: React.FC = () => {
         : 'TUTTO IL PERIODO';
       
       doc.setFillColor(blueColor[0], blueColor[1], blueColor[2]);
-      doc.roundedRect(155, 5, 45, 15, 2, 2, 'F');
+      doc.roundedRect(155, 6, 45, 15, 2, 2, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(9);
       doc.setFont('helvetica', 'bold');
-      doc.text('PERIODO REPORT', 177.5, 11, { align: 'center' });
+      doc.text('PERIODO REPORT', 177.5, 12, { align: 'center' });
       doc.setFontSize(8);
       doc.setFont('helvetica', 'normal');
-      doc.text(rangeText, 177.5, 16, { align: 'center' });
+      doc.text(rangeText, 177.5, 17, { align: 'center' });
 
       // Decorative line
       doc.setDrawColor(blueColor[0], blueColor[1], blueColor[2]);
       doc.setLineWidth(0.5);
-      doc.line(0, 25, 210, 25);
+      doc.line(0, 32, 210, 32);
 
       // Title
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(22);
+      doc.setFontSize(20);
       doc.setTextColor(blueColor[0], blueColor[1], blueColor[2]);
-      doc.text('CALENDARIO EVENTI PARROCCHIALI', 105, 40, { align: 'center' });
+      doc.text('CALENDARIO EVENTI PARROCCHIALI', 105, 44, { align: 'center' });
 
       // Summary Box
       doc.setFillColor(248, 250, 252); // slate-50
       doc.setDrawColor(226, 232, 240); // slate-200
-      doc.roundedRect(14, 48, 182, 8, 2, 2, 'FD');
+      doc.roundedRect(14, 51, 182, 8, 2, 2, 'FD');
       
       doc.setFontSize(9);
       doc.setTextColor(51, 65, 85);
       doc.setFont('helvetica', 'bold');
-      doc.text(`Numero complessivo eventi in elenco: ${pdfEvents.length}`, 19, 53.5);
+      doc.text(`Numero complessivo eventi in elenco: ${pdfEvents.length}`, 19, 56.5);
 
       // Table
       const tableData = pdfEvents.map(e => {
@@ -367,7 +372,7 @@ const Events: React.FC = () => {
       });
 
       autoTable(doc, {
-        startY: 60,
+        startY: 65,
         head: [['Data e Ora', 'Evento', 'Tipo', 'Luogo', 'Prezzo', 'Target']],
         body: tableData,
         theme: 'grid',
@@ -440,11 +445,11 @@ const Events: React.FC = () => {
       
       // Header: Parish Info (More compact)
       doc.setFillColor(248, 250, 252); // slate-50
-      doc.rect(0, 0, 210, 25, 'F');
+      doc.rect(0, 0, 210, 32, 'F');
 
       if (parishInfo.logoUrl) {
         try {
-          doc.addImage(parishInfo.logoUrl, 'PNG', 14, 4, 18, 18);
+          doc.addImage(parishInfo.logoUrl, 'PNG', 14, 5, 22, 22);
         } catch (e) {
           console.error('Could not add logo to PDF', e);
         }
@@ -453,7 +458,7 @@ const Events: React.FC = () => {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
       doc.setTextColor(51, 65, 85); // slate-700
-      doc.text(parishInfo.name, parishInfo.logoUrl ? 36 : 14, 8);
+      doc.text(parishInfo.name, parishInfo.logoUrl ? 40 : 14, 8);
       
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
@@ -461,17 +466,22 @@ const Events: React.FC = () => {
 
       let hRowY = 12;
       if (parishInfo.diocese) {
-        doc.text(parishInfo.diocese, parishInfo.logoUrl ? 36 : 14, hRowY);
+        doc.text(parishInfo.diocese, parishInfo.logoUrl ? 40 : 14, hRowY);
         hRowY += 3.5;
       }
       if (parishInfo.pastoralCommunity) {
-        doc.text(parishInfo.pastoralCommunity, parishInfo.logoUrl ? 36 : 14, hRowY);
+        doc.text(parishInfo.pastoralCommunity, parishInfo.logoUrl ? 40 : 14, hRowY);
         hRowY += 3.5;
       }
-      doc.text(parishInfo.address, parishInfo.logoUrl ? 36 : 14, hRowY);
-      if (parishInfo.phone) {
+      if (parishInfo.address) {
+        doc.text(parishInfo.address, parishInfo.logoUrl ? 40 : 14, hRowY);
         hRowY += 3.5;
-        doc.text(`Tel: ${parishInfo.phone}`, parishInfo.logoUrl ? 36 : 14, hRowY);
+      }
+      const contacts: string[] = [];
+      if (parishInfo.phone) contacts.push(`Tel: ${parishInfo.phone}`);
+      if (parishInfo.email) contacts.push(`Email: ${parishInfo.email}`);
+      if (contacts.length > 0) {
+        doc.text(contacts.join(' - '), parishInfo.logoUrl ? 40 : 14, hRowY);
       }
       
       // Date Box top right
@@ -479,46 +489,46 @@ const Events: React.FC = () => {
       const dateStr = format(eventDate, 'dd/MM/yyyy HH:mm', { locale: it });
       
       doc.setFillColor(blueColor[0], blueColor[1], blueColor[2]);
-      doc.roundedRect(155, 5, 45, 15, 2, 2, 'F');
+      doc.roundedRect(155, 6, 45, 15, 2, 2, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(9);
       doc.setFont('helvetica', 'bold');
-      doc.text('DATA EVENTO', 177.5, 11, { align: 'center' });
+      doc.text('DATA EVENTO', 177.5, 12, { align: 'center' });
       doc.setFontSize(8);
       doc.setFont('helvetica', 'normal');
-      doc.text(dateStr, 177.5, 16, { align: 'center' });
+      doc.text(dateStr, 177.5, 17, { align: 'center' });
 
       // Decorative line
       doc.setDrawColor(blueColor[0], blueColor[1], blueColor[2]);
       doc.setLineWidth(0.5);
-      doc.line(0, 25, 210, 25);
+      doc.line(0, 32, 210, 32);
 
       // Event Info - Centered and Bold (First page only)
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(22);
       doc.setTextColor(blueColor[0], blueColor[1], blueColor[2]);
-      doc.text(selectedEventForRegistrations.title.toUpperCase(), 105, 38, { align: 'center' });
+      doc.text(selectedEventForRegistrations.title.toUpperCase(), 105, 43, { align: 'center' });
       
       // Secretary Info in PDF (Yellow box)
-      let tableStartY = 55;
+      let tableStartY = 62;
       if (selectedEventForRegistrations.secretaryInfo) {
         const splitInfo = doc.splitTextToSize(selectedEventForRegistrations.secretaryInfo, 170);
         const boxHeight = (splitInfo.length * 4.5) + 10;
         
         doc.setFillColor(254, 252, 232); // amber-50
         doc.setDrawColor(254, 240, 138); // amber-200
-        doc.roundedRect(14, 50, 182, boxHeight, 2, 2, 'FD');
+        doc.roundedRect(14, 51, 182, boxHeight, 2, 2, 'FD');
         
         doc.setFontSize(8);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(180, 83, 9); // amber-700
-        doc.text('NOTE E ISTRUZIONI PER LA SEGRETERIA:', 19, 56);
+        doc.text('NOTE E ISTRUZIONI PER LA SEGRETERIA:', 19, 57);
         
         doc.setFont('helvetica', 'italic');
         doc.setTextColor(120, 53, 15); // amber-800
-        doc.text(splitInfo, 19, 61);
+        doc.text(splitInfo, 19, 62);
         
-        tableStartY = 50 + boxHeight + 8;
+        tableStartY = 51 + boxHeight + 8;
       }
 
       // Table Header Configuration

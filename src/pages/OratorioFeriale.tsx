@@ -1109,6 +1109,14 @@ const OratorioFeriale: React.FC = () => {
           hRowY += 3.5;
         }
         pdf.text(parishInfo.address || '', textStartX, hRowY);
+
+        if (parishInfo.phone || parishInfo.email) {
+          hRowY += 3.5;
+          const contacts: string[] = [];
+          if (parishInfo.phone) contacts.push(`Tel: ${parishInfo.phone}`);
+          if (parishInfo.email) contacts.push(`Email: ${parishInfo.email}`);
+          pdf.text(contacts.join(' - '), textStartX, hRowY);
+        }
         
         // Blue Info Box at Top Right
         const boxWidth = 92;
@@ -1316,6 +1324,14 @@ const OratorioFeriale: React.FC = () => {
           hRowY += 3.5;
         }
         pdf.text(parishInfo.address || '', textStartX, hRowY);
+
+        if (parishInfo.phone || parishInfo.email) {
+          hRowY += 3.5;
+          const contacts: string[] = [];
+          if (parishInfo.phone) contacts.push(`Tel: ${parishInfo.phone}`);
+          if (parishInfo.email) contacts.push(`Email: ${parishInfo.email}`);
+          pdf.text(contacts.join(' - '), textStartX, hRowY);
+        }
         
         // Blue Info Box at Top Right
         const boxWidth = 92;

@@ -395,11 +395,11 @@ const Volontari: React.FC = () => {
 
       // Header: Parish Info
       doc.setFillColor(248, 250, 252);
-      doc.rect(0, 0, 210, 25, 'F');
+      doc.rect(0, 0, 210, 32, 'F');
 
       if (parishInfo.logoUrl) {
         try {
-          doc.addImage(parishInfo.logoUrl, 'PNG', 14, 4, 18, 18);
+          doc.addImage(parishInfo.logoUrl, 'PNG', 14, 5, 22, 22);
         } catch (e) {
           console.error('Could not add logo', e);
         }
@@ -408,7 +408,7 @@ const Volontari: React.FC = () => {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
       doc.setTextColor(51, 65, 85);
-      doc.text(parishInfo.name, parishInfo.logoUrl ? 36 : 14, 8);
+      doc.text(parishInfo.name, parishInfo.logoUrl ? 40 : 14, 8);
       
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
@@ -416,39 +416,53 @@ const Volontari: React.FC = () => {
 
       let hRowY = 12;
       if (parishInfo.diocese) {
-        doc.text(parishInfo.diocese, parishInfo.logoUrl ? 36 : 14, hRowY);
+        doc.text(parishInfo.diocese, parishInfo.logoUrl ? 40 : 14, hRowY);
         hRowY += 3.5;
       }
       if (parishInfo.pastoralCommunity) {
-        doc.text(parishInfo.pastoralCommunity, parishInfo.logoUrl ? 36 : 14, hRowY);
+        doc.text(parishInfo.pastoralCommunity, parishInfo.logoUrl ? 40 : 14, hRowY);
         hRowY += 3.5;
       }
-      doc.text(parishInfo.address, parishInfo.logoUrl ? 36 : 14, hRowY);
+      if (parishInfo.address) {
+        doc.text(parishInfo.address, parishInfo.logoUrl ? 40 : 14, hRowY);
+        hRowY += 3.5;
+      }
+      const contacts: string[] = [];
+      if (parishInfo.phone) contacts.push(`Tel: ${parishInfo.phone}`);
+      if (parishInfo.email) contacts.push(`Email: ${parishInfo.email}`);
+      if (contacts.length > 0) {
+        doc.text(contacts.join(' - '), parishInfo.logoUrl ? 40 : 14, hRowY);
+      }
 
       // Info Box top right
       doc.setFillColor(blueColor[0], blueColor[1], blueColor[2]);
-      doc.roundedRect(155, 5, 45, 15, 2, 2, 'F');
+      doc.roundedRect(155, 6, 45, 15, 2, 2, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(9);
       doc.setFont('helvetica', 'bold');
-      doc.text('ELENCO VOLONTARI', 177.5, 11, { align: 'center' });
+      doc.text('ELENCO VOLONTARI', 177.5, 12, { align: 'center' });
       doc.setFontSize(8);
       doc.setFont('helvetica', 'normal');
-      doc.text(format(new Date(), 'dd/MM/yyyy'), 177.5, 16, { align: 'center' });
+      doc.text(format(new Date(), 'dd/MM/yyyy'), 177.5, 17, { align: 'center' });
+
+      // Decorative line
+      doc.setDrawColor(blueColor[0], blueColor[1], blueColor[2]);
+      doc.setLineWidth(0.5);
+      doc.line(0, 32, 210, 32);
 
       // Title
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(22);
+      doc.setFontSize(20);
       doc.setTextColor(blueColor[0], blueColor[1], blueColor[2]);
-      doc.text('ELENCO VOLONTARI PARROCCHIALI', 105, 40, { align: 'center' });
+      doc.text('ELENCO VOLONTARI PARROCCHIALI', 105, 44, { align: 'center' });
 
       // Summary
       doc.setFillColor(248, 250, 252);
       doc.setDrawColor(226, 232, 240);
-      doc.roundedRect(14, 48, 182, 8, 2, 2, 'FD');
+      doc.roundedRect(14, 51, 182, 8, 2, 2, 'FD');
       doc.setFontSize(9);
       doc.setTextColor(51, 65, 85);
-      doc.text(`Totale volontari registrati: ${volunteers.length}`, 19, 53.5);
+      doc.text(`Totale volontari registrati: ${volunteers.length}`, 19, 56.5);
 
       // Prepare Table Data (grouped and sorted)
       const tableData: any[] = [];
@@ -490,7 +504,7 @@ const Volontari: React.FC = () => {
       }
 
       autoTable(doc, {
-        startY: 60,
+        startY: 65,
         head: [['Nome e Cognome', 'Ruolo', 'Telefono', 'Gruppo']],
         body: tableData,
         theme: 'grid',

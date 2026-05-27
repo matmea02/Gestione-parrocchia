@@ -430,6 +430,10 @@ export default function Liturgies() {
         hRowY += 4;
         pdf.text(`Tel: ${parishInfo.phone}`, textStartX, hRowY);
       }
+      if (parishInfo.email) {
+        hRowY += 4;
+        pdf.text(parishInfo.email, textStartX, hRowY);
+      }
       
       // Purple Info Box at Top Right
       const boxWidth = 70;

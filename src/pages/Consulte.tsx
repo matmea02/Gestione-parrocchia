@@ -223,13 +223,13 @@ const Consulte: React.FC = () => {
     const doc = new jsPDF();
     const blueColor = [37, 99, 235]; // blue-600 pattern
     
-    // Header (Matched with Events.tsx)
+    // Header (Matched with Events.tsx & generic format)
     doc.setFillColor(248, 250, 252); // slate-50
-    doc.rect(0, 0, 210, 25, 'F');
+    doc.rect(0, 0, 210, 32, 'F');
 
     if (parishInfo.logoUrl) {
       try {
-        doc.addImage(parishInfo.logoUrl, 'PNG', 14, 4, 18, 18);
+        doc.addImage(parishInfo.logoUrl, 'PNG', 14, 5, 22, 22);
       } catch (e) {
         console.error('Could not add logo to PDF', e);
       }
@@ -238,7 +238,7 @@ const Consulte: React.FC = () => {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
     doc.setTextColor(51, 65, 85); // slate-700
-    doc.text(parishInfo.name, parishInfo.logoUrl ? 36 : 14, 8);
+    doc.text(parishInfo.name, parishInfo.logoUrl ? 40 : 14, 8);
     
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
@@ -246,45 +246,50 @@ const Consulte: React.FC = () => {
 
     let hRowY = 12;
     if (parishInfo.diocese) {
-      doc.text(parishInfo.diocese, parishInfo.logoUrl ? 36 : 14, hRowY);
+      doc.text(parishInfo.diocese, parishInfo.logoUrl ? 40 : 14, hRowY);
       hRowY += 3.5;
     }
     if (parishInfo.pastoralCommunity) {
-      doc.text(parishInfo.pastoralCommunity, parishInfo.logoUrl ? 36 : 14, hRowY);
+      doc.text(parishInfo.pastoralCommunity, parishInfo.logoUrl ? 40 : 14, hRowY);
       hRowY += 3.5;
     }
-    doc.text(parishInfo.address, parishInfo.logoUrl ? 36 : 14, hRowY);
-    if (parishInfo.phone) {
+    if (parishInfo.address) {
+      doc.text(parishInfo.address, parishInfo.logoUrl ? 40 : 14, hRowY);
       hRowY += 3.5;
-      doc.text(`Tel: ${parishInfo.phone}`, parishInfo.logoUrl ? 36 : 14, hRowY);
+    }
+    const contacts: string[] = [];
+    if (parishInfo.phone) contacts.push(`Tel: ${parishInfo.phone}`);
+    if (parishInfo.email) contacts.push(`Email: ${parishInfo.email}`);
+    if (contacts.length > 0) {
+      doc.text(contacts.join(' - '), parishInfo.logoUrl ? 40 : 14, hRowY);
     }
 
     // Season Box top right
     doc.setFillColor(blueColor[0], blueColor[1], blueColor[2]);
-    doc.roundedRect(155, 5, 45, 15, 2, 2, 'F');
+    doc.roundedRect(155, 6, 45, 15, 2, 2, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
-    doc.text('CONSULTA', 177.5, 11, { align: 'center' });
+    doc.text('CONSULTA', 177.5, 12, { align: 'center' });
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
-    doc.text(`N. ${council.number} - ${council.year}`, 177.5, 16, { align: 'center' });
+    doc.text(`N. ${council.number} - ${council.year}`, 177.5, 17, { align: 'center' });
 
     // Decorative line
     doc.setDrawColor(blueColor[0], blueColor[1], blueColor[2]);
     doc.setLineWidth(0.5);
-    doc.line(0, 25, 210, 25);
+    doc.line(0, 32, 210, 32);
     
     // Title
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(20);
+    doc.setFontSize(18);
     doc.setTextColor(blueColor[0], blueColor[1], blueColor[2]);
-    doc.text('VERBALE CONSULTA PARROCCHIALE', 105, 40, { align: 'center' });
+    doc.text('VERBALE CONSULTA PARROCCHIALE', 105, 45, { align: 'center' });
     
     // Subinfo
-    doc.setFontSize(10);
+    doc.setFontSize(9.5);
     doc.setTextColor(100, 116, 139);
-    doc.text(`Data: ${format(new Date(council.date), 'dd/MM/yyyy HH:mm', { locale: it })} - Luogo: ${council.location || 'Non specificato'}`, 105, 48, { align: 'center' });
+    doc.text(`Data: ${format(new Date(council.date), 'dd/MM/yyyy HH:mm', { locale: it })} - Luogo: ${council.location || 'Non specificato'}`, 105, 52, { align: 'center' });
     
     // Content
     doc.setTextColor(51, 65, 85);
@@ -292,14 +297,14 @@ const Consulte: React.FC = () => {
     // Agenda section
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
-    doc.text('ORDINE DEL GIORNO:', 20, 60);
+    doc.text('ORDINE DEL GIORNO:', 20, 64);
     
     doc.setFont('helvetica', 'normal');
     const splitAgenda = doc.splitTextToSize(council.agenda, 170);
-    doc.text(splitAgenda, 20, 66);
+    doc.text(splitAgenda, 20, 70);
     
     // Attendance Table BEFORE Minutes
-    let currentY = 66 + (splitAgenda.length * 5) + 10;
+    let currentY = 70 + (splitAgenda.length * 5) + 10;
     const pageHeight = 280;
 
     // Check if near page bottom, otherwise move to next page

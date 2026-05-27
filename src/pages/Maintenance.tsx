@@ -456,11 +456,11 @@ const Maintenance: React.FC = () => {
 
       // Header: Parish Info
       doc.setFillColor(248, 250, 252); // slate-50
-      doc.rect(0, 0, 210, 25, 'F');
+      doc.rect(0, 0, 210, 32, 'F');
 
       if (parishInfo.logoUrl) {
         try {
-          doc.addImage(parishInfo.logoUrl, 'PNG', 14, 4, 18, 18);
+          doc.addImage(parishInfo.logoUrl, 'PNG', 14, 5, 22, 22);
         } catch (e) {
           console.error('Could not add logo to PDF', e);
         }
@@ -469,7 +469,7 @@ const Maintenance: React.FC = () => {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
       doc.setTextColor(51, 65, 85); // slate-700
-      doc.text(parishInfo.name, parishInfo.logoUrl ? 36 : 14, 8);
+      doc.text(parishInfo.name, parishInfo.logoUrl ? 40 : 14, 8);
       
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
@@ -477,17 +477,22 @@ const Maintenance: React.FC = () => {
 
       let hRowY = 12;
       if (parishInfo.diocese) {
-        doc.text(parishInfo.diocese, parishInfo.logoUrl ? 36 : 14, hRowY);
+        doc.text(parishInfo.diocese, parishInfo.logoUrl ? 40 : 14, hRowY);
         hRowY += 3.5;
       }
       if (parishInfo.pastoralCommunity) {
-        doc.text(parishInfo.pastoralCommunity, parishInfo.logoUrl ? 36 : 14, hRowY);
+        doc.text(parishInfo.pastoralCommunity, parishInfo.logoUrl ? 40 : 14, hRowY);
         hRowY += 3.5;
       }
-      doc.text(parishInfo.address, parishInfo.logoUrl ? 36 : 14, hRowY);
-      if (parishInfo.phone) {
+      if (parishInfo.address) {
+        doc.text(parishInfo.address, parishInfo.logoUrl ? 40 : 14, hRowY);
         hRowY += 3.5;
-        doc.text(`Tel: ${parishInfo.phone}`, parishInfo.logoUrl ? 36 : 14, hRowY);
+      }
+      const contacts: string[] = [];
+      if (parishInfo.phone) contacts.push(`Tel: ${parishInfo.phone}`);
+      if (parishInfo.email) contacts.push(`Email: ${parishInfo.email}`);
+      if (contacts.length > 0) {
+        doc.text(contacts.join(' - '), parishInfo.logoUrl ? 40 : 14, hRowY);
       }
       
       // Date Box top right
@@ -496,37 +501,37 @@ const Maintenance: React.FC = () => {
         : 'TUTTO IL PERIODO';
       
       doc.setFillColor(blueColor[0], blueColor[1], blueColor[2]);
-      doc.roundedRect(155, 5, 45, 15, 2, 2, 'F');
+      doc.roundedRect(155, 6, 45, 15, 2, 2, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(9);
       doc.setFont('helvetica', 'bold');
-      doc.text('PERIODO REPORT', 177.5, 11, { align: 'center' });
+      doc.text('PERIODO REPORT', 177.5, 12, { align: 'center' });
       doc.setFontSize(8);
       doc.setFont('helvetica', 'normal');
-      doc.text(rangeText, 177.5, 16, { align: 'center' });
+      doc.text(rangeText, 177.5, 17, { align: 'center' });
 
       // Decorative line
       doc.setDrawColor(blueColor[0], blueColor[1], blueColor[2]);
       doc.setLineWidth(0.5);
-      doc.line(0, 25, 210, 25);
+      doc.line(0, 32, 210, 32);
 
       // Title
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(22);
+      doc.setFontSize(20);
       doc.setTextColor(blueColor[0], blueColor[1], blueColor[2]);
-      doc.text('REPORT INTERVENTI MANUTENZIONE', 105, 38, { align: 'center' });
+      doc.text('REPORT INTERVENTI MANUTENZIONE', 105, 43, { align: 'center' });
 
       // Summary Box
       const totalExpenses = filteredTickets.reduce((sum, t) => sum + (t.expenses || 0), 0);
       doc.setFillColor(248, 250, 252); // slate-50
       doc.setDrawColor(226, 232, 240); // slate-200
-      doc.roundedRect(14, 45, 182, 12, 2, 2, 'FD');
+      doc.roundedRect(14, 49, 182, 12, 2, 2, 'FD');
       
       doc.setFontSize(10);
       doc.setTextColor(51, 65, 85);
       doc.setFont('helvetica', 'bold');
-      doc.text(`Totale Interventi: ${filteredTickets.length}`, 19, 52.5);
-      doc.text(`Totale Spese: € ${totalExpenses.toLocaleString('it-IT', { minimumFractionDigits: 2 })}`, 195, 52.5, { align: 'right' });
+      doc.text(`Totale Interventi: ${filteredTickets.length}`, 19, 56.5);
+      doc.text(`Totale Spese: € ${totalExpenses.toLocaleString('it-IT', { minimumFractionDigits: 2 })}`, 195, 56.5, { align: 'right' });
 
       // Table
       const tableData = filteredTickets.map(t => [
@@ -541,7 +546,7 @@ const Maintenance: React.FC = () => {
       ]);
 
       autoTable(doc, {
-        startY: 62,
+        startY: 67,
         head: [['#', 'Data', 'Titolo', 'Tipo', 'Stato', 'Luogo', 'Segnalatore', 'Spese']],
         body: tableData,
         theme: 'grid',
