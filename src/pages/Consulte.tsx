@@ -45,6 +45,7 @@ const Consulte: React.FC = () => {
     agenda: '',
     location: '',
     fullMinutes: '',
+    attendance: {} as Record<string, boolean>,
   };
 
   const [form, setForm] = useState(initialFormState);
@@ -135,6 +136,7 @@ const Consulte: React.FC = () => {
         agenda: form.agenda,
         location: form.location,
         fullMinutes: form.fullMinutes,
+        attendance: form.attendance || {},
         createdAt: isEditing ? (councils.find(c => c.id === editingId)?.createdAt || new Date().toISOString()) : new Date().toISOString(),
       };
 
@@ -171,6 +173,7 @@ const Consulte: React.FC = () => {
       agenda: council.agenda,
       location: council.location,
       fullMinutes: council.fullMinutes || '',
+      attendance: council.attendance || {},
     });
     setEditingId(council.id);
     setIsEditing(true);
@@ -201,6 +204,8 @@ const Consulte: React.FC = () => {
       await updateDoc(doc(councilsColl, selectedCouncil.id), {
         attendance: attendance
       });
+      setForm(prev => ({ ...prev, attendance: attendance }));
+      setSelectedCouncil((prev: any) => prev ? { ...prev, attendance: attendance } : null);
       setIsAttendanceModalOpen(false);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, 'councils');
@@ -297,43 +302,100 @@ const Consulte: React.FC = () => {
     let currentY = 66 + (splitAgenda.length * 5) + 10;
     const pageHeight = 280;
 
+    // Check if near page bottom, otherwise move to next page
+    if (currentY > pageHeight - 35) {
+      doc.addPage();
+      currentY = 20;
+    }
+
     doc.setFont('helvetica', 'bold');
-    doc.text('ELENCO PRESENZE:', 20, currentY);
+    doc.setFontSize(11);
+    doc.setTextColor(37, 99, 235); // blue-600
+    doc.text('ELENCO PRESENZE PER GRUPPO:', 20, currentY);
+    currentY += 6;
+
+    // Main Header Row for Table
+    doc.setFillColor(241, 245, 249); // slate-100
+    doc.rect(20, currentY, 170, 7, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(71, 85, 105); // slate-600
+    doc.text('PARTECIPANTE', 25, currentY + 5);
+    doc.text('STATO DI PRESENZA', 150, currentY + 5);
     currentY += 8;
 
-    doc.setFontSize(9);
-    doc.setFillColor(248, 250, 252);
-    doc.rect(20, currentY, 170, 7, 'F');
-    doc.text('PARTECIPANTE', 25, currentY + 5);
-    doc.text('GRUPPO', 90, currentY + 5);
-    doc.text('STATO', 160, currentY + 5);
-    currentY += 7;
-
-    doc.setFont('helvetica', 'normal');
     const councilAttendance = council.attendance || {};
-    
-    // Group members for PDF as well
-    const sortedMembers = [...members].sort((a, b) => {
-      const groupA = (a.group || 'Altro').toLowerCase();
-      const groupB = (b.group || 'Altro').toLowerCase();
-      if (groupA !== groupB) return groupA.localeCompare(groupB);
-      return a.lastName.localeCompare(b.lastName);
+
+    // Group members for PDF
+    const groupedMembers: Record<string, any[]> = {};
+    members.forEach(m => {
+      const g = m.group || 'Altro';
+      if (!groupedMembers[g]) groupedMembers[g] = [];
+      groupedMembers[g].push(m);
     });
 
-    sortedMembers.forEach((member) => {
+    const sortedGroups = Object.keys(groupedMembers).sort((a, b) => {
+      if (a === 'Altro') return 1;
+      if (b === 'Altro') return -1;
+      return a.localeCompare(b);
+    });
+
+    sortedGroups.forEach((groupName) => {
+      // Check space for Group Title
       if (currentY > pageHeight - 20) {
         doc.addPage();
         currentY = 20;
       }
-      const isPresent = councilAttendance[member.id] !== undefined 
-        ? councilAttendance[member.id] 
-        : (member.volunteerId && councilAttendance[member.volunteerId] !== undefined ? councilAttendance[member.volunteerId] : false);
-      doc.text(`${member.lastName} ${member.firstName}`, 25, currentY + 5);
-      doc.text(member.group || '-', 90, currentY + 5);
-      doc.text(isPresent ? 'PRESENTE' : 'ASSENTE', 160, currentY + 5);
+
+      // Draw Group Title Banner
+      doc.setFillColor(239, 246, 255); // blue-50
+      doc.rect(20, currentY, 170, 6, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(30, 58, 138); // blue-900
+      doc.text(groupName.toUpperCase(), 24, currentY + 4.2);
+      currentY += 8;
+
+      // Group members list
+      const groupM = groupedMembers[groupName].sort((a, b) => a.lastName.localeCompare(b.lastName));
       
-      doc.line(20, currentY + 7, 190, currentY + 7);
-      currentY += 7;
+      groupM.forEach((member, mIdx) => {
+        if (currentY > pageHeight - 15) {
+          doc.addPage();
+          currentY = 20;
+        }
+
+        // Draw dynamic thin line divider between members except first
+        if (mIdx > 0) {
+          doc.setDrawColor(241, 245, 249); // slate-100
+          doc.setLineWidth(0.2);
+          doc.line(20, currentY - 2, 190, currentY - 2);
+        }
+
+        const isPresent = councilAttendance[member.id] !== undefined 
+          ? councilAttendance[member.id] 
+          : (member.volunteerId && councilAttendance[member.volunteerId] !== undefined ? councilAttendance[member.volunteerId] : false);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(51, 65, 85); // slate-700
+        doc.text(`• ${member.lastName} ${member.firstName}`, 25, currentY + 2);
+
+        if (isPresent) {
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(21, 128, 61); // emerald-700 / forest green
+          doc.text('PRESENTE', 150, currentY + 2);
+        } else {
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(148, 163, 184); // slate-400
+          doc.text('ASSENTE', 150, currentY + 2);
+        }
+
+        currentY += 6;
+      });
+
+      // Extra spacing after group
+      currentY += 4;
     });
 
     // Minutes section after attendance
