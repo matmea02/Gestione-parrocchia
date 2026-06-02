@@ -31,7 +31,9 @@ import {
   Phone,
   Check,
   Download,
-  UserMinus
+  UserMinus,
+  Save,
+  ChevronDown
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -47,6 +49,7 @@ interface Animator {
   notes?: string;
   seasons?: string[];
   createdAt: string;
+  presentWeeks?: { [seasonId: string]: string[] };
 }
 
 interface Shift {
@@ -148,6 +151,7 @@ const OratorioFeriale: React.FC = () => {
   const [isSeasonDropdownOpen, setIsSeasonDropdownOpen] = useState(false);
   const [isSeasonManagerOpen, setIsSeasonManagerOpen] = useState(false);
   const [isDaysConfigOpen, setIsDaysConfigOpen] = useState(false);
+  const [isDownloadDropdownOpen, setIsDownloadDropdownOpen] = useState(false);
   const [selectedWeekId, setSelectedWeekId] = useState<string>('all');
   const [lastInitializedSeason, setLastInitializedSeason] = useState<string>('');
   const [selectedRecapDay, setSelectedRecapDay] = useState<string>('');
@@ -181,6 +185,12 @@ const OratorioFeriale: React.FC = () => {
   } | null>(null);
 
   const [deleteModalError, setDeleteModalError] = useState<string | null>(null);
+
+  // State elements for present weeks selection/enrollment modal
+  const [weeksModalOpen, setWeeksModalOpen] = useState(false);
+  const [selectedWeeksAnimator, setSelectedWeeksAnimator] = useState<Animator | null>(null);
+  const [tempPresentWeeks, setTempPresentWeeks] = useState<string[]>([]);
+  const [tempIsEnrollActive, setTempIsEnrollActive] = useState<boolean>(false);
 
   // Forms
   const [animatorForm, setAnimatorForm] = useState({
@@ -249,14 +259,85 @@ const OratorioFeriale: React.FC = () => {
     return a.seasons.includes(activeSeason);
   };
 
-  const activeSeasonAnimatorsList = animators.filter(belongsToSeason);
-  const filteredAnimators = animators.filter(a => !onlyActiveSeasonAnimators || belongsToSeason(a));
+  const sortedAnimators = [...animators].sort((a, b) => {
+    const lnA = (a.lastName || '').trim().toLowerCase();
+    const lnB = (b.lastName || '').trim().toLowerCase();
+    if (lnA !== lnB) return lnA.localeCompare(lnB, 'it');
+    const fnA = (a.firstName || '').trim().toLowerCase();
+    const fnB = (b.firstName || '').trim().toLowerCase();
+    return fnA.localeCompare(fnB, 'it');
+  });
+
+  const activeSeasonAnimatorsList = sortedAnimators.filter(belongsToSeason);
+  const filteredAnimators = sortedAnimators.filter(a => !onlyActiveSeasonAnimators || belongsToSeason(a));
 
   const filteredShifts = shifts.filter(s => s.season === activeSeason || (!s.season && new Date(s.date).getFullYear().toString() === activeSeason));
   const filteredTeams = teams.filter(t => t.season === activeSeason || (!t.season && (activeSeason === '2026' || activeSeason === '26')));
   const filteredAbsences = absences.filter(ab => ab.season === activeSeason || (!ab.season && (activeSeason === '2026' || activeSeason === '26')));
 
   const activeSeasonDays = seasonsData[activeSeason] || [];
+
+  const getWeekIdForDay = (dayStr: string): string => {
+    const parts = dayStr.split('-');
+    if (parts.length < 3) return '';
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const date = parseInt(parts[2], 10);
+    
+    const d = new Date(year, month, date, 12, 0, 0);
+    const day = d.getDay();
+    
+    const offset = day === 0 ? -6 : 1 - day;
+    const monday = new Date(d);
+    monday.setDate(d.getDate() + offset);
+    
+    const yyyy = monday.getFullYear();
+    const mm = String(monday.getMonth() + 1).padStart(2, '0');
+    const dd = String(monday.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const isAnimatorPresentInWeek = (anim: Animator, seasonId: string, weekId: string): boolean => {
+    const presentWeeksForSeason = anim.presentWeeks?.[seasonId];
+    if (!presentWeeksForSeason) {
+      return true;
+    }
+    return presentWeeksForSeason.includes(weekId);
+  };
+
+  const getAbsencesForDay = (day: string): Absence[] => {
+    const weekId = getWeekIdForDay(day);
+    const virtualAbsences: Absence[] = [];
+    
+    activeSeasonAnimatorsList.forEach(anim => {
+      const isPresentInWeek = isAnimatorPresentInWeek(anim, activeSeason, weekId);
+      if (!isPresentInWeek) {
+        virtualAbsences.push({
+          id: `virtual-week-${anim.id}-${day}`,
+          animatorId: anim.id,
+          date: day,
+          reason: 'Assente (Settimana non selezionata)',
+          season: activeSeason,
+          createdAt: new Date().toISOString()
+        });
+      }
+    });
+    
+    const explicitAbsences = absences.filter(ab => ab.date === day);
+    const allAbsences: Absence[] = [...virtualAbsences];
+    explicitAbsences.forEach(ab => {
+      if (!allAbsences.some(v => v.animatorId === ab.animatorId)) {
+        allAbsences.push(ab);
+      }
+    });
+    
+    return allAbsences;
+  };
+
+  const getAbsenceForAnimatorOnDay = (animId: string, day: string): Absence | undefined => {
+    const dayAbsences = getAbsencesForDay(day);
+    return dayAbsences.find(ab => ab.animatorId === animId);
+  };
 
   const getWeeks = () => {
     const sorted = [...activeSeasonDays].sort((a, b) => a.localeCompare(b));
@@ -309,10 +390,9 @@ const OratorioFeriale: React.FC = () => {
     return groups;
   };
 
-  // Calculate distinct list of seasons (from database and active animators, fall back to default if totally empty)
+  // Calculate distinct list of seasons (from database config, fall back to default if totally empty)
   const allSeasons = Array.from(new Set([
-    ...Object.keys(seasonsData),
-    ...animators.flatMap(a => a.seasons || [])
+    ...Object.keys(seasonsData)
   ])).filter(s => s && s.trim() !== '');
 
   allSeasons.sort((a, b) => b.localeCompare(a));
@@ -404,65 +484,7 @@ const OratorioFeriale: React.FC = () => {
     setLastInitializedSeason(activeSeason);
   }, [activeSeason, activeSeasonDays.length, lastInitializedSeason]);
 
-  // Automatic clean up of Alessandro Grimoldi from DB as requested by user
-  useEffect(() => {
-    if (animators.length > 0) {
-      const target = animators.find(a => {
-        const fn = (a.firstName || '').toLowerCase().trim();
-        const ln = (a.lastName || '').toLowerCase().trim();
-        return (
-          fn === 'alessandro' && ln === 'grimoldi' ||
-          fn === 'grimoldi' && ln === 'alessandro' ||
-          fn.includes('grimoldi') ||
-          ln.includes('grimoldi')
-        );
-      });
-      if (target) {
-        console.log("Removing Alessandro Grimoldi as explicitly requested:", target.id);
-        const removeGrimoldi = async () => {
-          try {
-            if (!auth.currentUser) {
-              try {
-                const { signInAnonymously } = await import('firebase/auth');
-                await signInAnonymously(auth);
-              } catch (authErr: any) {
-                console.warn("Silent anonymous sign-in skipped (auth disabled or restricted):", authErr.message || authErr);
-              }
-            }
-            // 1. Delete animator document
-            await deleteDoc(doc(animatorsColl, target.id));
 
-            // 2. Clean up his shifts assignments
-            const relatedShifts = shifts.filter(s => s.animatorIds?.includes(target.id));
-            for (const s of relatedShifts) {
-              const nextAnimators = (s.animatorIds || []).filter(id => id !== target.id);
-              await updateDoc(doc(shiftsColl, s.id), { animatorIds: nextAnimators });
-            }
-
-            // 3. Clean up his absences
-            const relatedAbsences = absences.filter(ab => ab.animatorId === target.id);
-            for (const ab of relatedAbsences) {
-              await deleteDoc(doc(absencesColl, ab.id));
-            }
-
-            // 4. Clean up team assignments
-            const relatedTeams = teams.filter(t => t.animatorIds?.includes(target.id));
-            for (const t of relatedTeams) {
-              const nextAnimators = (t.animatorIds || []).filter(id => id !== target.id);
-              await updateDoc(doc(teamsColl, t.id), { animatorIds: nextAnimators });
-            }
-
-            console.log("Alessandro Grimoldi successfully removed from database, shifts, absences and teams.");
-            setSuccessStatus("Profilo di Alessandro Grimoldi rimosso con successo dal sistema!");
-            setTimeout(() => setSuccessStatus(null), 3000);
-          } catch (err) {
-            console.error("Error removing Alessandro Grimoldi:", err);
-          }
-        };
-        removeGrimoldi();
-      }
-    }
-  }, [animators, shifts, absences, teams]);
 
   useEffect(() => {
     const days = seasonsData[activeSeason] || [];
@@ -605,14 +627,21 @@ const OratorioFeriale: React.FC = () => {
             throw new Error(`Impossibile eliminare la configurazione della stagione: ${e.message || e}`);
           }
 
-          // 2. Clean up animators seasons
+          // 2. Clean up animators seasons and their presentWeeks mapping
           const animatorsToUpdate = animators.filter(a => a.seasons?.includes(seasonId));
           console.log(`[Season delete] Updating ${animatorsToUpdate.length} animators`);
           await Promise.all(
             animatorsToUpdate.map(async (a) => {
               try {
                 const nextSeasons = (a.seasons || []).filter(s => s !== seasonId);
-                await updateDoc(doc(animatorsColl, a.id), { seasons: nextSeasons });
+                const nextPresentWeeks = { ...(a.presentWeeks || {}) };
+                if (seasonId in nextPresentWeeks) {
+                  delete nextPresentWeeks[seasonId];
+                }
+                await updateDoc(doc(animatorsColl, a.id), { 
+                  seasons: nextSeasons,
+                  presentWeeks: nextPresentWeeks
+                });
               } catch (e: any) {
                 console.warn(`[Season delete] Could not update seasons for animator ${a.id}:`, e);
               }
@@ -861,7 +890,7 @@ const OratorioFeriale: React.FC = () => {
 
         const colHeaders = ['ANIMATORE', 'PRESENZA / STATO', 'SPECIFICA ORARIO', 'NOTE / MOTIVAZIONE'];
         const tableRows = activeSeasonAnimatorsList.map(anim => {
-          const matchingAbs = absences.find(ab => ab.animatorId === anim.id && ab.date === targetDay);
+          const matchingAbs = getAbsenceForAnimatorOnDay(anim.id, targetDay);
           const name = `${anim.lastName.toUpperCase()} ${anim.firstName}`;
           
           if (!matchingAbs) {
@@ -934,7 +963,7 @@ const OratorioFeriale: React.FC = () => {
         const tableRows = activeSeasonAnimatorsList.map(anim => {
           const rowData = [`${anim.lastName.toUpperCase()} ${anim.firstName}`];
           daysToPrint.forEach(day => {
-            const matchingAbs = absences.find(ab => ab.animatorId === anim.id && ab.date === day);
+            const matchingAbs = getAbsenceForAnimatorOnDay(anim.id, day);
             const meta = getAbsenceMeta(matchingAbs);
             if (!meta) {
               rowData.push('P (OK)');
@@ -985,7 +1014,7 @@ const OratorioFeriale: React.FC = () => {
         
         activeSeasonAnimatorsList.forEach(anim => {
           sortedDays.forEach(day => {
-            const matchingAbs = absences.find(ab => ab.animatorId === anim.id && ab.date === day);
+            const matchingAbs = getAbsenceForAnimatorOnDay(anim.id, day);
             if (matchingAbs) {
               const parts = day.split('-');
               const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 12, 0, 0);
@@ -1162,7 +1191,7 @@ const OratorioFeriale: React.FC = () => {
         t.animatorIds.forEach(aid => {
           const anim = animators.find(a => a.id === aid);
           if (!anim) return;
-          const isAbsent = absences.find(ab => ab.animatorId === aid && ab.date === targetDay);
+          const isAbsent = getAbsenceForAnimatorOnDay(aid, targetDay);
           if (!isAbsent) {
             presentRows.push([
               t.name.toUpperCase(),
@@ -1205,7 +1234,7 @@ const OratorioFeriale: React.FC = () => {
         t.animatorIds.forEach(aid => {
           const anim = animators.find(a => a.id === aid);
           if (!anim) return;
-          const isAbsent = absences.find(ab => ab.animatorId === aid && ab.date === targetDay);
+          const isAbsent = getAbsenceForAnimatorOnDay(aid, targetDay);
           if (isAbsent) {
             let details = 'Tutto il giorno';
             if (isAbsent.reason === 'Solo Mattina') {
@@ -1391,7 +1420,7 @@ const OratorioFeriale: React.FC = () => {
           ];
 
           daysToPrint.forEach(day => {
-            const ab = absences.find(a => a.animatorId === aid && a.date === day);
+            const ab = getAbsenceForAnimatorOnDay(aid, day);
             if (!ab) {
               rowData.push('PRESENTE');
             } else if (ab.reason === 'Solo Mattina') {
@@ -1452,7 +1481,7 @@ const OratorioFeriale: React.FC = () => {
           t.animatorIds.forEach(aid => {
             const anim = animators.find(a => a.id === aid);
             if (!anim) return;
-            const ab = absences.find(a => a.animatorId === aid && a.date === day);
+            const ab = getAbsenceForAnimatorOnDay(aid, day);
             if (ab) {
               let details = 'Tutto il giorno';
               if (ab.reason === 'Solo Mattina') {
@@ -1566,6 +1595,45 @@ const OratorioFeriale: React.FC = () => {
     } catch (err) {
       console.error(err);
       setErrorStatus("Errore nell'aggiornamento.");
+    }
+  };
+
+  const handleSaveWeeks = async () => {
+    if (!selectedWeeksAnimator) return;
+    setIsSaving(true);
+    setErrorStatus(null);
+    try {
+      const currentSeasons = selectedWeeksAnimator.seasons || [];
+      let nextSeasons = [...currentSeasons];
+      
+      if (tempIsEnrollActive) {
+        if (!nextSeasons.includes(activeSeason)) {
+          nextSeasons.push(activeSeason);
+        }
+      } else {
+        nextSeasons = nextSeasons.filter(s => s !== activeSeason);
+      }
+      
+      const currentPresentWeeks = selectedWeeksAnimator.presentWeeks || {};
+      const nextPresentWeeks = {
+        ...currentPresentWeeks,
+        [activeSeason]: tempPresentWeeks
+      };
+      
+      await updateDoc(doc(animatorsColl, selectedWeeksAnimator.id), {
+        seasons: nextSeasons,
+        presentWeeks: nextPresentWeeks
+      });
+      
+      setWeeksModalOpen(false);
+      setSelectedWeeksAnimator(null);
+      setSuccessStatus('Presenze settimanali salvate con successo!');
+      setTimeout(() => setSuccessStatus(null), 2000);
+    } catch (err) {
+      console.error(err);
+      setErrorStatus('Errore nel salvataggio delle presenze.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -1812,8 +1880,8 @@ const OratorioFeriale: React.FC = () => {
                 <table className="w-full border-collapse">
                   <thead>
                     <tr className="bg-slate-50/30 border-b border-slate-100 italic">
-                      <th className="px-8 py-5 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Nome</th>
                       <th className="px-8 py-5 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Cognome</th>
+                      <th className="px-8 py-5 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Nome</th>
                       <th className="px-8 py-5 text-center text-[10px] font-black uppercase tracking-widest text-slate-400">Iscritto {activeSeason}</th>
                       <th className="px-8 py-5 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Telefono</th>
                       <th className="px-8 py-5 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Note / Allergie</th>
@@ -1826,19 +1894,19 @@ const OratorioFeriale: React.FC = () => {
                       <td className="px-6 py-4">
                         <input 
                           type="text" 
-                          value={animatorForm.firstName} 
-                          onChange={e => setAnimatorForm({...animatorForm, firstName: e.target.value})} 
+                          value={animatorForm.lastName} 
+                          onChange={e => setAnimatorForm({...animatorForm, lastName: e.target.value})} 
                           className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-100 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-xs font-bold shadow-sm" 
-                          placeholder="Nuovo Nome..."
+                          placeholder="Nuovo Cognome..."
                         />
                       </td>
                       <td className="px-6 py-4">
                         <input 
                           type="text" 
-                          value={animatorForm.lastName} 
-                          onChange={e => setAnimatorForm({...animatorForm, lastName: e.target.value})} 
+                          value={animatorForm.firstName} 
+                          onChange={e => setAnimatorForm({...animatorForm, firstName: e.target.value})} 
                           className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-100 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-xs font-bold shadow-sm" 
-                          placeholder="Nuovo Cognome..."
+                          placeholder="Nuovo Nome..."
                         />
                       </td>
                       <td className="px-6 py-4 text-center">
@@ -1903,16 +1971,16 @@ const OratorioFeriale: React.FC = () => {
                               <td className="px-6 py-3">
                                 <input 
                                   type="text"
-                                  value={editingAnimatorForm.firstName}
-                                  onChange={e => setEditingAnimatorForm({...editingAnimatorForm, firstName: e.target.value})}
+                                  value={editingAnimatorForm.lastName}
+                                  onChange={e => setEditingAnimatorForm({...editingAnimatorForm, lastName: e.target.value})}
                                   className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold shadow-sm"
                                 />
                               </td>
                               <td className="px-6 py-3">
                                 <input 
                                   type="text"
-                                  value={editingAnimatorForm.lastName}
-                                  onChange={e => setEditingAnimatorForm({...editingAnimatorForm, lastName: e.target.value})}
+                                  value={editingAnimatorForm.firstName}
+                                  onChange={e => setEditingAnimatorForm({...editingAnimatorForm, firstName: e.target.value})}
                                   className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold shadow-sm"
                                 />
                               </td>
@@ -1972,24 +2040,38 @@ const OratorioFeriale: React.FC = () => {
                           ) : (
                             <>
                               <td className="px-8 py-4">
-                                <span className="text-xs font-bold text-slate-700 italic uppercase">{a.firstName}</span>
+                                <span className="text-xs font-black text-slate-900 italic uppercase">{a.lastName}</span>
                               </td>
                               <td className="px-8 py-4">
-                                <span className="text-xs font-black text-slate-900 italic uppercase">{a.lastName}</span>
+                                <span className="text-xs font-bold text-slate-700 italic uppercase">{a.firstName}</span>
                               </td>
                               <td className="px-8 py-4 text-center">
                                 <button
                                   type="button"
-                                  onClick={() => toggleParticipation(a)}
+                                  onClick={() => {
+                                    setSelectedWeeksAnimator(a);
+                                    setTempIsEnrollActive(registered);
+                                    setTempPresentWeeks(a.presentWeeks?.[activeSeason] || weeks.map(w => w.id));
+                                    setWeeksModalOpen(true);
+                                  }}
                                   className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider transition-all border ${
                                     registered 
-                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-red-50 hover:text-red-700 hover:border-red-200' 
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' 
                                       : 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200'
                                   }`}
-                                  title="Clicca per invertire l'iscrizione a questa stagione"
+                                  title="Gestisci iscrizione e settimane di presenza per questa stagione"
                                 >
                                   {registered ? 'ISCRITTO' : 'INATTIVO'}
                                 </button>
+                                {registered && (
+                                  <span className="block text-[8px] font-bold text-slate-405 uppercase tracking-widest mt-1">
+                                    {(() => {
+                                      const totalWeeksCount = weeks.length;
+                                      const animWeeksSelected = a.presentWeeks?.[activeSeason]?.length ?? totalWeeksCount;
+                                      return `${animWeeksSelected}/${totalWeeksCount} SETT.`;
+                                    })()}
+                                  </span>
+                                )}
                               </td>
                               <td className="px-8 py-4">
                                 <span className="text-xs font-mono font-bold text-slate-500">{a.phone || '-'}</span>
@@ -2161,8 +2243,8 @@ const OratorioFeriale: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {filteredTeams.length > 0 ? filteredTeams.map((t, idx) => {
                 const teamAnimators = t.animatorIds.map(aid => animators.find(a => a.id === aid)).filter(Boolean) as Animator[];
-                const presentToday = teamAnimators.filter(anim => !absences.some(ab => ab.animatorId === anim.id && ab.date === activeRecapDay));
-                const absentToday = teamAnimators.filter(anim => absences.some(ab => ab.animatorId === anim.id && ab.date === activeRecapDay));
+                const presentToday = teamAnimators.filter(anim => !getAbsenceForAnimatorOnDay(anim.id, activeRecapDay));
+                const absentToday = teamAnimators.filter(anim => !!getAbsenceForAnimatorOnDay(anim.id, activeRecapDay));
 
                 return (
                   <div key={`${t.id}-${idx}`} className="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col hover:shadow-lg transition-all border-t-8" style={{ borderTopColor: t.color }}>
@@ -2214,7 +2296,7 @@ const OratorioFeriale: React.FC = () => {
                           </span>
                           <div className="space-y-1.5 max-h-36 overflow-y-auto custom-scrollbar">
                             {absentToday.map(anim => {
-                              const ab = absences.find(a => a.animatorId === anim.id && a.date === activeRecapDay);
+                              const ab = getAbsenceForAnimatorOnDay(anim.id, activeRecapDay);
                               let spec = 'Tutto il giorno';
                               if (ab?.reason === 'Solo Mattina') {
                                 spec = 'Solo Mattina';
@@ -2258,7 +2340,7 @@ const OratorioFeriale: React.FC = () => {
                               <span className="text-[11px] font-bold text-slate-700 italic shrink-0">{anim.lastName} {anim.firstName[0]}.</span>
                               <div className="flex items-center gap-1 overflow-x-auto py-0.5 max-w-full">
                                 {activeSeasonDays.map(day => {
-                                  const isAbsent = absences.some(ab => ab.animatorId === anim.id && ab.date === day);
+                                  const isAbsent = !isAnimatorPresentInWeek(anim, activeSeason, getWeekIdForDay(day)) || absences.some(ab => ab.animatorId === anim.id && ab.date === day);
                                   const weekdayStr = format(new Date(day), 'eeeee d', { locale: it });
                                   return (
                                     <div 
@@ -2321,69 +2403,104 @@ const OratorioFeriale: React.FC = () => {
         {activeTab === 'absences' && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             
-            {/* Minimalist Season Days configurator bar */}
-            <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div>
-                <h3 className="text-sm font-black text-slate-900 uppercase italic tracking-widest flex items-center gap-2">
-                  <Calendar size={18} className="text-amber-500" />
-                  Giornate Camp della Stagione ({activeSeasonDays.length})
-                </h3>
-                <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">
-                  Configura e genera i giorni effettivi per questa stagione di oratorio ({activeSeason})
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsDaysConfigOpen(true)}
-                className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white px-6 py-3.5 rounded-full font-black uppercase italic tracking-wider transition-all shadow-md active:scale-95 text-[10px]"
-              >
-                <Calendar size={14} />
-                Gestisci Giornate Camp
-              </button>
-            </div>
-
             {/* Matrix of Attendance (Tanti Quadratini) */}
-            <div className="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden">
-              <div className="p-8 border-b border-slate-50 bg-slate-50/30 flex flex-col lg:flex-row justify-between lg:items-center gap-4">
+            <div className="bg-white rounded-[3rem] border border-slate-200/90 shadow-sm overflow-hidden">
+              <div className="p-8 border-b border-slate-200 bg-slate-50 flex flex-col lg:flex-row justify-between lg:items-center gap-4">
                 <div>
                   <h3 className="text-sm font-black text-slate-900 uppercase italic tracking-widest flex items-center gap-3">
-                    <UserX size={18} className="text-red-500" />
+                    <UserX size={18} className="text-red-500 animate-pulse" />
                     Pannello Rilevamento Assenze Rapido (Stagione {activeSeason})
                   </h3>
-                  <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">
+                  <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mt-1">
                     Clicca sul quadratino corrispondente per impostare e pianificare la presenza/assenza (Mezza giornata, Tutto il giorno o Orari)
                   </p>
                 </div>
 
-                {/* PDF Download Buttons */}
-                <div className="flex flex-wrap gap-2 pt-2 lg:pt-0">
+                {/* PDF Download & Days configuration - CLEAN & HIGH CONTRAST */}
+                <div className="flex flex-wrap items-center gap-2.5 pt-2 lg:pt-0 relative">
+                  {/* Gestisci Giornate Camp (Solo tasto arancio) */}
                   <button
                     type="button"
-                    onClick={() => generateAbsencesPDF('daily')}
-                    className="flex items-center gap-2 bg-white text-slate-700 border border-slate-200 hover:border-blue-300 hover:text-blue-600 px-4 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all shadow-sm active:scale-95"
-                    title="Scarica in formato PDF l'elenco delle presenze e assenze per la giornata selezionata"
+                    onClick={() => setIsDaysConfigOpen(true)}
+                    className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white px-5 py-3 rounded-full font-black uppercase italic tracking-wider transition-all shadow-md active:scale-95 text-[10px]"
                   >
-                    <Download size={13} className="text-amber-500" />
-                    Scarica Report Giornaliero
+                    <Calendar size={13} />
+                    Gestisci Giornate Camp
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => generateAbsencesPDF('weekly')}
-                    className="flex items-center gap-2 bg-white text-slate-700 border border-slate-200 hover:border-blue-300 hover:text-blue-600 px-4 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all shadow-sm active:scale-95"
-                    title="Scarica in formato PDF la settimana di assenze correntemente visualizzata"
-                  >
-                    <Download size={13} className="text-blue-500" />
-                    Scarica Griglia Settimanale
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => generateAbsencesPDF('totals')}
-                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95 border border-blue-600"
-                    title="Scarica in formato PDF il riepilogo totale di tutte le assenze della stagione"
-                  >
-                    <Download size={13} className="text-white" />
-                    Scarica Report Stagionale
-                  </button>
+
+                  {/* Single Download button with dropdown menu */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsDownloadDropdownOpen(!isDownloadDropdownOpen)}
+                      className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-5 py-3 rounded-full text-[10px] font-black uppercase tracking-wider transition-all shadow-md active:scale-95 border border-slate-800"
+                    >
+                      <Download size={13} className="text-white animate-bounce" style={{ animationDuration: '3s' }} />
+                      Scarica Report
+                      <ChevronDown size={12} className="text-slate-300 ml-0.5" />
+                    </button>
+
+                    {isDownloadDropdownOpen && (
+                      <>
+                        {/* Invisible click-away overlay */}
+                        <div 
+                          className="fixed inset-0 z-[190]" 
+                          onClick={() => setIsDownloadDropdownOpen(false)}
+                        />
+                        
+                        <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200 py-2.5 z-[200] animate-in fade-in slide-in-from-top-1 duration-150 origin-top-right">
+                          <div className="px-4 py-1.5 border-b border-slate-100 mb-1.5">
+                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Seleziona Tipo Report</span>
+                          </div>
+                          
+                          <button
+                            type="button"
+                            onClick={() => {
+                              generateAbsencesPDF('daily');
+                              setIsDownloadDropdownOpen(false);
+                            }}
+                            className="w-full text-left px-4 py-2 text-slate-700 hover:bg-slate-50 hover:text-blue-600 font-extrabold uppercase tracking-widest flex items-center gap-2.5 transition-colors"
+                          >
+                            <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                            <div>
+                              <p className="font-extrabold text-[10px]">Report Giornaliero</p>
+                              <p className="text-[8px] text-slate-400 font-medium normal-case tracking-normal">Giorno selezionato nel riepilogo</p>
+                            </div>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              generateAbsencesPDF('weekly');
+                              setIsDownloadDropdownOpen(false);
+                            }}
+                            className="w-full text-left px-4 py-2 text-slate-700 hover:bg-slate-50 hover:text-blue-600 font-extrabold uppercase tracking-widest flex items-center gap-2.5 transition-colors"
+                          >
+                            <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                            <div>
+                              <p className="font-extrabold text-[10px]">Griglia Settimanale</p>
+                              <p className="text-[8px] text-slate-400 font-medium normal-case tracking-normal">La settimana visualizzata</p>
+                            </div>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              generateAbsencesPDF('totals');
+                              setIsDownloadDropdownOpen(false);
+                            }}
+                            className="w-full text-left px-4 py-2 text-slate-700 hover:bg-slate-50 hover:text-blue-600 font-extrabold uppercase tracking-widest flex items-center gap-2.5 transition-colors"
+                          >
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                            <div>
+                              <p className="font-extrabold text-[10px]">Report Stagionale</p>
+                              <p className="text-[8px] text-slate-400 font-medium normal-case tracking-normal">Resoconto complessivo stagione</p>
+                            </div>
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -2407,36 +2524,39 @@ const OratorioFeriale: React.FC = () => {
 
                   return (
                     <div>
-                      {/* Week Selector Pills */}
-                      <div className="px-8 py-5 border-b border-slate-50 bg-slate-50/20 flex flex-wrap items-center gap-2">
-                        <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider mr-2">Filtra per Settimana:</span>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedWeekId('all')}
-                          className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-wider transition-all select-none border ${
-                            selectedWeekId === 'all'
-                              ? 'bg-blue-600 text-white border-blue-600 shadow-xl shadow-blue-100 scale-105'
-                              : 'bg-white text-slate-500 hover:text-slate-800 border-slate-250'
-                          }`}
-                        >
-                          Tutte le giornate ({activeSeasonDays.length})
-                        </button>
-                        {weeks.map((w, idx) => (
+                      {/* Week Selector Pills - COMPACT & LESS INVASIVE */}
+                      <div className="px-8 py-3.5 border-b border-slate-200 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Filtra per Settimana:</span>
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <button
-                            key={w.id}
                             type="button"
-                            onClick={() => setSelectedWeekId(w.id)}
-                            className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-wider transition-all select-none border ${
-                              selectedWeekId === w.id
-                                ? 'bg-blue-600 text-white border-blue-600 shadow-xl shadow-blue-100 scale-105'
-                                : 'bg-white text-slate-500 hover:text-slate-800 border-slate-250'
+                            onClick={() => setSelectedWeekId('all')}
+                            className={`px-3 py-1.5 rounded-lg text-[9px] font-extrabold uppercase tracking-wider transition-all select-none border shrink-0 ${
+                              selectedWeekId === 'all'
+                                ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
+                                : 'bg-white text-slate-500 hover:text-slate-800 border-slate-200 hover:bg-slate-50'
                             }`}
                           >
-                            Sett. {idx + 1} ({w.label})
+                            Tutte le giornate ({activeSeasonDays.length})
                           </button>
-                        ))}
-                                   {/* Daily Recap summary & interactive chosen day panel */}
-                      <div className="p-8 bg-slate-50/20 border-b border-slate-50">
+                          {weeks.map((w, idx) => (
+                            <button
+                              key={w.id}
+                              type="button"
+                              onClick={() => setSelectedWeekId(w.id)}
+                              className={`px-3 py-1.5 rounded-lg text-[9px] font-extrabold uppercase tracking-wider transition-all select-none border shrink-0 ${
+                                selectedWeekId === w.id
+                                  ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
+                                  : 'bg-white text-slate-500 hover:text-slate-800 border-slate-200 hover:bg-slate-50'
+                              }`}
+                            >
+                              Sett. {idx + 1} ({w.label})
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                                    {/* Daily Recap summary & interactive chosen day panel */}
+                      <div className="p-8 bg-slate-100/40 border-b border-slate-200">
                         {displayedDays.length > 0 ? (
                           (() => {
                             const activeRecapDay = displayedDays.includes(selectedRecapDay)
@@ -2495,8 +2615,8 @@ const OratorioFeriale: React.FC = () => {
                                 {/* Left Side: Day Selection Grid */}
                                 <div className="lg:col-span-5 flex flex-col gap-3">
                                   <div className="flex items-center gap-2">
-                                    <Calendar size={14} className="text-blue-500" />
-                                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                    <Calendar size={14} className="text-slate-705" />
+                                    <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
                                       Seleziona Giorno per il Riepilogo:
                                     </h4>
                                   </div>
@@ -2514,26 +2634,26 @@ const OratorioFeriale: React.FC = () => {
                                           onClick={() => setSelectedRecapDay(day)}
                                           className={`p-3 rounded-2xl text-left border transition-all flex flex-col justify-between cursor-pointer select-none active:scale-95 ${
                                             isSel
-                                              ? 'bg-blue-600 text-white border-blue-650 shadow-lg shadow-blue-100/50 scale-[1.02] font-black'
-                                              : 'bg-white text-slate-700 border-slate-100 hover:border-slate-300 hover:bg-slate-50'
+                                              ? 'bg-slate-900 text-white border-slate-950 shadow-md scale-[1.02] font-black'
+                                              : 'bg-white text-slate-800 border-slate-200 hover:border-slate-400 hover:bg-slate-50'
                                           }`}
                                         >
                                           <div className="flex items-center justify-between w-full">
                                             <div className="flex flex-col">
-                                              <span className={`text-[10px] font-black uppercase text-left ${isSel ? 'text-white/80' : 'text-slate-400'}`}>
+                                              <span className={`text-[10px] font-black uppercase text-left ${isSel ? 'text-slate-350 font-bold' : 'text-slate-500'}`}>
                                                 {format(dayObj, 'eee', { locale: it })}
                                               </span>
                                               <span className="text-xs font-black">
                                                 {format(dayObj, 'dd/MM')}
-                                                {isDayToday && <span className={`${isSel ? 'text-white' : 'text-blue-300'} text-[8px] font-black`}> (Oggi)</span>}
+                                                {isDayToday && <span className={`${isSel ? 'text-amber-400 font-extrabold' : 'text-blue-600'} text-[8px] font-black`}> (Oggi)</span>}
                                               </span>
                                             </div>
                                             {dayStats.absent > 0 ? (
-                                              <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${isSel ? 'bg-white/20 text-white' : 'bg-red-50 text-red-600'}`}>
+                                              <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${isSel ? 'bg-white/25 text-white' : 'bg-red-50 text-red-650 font-black border border-red-100'}`}>
                                                 🔴 {dayStats.absent}
                                               </span>
                                             ) : (
-                                              <span className={`text-[9.5px] font-black ${isSel ? 'text-white' : 'text-emerald-500'}`}>
+                                              <span className={`text-[9.5px] font-black ${isSel ? 'text-emerald-400 font-extrabold' : 'text-emerald-650 font-extrabold'}`}>
                                                 🟢 OK
                                               </span>
                                             )}
@@ -2550,9 +2670,9 @@ const OratorioFeriale: React.FC = () => {
                                 </div>
 
                                 {/* Right Side: Chosen Day Detail card */}
-                                <div className="lg:col-span-7 bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all p-6 flex flex-col justify-between">
+                                <div className="lg:col-span-7 bg-white rounded-[2rem] border border-slate-250 shadow-md p-6 flex flex-col justify-between">
                                   <div>
-                                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100/60 pb-4">
+                                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-205 pb-4">
                                       <div>
                                         <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest bg-blue-50 px-2.5 py-1 rounded-full animate-pulse">
                                           In Evidenza
@@ -2596,9 +2716,9 @@ const OratorioFeriale: React.FC = () => {
                                             return (
                                               <div
                                                 key={`abs-detail-${item.absence.id}`}
-                                                className="flex flex-wrap items-center justify-between p-2 rounded-2xl bg-slate-50 border border-slate-100/80 hover:bg-slate-100/40 transition-colors gap-2"
+                                                className="flex flex-wrap items-center justify-between p-2.5 rounded-2xl bg-slate-50 border border-slate-200 hover:bg-slate-100/60 transition-colors gap-2"
                                               >
-                                                <span className="text-[11px] font-bold text-slate-700 uppercase italic">
+                                                <span className="text-[11px] font-extrabold text-slate-800 uppercase italic">
                                                   {item.animator.lastName} {item.animator.firstName}
                                                 </span>
                                                 <div className="flex items-center gap-1.5">
@@ -2641,13 +2761,13 @@ const OratorioFeriale: React.FC = () => {
                             <p className="text-slate-400 text-xs italic">Nessun giorno feriale attivo in questa settimana.</p>
                           </div>
                         )}
-                      </div>                   </div>
+                      </div>
 
                       <div className="overflow-x-auto">
                         <table className="w-full border-collapse">
                           <thead>
-                            <tr className="bg-slate-50/10 border-b border-slate-100 italic">
-                              <th className="px-8 py-5 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Animatore</th>
+                            <tr className="bg-slate-100/90 border-b border-slate-250 italic">
+                              <th className="px-8 py-5 text-left text-[10px] font-black uppercase tracking-widest text-slate-650 font-sans">Animatore</th>
                               {displayedDays.map(day => {
                                 const dateObj = new Date(day);
                                 const stats = dailyStats[day] || { present: 0, absent: 0, partial: 0, total: 0 };
@@ -2658,22 +2778,22 @@ const OratorioFeriale: React.FC = () => {
                                     onClick={() => setSelectedRecapDay(day)}
                                     className={`px-3 py-5 text-center text-[10px] font-black uppercase tracking-widest min-w-[85px] cursor-pointer transition-all relative ${
                                       isActive 
-                                        ? 'bg-blue-50 text-blue-700 border-x border-t border-blue-100 rounded-t-3xl shadow-sm' 
-                                        : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100/40'
+                                        ? 'bg-indigo-50/95 text-indigo-950 border-x border-t border-indigo-200 rounded-t-2xl shadow-sm' 
+                                        : 'text-slate-500 hover:text-slate-805 hover:bg-slate-205/50'
                                     }`}
                                     title="Clicca per caricare i dettagli di questa giornata nel riepilogo sopra"
                                   >
                                     <div className="flex flex-col items-center">
-                                      <span className={isActive ? 'text-blue-600 font-black' : 'opacity-75'}>
+                                      <span className={isActive ? 'text-indigo-650 font-black' : 'opacity-75'}>
                                         {format(dateObj, 'eee', { locale: it })}
                                       </span>
-                                      <span className={`text-xs font-black mt-0.5 ${isActive ? 'text-blue-800' : 'text-slate-600'}`}>
+                                      <span className={`text-xs font-black mt-0.5 ${isActive ? 'text-indigo-950' : 'text-slate-700'}`}>
                                         {format(dateObj, 'dd/MM')}
                                       </span>
                                       {/* Inline stats block */}
-                                      <div className={`mt-2 pt-1.5 border-t w-full flex items-center justify-center gap-1.5 text-[9px] font-extrabold ${isActive ? 'border-blue-200' : 'border-slate-100/50'}`}>
-                                        <span className="text-emerald-600" title="Presenti">🟢{stats.present}</span>
-                                        <span className="text-red-500" title="Assenti">🔴{stats.absent}</span>
+                                      <div className={`mt-2 pt-1.5 border-t w-full flex items-center justify-center gap-1.5 text-[9px] font-extrabold ${isActive ? 'border-indigo-200' : 'border-slate-200'}`}>
+                                        <span className="text-emerald-700" title="Presenti">🟢{stats.present}</span>
+                                        <span className="text-red-500 font-extrabold" title="Assenti">🔴{stats.absent}</span>
                                       </div>
                                     </div>
                                   </th>
@@ -2681,14 +2801,14 @@ const OratorioFeriale: React.FC = () => {
                               })}
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-slate-50">
+                          <tbody className="divide-y divide-slate-200">
                             {activeSeasonAnimatorsList.length > 0 ? activeSeasonAnimatorsList.map((anim, index) => (
-                              <tr key={`${anim.id}-${index}`} className="hover:bg-slate-50/50 transition-colors">
+                              <tr key={`${anim.id}-${index}`} className="hover:bg-slate-100/60 transition-colors">
                                 <td className="px-8 py-4 whitespace-nowrap">
                                   <span className="text-xs font-black text-slate-800 uppercase italic">{anim.lastName} {anim.firstName}</span>
                                 </td>
                                 {displayedDays.map(day => {
-                                  const matchingAbs = absences.find(ab => ab.animatorId === anim.id && ab.date === day);
+                                  const matchingAbs = getAbsenceForAnimatorOnDay(anim.id, day);
                                   const meta = getAbsenceMeta(matchingAbs);
                                   const isActive = activeRecapDay === day;
 
@@ -2697,7 +2817,7 @@ const OratorioFeriale: React.FC = () => {
                                       key={day} 
                                       className={`px-2 py-4 text-center transition-all ${
                                         isActive 
-                                          ? 'bg-blue-50/10 border-x border-blue-50/35 shadow-inner' 
+                                          ? 'bg-indigo-50/30 border-x border-indigo-150/85 shadow-inner' 
                                           : ''
                                       }`}
                                     >
@@ -2711,14 +2831,14 @@ const OratorioFeriale: React.FC = () => {
                                           });
                                         }}
                                         className={`w-11 h-11 rounded-xl flex items-center justify-center font-bold text-xs shadow-sm cursor-pointer transition-all active:scale-95 ${
-                                          meta ? meta.className : 'bg-slate-100 hover:bg-slate-200 text-slate-400 hover:text-slate-600'
+                                          meta ? meta.className : 'bg-emerald-50/40 border border-emerald-100 hover:bg-emerald-50 hover:border-emerald-255 text-emerald-600 hover:text-emerald-800'
                                         }`}
                                         title={meta ? meta.tooltip : `${anim.lastName}: Presente (Clicca per impostare assenza)`}
                                       >
                                         {meta ? (
                                           <span className="font-extrabold text-[10px] whitespace-nowrap">{meta.label}</span>
                                         ) : (
-                                          <Plus size={12} className="opacity-40 hover:opacity-100 transition-opacity" />
+                                          <Plus size={11} className="opacity-60 hover:opacity-100 hover:scale-110 transition-all font-bold" />
                                         )}
                                       </button>
                                     </td>
@@ -3380,10 +3500,37 @@ const OratorioFeriale: React.FC = () => {
             </div>
 
             <div className="p-8 space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Seleziona Tipo di Assenza</span>
-              
-              {/* Option 1: Present (cancels existing absence) */}
-              <button
+              {selectedGridAbsence.existingAbs?.id.startsWith('virtual-') ? (
+                <div className="space-y-4 py-2">
+                  <div className="p-5 bg-amber-50/60 border border-amber-200 rounded-2xl">
+                    <div className="flex items-center gap-2 text-amber-800 mb-2.5">
+                      <AlertCircle size={18} className="shrink-0" />
+                      <span className="text-xs font-black uppercase tracking-wider">Assenza Settimanale Profilo</span>
+                    </div>
+                    <p className="text-[10px] font-bold text-amber-700 uppercase leading-relaxed">
+                      L&apos;animatore è impostato come non presente per questa settimana nelle impostazioni della sua iscrizione (fatta sulla chip &quot;ISCRITTO&quot; nel database animatori).
+                    </p>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase leading-relaxed mt-4">
+                      Se vuoi che l&apos;animatore sia presente in questa settimana, vai nella lista animatori, clicca sulla chip &quot;ISCRITTO&quot; del suo profilo e abilita questa settimana feriale nelle sue presenze.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedGridAbsence(null);
+                      setCustomAbsTime({ show: false, startTime: '08:30', endTime: '13:30', reason: '' });
+                    }}
+                    className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition duration-150 active:scale-95 shadow-md flex items-center justify-center gap-2"
+                  >
+                    Chiudi
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block font-medium">Seleziona Tipo di Assenza</span>
+                  
+                  {/* Option 1: Present (cancels existing absence) */}
+                  <button
                 onClick={async () => {
                   if (selectedGridAbsence.existingAbs) {
                     await deleteDoc(doc(absencesColl, selectedGridAbsence.existingAbs.id));
@@ -3599,6 +3746,8 @@ const OratorioFeriale: React.FC = () => {
                   </button>
                 </div>
               )}
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -3724,6 +3873,127 @@ const OratorioFeriale: React.FC = () => {
                   Annulla
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Weeks Presence Modal */}
+      {weeksModalOpen && selectedWeeksAnimator && (
+        <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden border border-white animate-in zoom-in fade-in duration-300">
+            <div className="p-8 border-b border-slate-50 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-black text-slate-900 uppercase italic">
+                  Presenze Settimanali
+                </h2>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
+                  {selectedWeeksAnimator.firstName} {selectedWeeksAnimator.lastName} — {activeSeason}
+                </p>
+              </div>
+              <button 
+                onClick={() => setWeeksModalOpen(false)} 
+                className="p-2.5 hover:bg-slate-100 rounded-full text-slate-400"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-8 space-y-6 max-h-[60vh] overflow-y-auto custom-scrollbar">
+              {/* Enrollment State switch */}
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                <div>
+                  <span className="text-xs font-black text-slate-800 uppercase tracking-wider block">Iscrizione Attiva</span>
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Stagione feriale {activeSeason}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTempIsEnrollActive(!tempIsEnrollActive)}
+                  className={`w-12 h-6.5 rounded-full p-1 transition-all duration-300 ${
+                    tempIsEnrollActive ? 'bg-emerald-500' : 'bg-slate-300'
+                  }`}
+                >
+                  <div
+                    className={`w-4.5 h-4.5 rounded-full bg-white transition-all shadow transform ${
+                      tempIsEnrollActive ? 'translate-x-[22px]' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {tempIsEnrollActive && (
+                <div className="space-y-3.5">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block font-medium">Seleziona le settimane di presenza:</span>
+                  
+                  {weeks.length === 0 ? (
+                    <div className="p-6 bg-amber-50/50 border border-amber-100 rounded-2xl text-center">
+                      <p className="text-[10px] font-black text-amber-850 uppercase italic tracking-wide">Nessuna settimana programmata</p>
+                      <p className="text-[9px] text-slate-450 font-bold uppercase mt-1 leading-relaxed">
+                        Aggiungi le giornate attive tramite l&apos;interfaccia dei Turni o Turnazioni per generare le settimane di apertura.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[30vh] overflow-y-auto pr-1">
+                      {weeks.map((week, index) => {
+                        const isChecked = tempPresentWeeks.includes(week.id);
+                        return (
+                          <button
+                            key={week.id}
+                            type="button"
+                            onClick={() => {
+                              if (isChecked) {
+                                setTempPresentWeeks(tempPresentWeeks.filter(id => id !== week.id));
+                              } else {
+                                setTempPresentWeeks([...tempPresentWeeks, week.id]);
+                              }
+                            }}
+                            className={`w-full flex items-center justify-between p-4 rounded-2xl border text-left font-bold transition-all ${
+                              isChecked
+                                ? 'border-indigo-500 bg-indigo-50/40 text-indigo-900 shadow-sm'
+                                : 'border-slate-100 hover:border-indigo-200 text-slate-600 hover:bg-slate-50/50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${
+                                isChecked ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-200 bg-white'
+                              }`}>
+                                {isChecked && <Check size={11} strokeWidth={3} />}
+                              </div>
+                              <span className="text-xs font-black uppercase tracking-wider">Settimana {index + 1}</span>
+                            </div>
+                            <span className="text-[9px] font-mono tracking-wider font-bold text-slate-400">
+                              {week.label.replace('Settimana', '').trim()}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-[9px] text-slate-400 font-bold leading-relaxed uppercase tracking-wider">
+                    ⚠️ NOTA: Se un&apos;animatore non è selezionato in una specifica settimana feriale, verrà considerato e stampato come ASSENTE automatico per tutti i giorni di quella settimana.
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-8 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setWeeksModalOpen(false)}
+                className="bg-white text-slate-500 border border-slate-200 text-[10px] font-black uppercase tracking-widest px-5 py-3 rounded-full hover:bg-slate-100 transition active:scale-95"
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                disabled={isSaving}
+                onClick={handleSaveWeeks}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-black uppercase tracking-widest px-6 py-3 rounded-full shadow-lg hover:shadow-blue-50 transition active:scale-95 disabled:opacity-50 inline-flex items-center gap-2"
+              >
+                {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                Salva Modifiche
+              </button>
             </div>
           </div>
         </div>
