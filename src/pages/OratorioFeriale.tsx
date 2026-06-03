@@ -33,7 +33,8 @@ import {
   Download,
   UserMinus,
   Save,
-  ChevronDown
+  ChevronDown,
+  Star
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -77,6 +78,8 @@ interface Team {
   kids: Kid[];
   season?: string;
   createdAt: string;
+  referentIds?: string[];
+  assignments?: { [animatorId: string]: 'grandi' | 'piccoli' | '' };
 }
 
 interface Absence {
@@ -153,6 +156,7 @@ const OratorioFeriale: React.FC = () => {
   const [isDaysConfigOpen, setIsDaysConfigOpen] = useState(false);
   const [isDownloadDropdownOpen, setIsDownloadDropdownOpen] = useState(false);
   const [selectedWeekId, setSelectedWeekId] = useState<string>('all');
+  const [expandedTeams, setExpandedTeams] = useState<Record<string, boolean>>({});
   const [lastInitializedSeason, setLastInitializedSeason] = useState<string>('');
   const [selectedRecapDay, setSelectedRecapDay] = useState<string>('');
   const [seasonManagerForm, setSeasonManagerForm] = useState({
@@ -224,7 +228,9 @@ const OratorioFeriale: React.FC = () => {
     name: '',
     color: '#3B82F6',
     animatorIds: [] as string[],
-    kids: [] as Kid[]
+    kids: [] as Kid[],
+    referentIds: [] as string[],
+    assignments: {} as { [animatorId: string]: 'grandi' | 'piccoli' | '' }
   });
   const [newKid, setNewKid] = useState({ firstName: '', lastName: '', note: '' });
 
@@ -502,7 +508,7 @@ const OratorioFeriale: React.FC = () => {
   const resetForms = () => {
     setAnimatorForm({ firstName: '', lastName: '', email: '', phone: '', notes: '', seasons: [activeSeason] });
     setShiftForm({ date: format(new Date(), 'yyyy-MM-dd'), startTime: '08:30', endTime: '17:30', activity: '', animatorIds: [] });
-    setTeamForm({ name: '', color: '#3B82F6', animatorIds: [], kids: [] });
+    setTeamForm({ name: '', color: '#3B82F6', animatorIds: [], kids: [], referentIds: [], assignments: {} });
     setAbsenceForm({ animatorId: '', date: format(new Date(), 'yyyy-MM-dd'), startTime: '', endTime: '', reason: '' });
     setNewKid({ firstName: '', lastName: '', note: '' });
     setEditingId(null);
@@ -515,7 +521,16 @@ const OratorioFeriale: React.FC = () => {
       setEditingId(data.id);
       if (type === 'animators') setAnimatorForm({ ...data, seasons: data.seasons || [activeSeason] });
       if (type === 'shifts') setShiftForm({ ...data });
-      if (type === 'teams') setTeamForm({ ...data });
+      if (type === 'teams') {
+        setTeamForm({
+          name: data.name || '',
+          color: data.color || '#3B82F6',
+          animatorIds: data.animatorIds || [],
+          kids: data.kids || [],
+          referentIds: data.referentIds || [],
+          assignments: data.assignments || {}
+        });
+      }
       if (type === 'absences') setAbsenceForm({ ...data });
     }
     setIsModalOpen(true);
@@ -1193,9 +1208,13 @@ const OratorioFeriale: React.FC = () => {
           if (!anim) return;
           const isAbsent = getAbsenceForAnimatorOnDay(aid, targetDay);
           if (!isAbsent) {
+            const isRef = t.referentIds?.includes(aid);
+            const assign = t.assignments?.[aid] ? `(${t.assignments[aid].toUpperCase()})` : '';
+            const refLabel = isRef ? '⭐ [REFERENTE]' : '';
+            const fullNameAndDetail = `${anim.lastName.toUpperCase()} ${anim.firstName} ${refLabel} ${assign}`.trim().replace(/\s+/g, ' ');
             presentRows.push([
               t.name.toUpperCase(),
-              `${anim.lastName.toUpperCase()} ${anim.firstName}`,
+              fullNameAndDetail,
               'PRESENTE'
             ]);
           }
@@ -1536,11 +1555,224 @@ const OratorioFeriale: React.FC = () => {
     }
   };
 
+  const generateSingleTeamPDF = (team: Team) => {
+    try {
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 14;
+
+      const ferialeName = parishInfo.name || 'Oratorio Feriale';
+      const seasonText = `Stagione Feriale ${activeSeason}`;
+      const targetWeekId = selectedWeekId !== 'all' ? selectedWeekId : getWeekIdForDay(activeRecapDay);
+      const targetWeekObj = weeks.find(w => w.id === targetWeekId);
+      const weekLabel = targetWeekObj?.label || `Settimana del ${format(new Date(targetWeekId), 'dd/MM/yyyy', { locale: it })}`;
+
+      // Header Banner - Elegant Light layout with Team Accent Color top-bar
+      const teamColorHex = team.color || '#334155';
+      const r_accent = parseInt(teamColorHex.slice(1, 3), 16) || 51;
+      const g_accent = parseInt(teamColorHex.slice(3, 5), 16) || 65;
+      const b_accent = parseInt(teamColorHex.slice(5, 7), 16) || 85;
+
+      // 1. Team accent line
+      doc.setFillColor(r_accent, g_accent, b_accent);
+      doc.rect(0, 0, pageWidth, 5, 'F');
+
+      let headerY = 13;
+
+      // 2. Parish Logo on top-left if it exists
+      let textStartX = margin;
+      if (parishInfo.logoUrl) {
+        try {
+          doc.addImage(parishInfo.logoUrl, 'PNG', margin, headerY - 4, 18, 18);
+          textStartX += 22;
+        } catch (e) {
+          // Fallback if image load fails
+        }
+      }
+
+      // 3. Left Side Title details
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(100, 116, 139); // Slate-400
+      doc.text(ferialeName.toUpperCase(), textStartX, headerY);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(22);
+      doc.setTextColor(30, 41, 59); // Slate-800
+      doc.text(team.name.toUpperCase(), textStartX, headerY + 8);
+
+      // 4. Right Side: Reference Period Card
+      const cardWidth = 72;
+      const cardHeight = 18;
+      const cardX = pageWidth - margin - cardWidth;
+      const cardY = headerY - 4;
+
+      doc.setFillColor(248, 250, 252); // Slate-50 background
+      doc.setDrawColor(226, 232, 240); // Slate-200 border
+      doc.setLineWidth(0.3);
+      doc.roundedRect(cardX, cardY, cardWidth, cardHeight, 1.5, 1.5, 'FD');
+
+      // Card Content
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(148, 163, 184); // Slate-400
+      doc.text('RIFERIMENTO SETTIMANALE', cardX + 4, cardY + 5);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(r_accent, g_accent, b_accent); // Brand accent
+      doc.text(weekLabel.toUpperCase(), cardX + 4, cardY + 10);
+
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(7);
+      doc.setTextColor(100, 116, 139); // Slate-500
+      doc.text(`${seasonText} • Generato: ${format(new Date(), 'dd/MM/yyyy HH:mm', { locale: it })}`, cardX + 4, cardY + 14.5);
+
+      // Clean horizontal divider line under header
+      doc.setDrawColor(241, 245, 249);
+      doc.setLineWidth(0.4);
+      doc.line(margin, headerY + 18, pageWidth - margin, headerY + 18);
+
+      let currentY = headerY + 26;
+
+      // ANIMATORI SECTION TITLE
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.setTextColor(30, 41, 59);
+      doc.text("ANIMATORI DELLA SQUADRA", margin, currentY);
+      currentY += 5;
+
+      const teamAnimators = team.animatorIds.map(aid => animators.find(a => a.id === aid)).filter(Boolean) as Animator[];
+      const animatorsForWeek = teamAnimators.filter(anim => isAnimatorPresentInWeek(anim, activeSeason, targetWeekId));
+      const animatorsNotScheduledForWeek = teamAnimators.filter(anim => !isAnimatorPresentInWeek(anim, activeSeason, targetWeekId));
+
+      const animatorsRows: any[] = [];
+      
+      // Active animators
+      animatorsForWeek.forEach(anim => {
+        const isRef = team.referentIds?.includes(anim.id);
+        const assign = team.assignments?.[anim.id] ? team.assignments[anim.id].toUpperCase() : '-';
+        const roleStr = isRef ? '⭐ REFERENTE SQUADRA' : 'Animatore';
+        animatorsRows.push([
+          `${anim.lastName.toUpperCase()} ${anim.firstName}`,
+          roleStr,
+          assign,
+          'CONFERMATO / PRESENTE IN SETTIMANA'
+        ]);
+      });
+
+      // Non-active animators
+      animatorsNotScheduledForWeek.forEach(anim => {
+        const isRef = team.referentIds?.includes(anim.id);
+        const assign = team.assignments?.[anim.id] ? team.assignments[anim.id].toUpperCase() : '-';
+        const roleStr = isRef ? '⭐ REFERENTE SQUADRA' : 'Animatore';
+        animatorsRows.push([
+          `${anim.lastName.toUpperCase()} ${anim.firstName}`,
+          roleStr,
+          assign,
+          'NON SEGNATO / ASSENTE QUESTA SETTIMANA'
+        ]);
+      });
+
+      if (animatorsRows.length === 0) {
+        animatorsRows.push(['-', 'Nessun animatore associato', '-', '-']);
+      }
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [['NOME E COGNOME', 'RUOLO', 'ASSEGNAZIONE', 'STATO SETTIMANA']],
+        body: animatorsRows,
+        theme: 'grid',
+        styles: { fontSize: 8.5, cellPadding: 3.5, font: 'helvetica' },
+        headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontStyle: 'bold' },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 55 },
+          1: { cellWidth: 45 },
+          2: { cellWidth: 35 },
+          3: { cellWidth: 47 }
+        },
+        didParseCell: (data) => {
+          if (data.row.index >= 0 && data.cell.section === 'body') {
+            const statusText = data.row.cells[3].text[0];
+            if (statusText && statusText.includes('NON SEGNATO')) {
+              data.cell.styles.textColor = [120, 113, 108]; // Slate-500/stone style
+              data.cell.styles.fillColor = [250, 250, 249];
+            }
+          }
+        }
+      });
+
+      currentY = (doc as any).lastAutoTable.finalY + 10;
+
+      if (currentY > pageHeight - 35) {
+        doc.addPage();
+        currentY = 15;
+      }
+
+      // RAGAZZI SECTION TITLE
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.setTextColor(30, 41, 59);
+      doc.text(`ELENCO RAGAZZI SQUADRA (${team.kids?.length || 0})`, margin, currentY);
+      currentY += 5;
+
+      const kidsRows = (team.kids || []).map((k, kIdx) => [
+        (kIdx + 1).toString(),
+        k.lastName.toUpperCase(),
+        k.firstName.toUpperCase(),
+        k.note || '-'
+      ]);
+
+      if (kidsRows.length === 0) {
+        kidsRows.push(['-', 'Nessun ragazzo iscritto a questa squadra', '-', '-']);
+      }
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [['N.', 'COGNOME', 'NOME', 'NOTE']],
+        body: kidsRows,
+        theme: 'grid',
+        styles: { fontSize: 8.5, cellPadding: 3.5, font: 'helvetica' },
+        headStyles: { fillColor: [30, 58, 138], textColor: [255, 255, 255], fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [243, 244, 246] },
+        columnStyles: {
+          0: { cellWidth: 10 },
+          1: { fontStyle: 'bold', cellWidth: 50 },
+          2: { cellWidth: 50 },
+          3: { cellWidth: 72 }
+        }
+      });
+
+      setSuccessStatus(`Scheda ${team.name} scaricata!`);
+      setTimeout(() => setSuccessStatus(null), 2000);
+
+      const fName = `${team.name.replace(/\s+/g, '_')}_Scheda_Feriale_${activeSeason}.pdf`;
+      doc.save(fName);
+    } catch (err) {
+      console.error('Single Team PDF Generation Error:', err);
+      setErrorStatus('Impossibile scaricare la scheda della squadra.');
+    }
+  };
+
   const getAbsenceMeta = (ab?: Absence) => {
     if (!ab) return null;
     const s = ab.startTime || '';
     const e = ab.endTime || '';
     const r = ab.reason || '';
+
+    if (r.includes('Settimana non selezionata')) {
+      return {
+        label: '-',
+        tooltip: 'Non iscritto in questa settimana feriale',
+        className: 'bg-slate-100 border border-slate-205 text-slate-400 font-normal hover:bg-slate-100 ring-0 cursor-not-allowed cursor-default opacity-50 shadow-none'
+      };
+    }
 
     if (r === 'Solo Mattina' || (s === '13:30' && e === '17:30')) {
       return {
@@ -1884,7 +2116,7 @@ const OratorioFeriale: React.FC = () => {
                       <th className="px-8 py-5 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Nome</th>
                       <th className="px-8 py-5 text-center text-[10px] font-black uppercase tracking-widest text-slate-400">Iscritto {activeSeason}</th>
                       <th className="px-8 py-5 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Telefono</th>
-                      <th className="px-8 py-5 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Note / Allergie</th>
+                      <th className="px-8 py-5 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Note</th>
                       <th className="px-8 py-5 text-right text-[10px] font-black uppercase tracking-widest text-slate-400">Azioni</th>
                     </tr>
                   </thead>
@@ -2177,16 +2409,34 @@ const OratorioFeriale: React.FC = () => {
         {/* Squadre Tab */}
         {activeTab === 'teams' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* Day Selector and PDF export panel */}
-            <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col xl:flex-row items-center justify-between gap-6">
+            {/* Day Selector and PDF export panel - HIGH CONTRAST & COMPACT */}
+            <div className="bg-slate-900 text-white p-5 rounded-[2rem] border border-slate-950 shadow-md flex flex-col xl:flex-row items-center justify-between gap-4">
               <div className="flex-1 space-y-2 w-full">
-                <h3 className="text-sm font-black text-slate-900 uppercase italic tracking-widest flex items-center gap-2">
-                  <Calendar size={18} className="text-blue-600" />
-                  Rilevamento Squadre per il giorno:
-                </h3>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Calendar size={18} className="text-amber-400 shrink-0" />
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block leading-none">GIORNO SELEZIONATO</span>
+                      {activeRecapDay ? (
+                        <span className="text-sm font-black uppercase text-amber-300 font-sans tracking-tight">
+                          {format(new Date(activeRecapDay), 'eeee dd MMMM yyyy', { locale: it })}
+                        </span>
+                      ) : (
+                        <span className="text-sm font-black text-slate-400">Nessun giorno selezionato</span>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    {activeRecapDay && (
+                      <span className="bg-amber-400 text-slate-950 text-[9px] font-black uppercase px-2.5 py-1 rounded-full tracking-wider italic">
+                        Visualizzato Ora
+                      </span>
+                    )}
+                  </div>
+                </div>
                 
-                {/* Scrollable Day Selection Pills */}
-                <div className="flex items-center gap-2 overflow-x-auto pb-2 pt-1 scrollbar-thin scrollbar-thumb-slate-200">
+                {/* Scrollable Day Selection Pills (Micro sized with extreme contrast) */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1.5 scrollbar-thin scrollbar-thumb-slate-850">
                   {activeSeasonDays.map(day => {
                     const isSel = day === activeRecapDay;
                     const dayObj = new Date(day);
@@ -2196,10 +2446,10 @@ const OratorioFeriale: React.FC = () => {
                         key={`teams-day-${day}`}
                         type="button"
                         onClick={() => setSelectedRecapDay(day)}
-                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider shrink-0 transition-all ${
+                        className={`px-3 py-1.5 rounded-lg text-[9px] font-extrabold uppercase tracking-wider shrink-0 transition-all ${
                           isSel 
-                            ? 'bg-blue-600 text-white shadow-md shadow-blue-100 scale-102 font-bold' 
-                            : 'bg-slate-50 text-slate-600 border border-slate-100 hover:border-slate-300'
+                            ? 'bg-amber-400 text-slate-950 border-amber-400 shadow-sm scale-102 font-black font-sans' 
+                            : 'bg-slate-800 text-slate-300 border border-slate-700/85 hover:bg-slate-700 hover:text-white'
                         }`}
                       >
                         {formattedDateStr}
@@ -2210,30 +2460,24 @@ const OratorioFeriale: React.FC = () => {
                     <span className="text-xs text-slate-400 font-bold italic">Nessun giorno impostato nella stagione.</span>
                   )}
                 </div>
-                
-                {activeRecapDay && (
-                  <p className="text-xs font-bold text-slate-400 uppercase italic tracking-wider flex items-center gap-1">
-                    🟢 Visualizzazione date del Camp: <span className="text-slate-800 font-black ml-1 uppercase">{format(new Date(activeRecapDay), 'eeee dd MMMM yyyy', { locale: it })}</span>
-                  </p>
-                )}
               </div>
 
-              {/* PDF Actions */}
-              <div className="flex flex-wrap gap-2 shrink-0">
+              {/* PDF Actions with supreme contrast */}
+              <div className="flex flex-wrap gap-2.5 shrink-0 w-full xl:w-auto justify-end">
                 <button
                   type="button"
                   onClick={() => generateDailyTeamsPDF(activeRecapDay)}
-                  className="flex items-center gap-2 bg-indigo-50 border border-indigo-150 text-indigo-700 hover:bg-indigo-100 px-4 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all shadow-sm active:scale-95"
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-750 text-white border border-indigo-700 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-md active:scale-95"
                 >
-                  <Download size={13} className="text-indigo-600" />
+                  <Download size={13} className="text-white" />
                   Scarica Presenti/Assenti Oggi
                 </button>
                 <button
                   type="button"
                   onClick={() => generateWeeklyTeamsPDF()}
-                  className="flex items-center gap-2 bg-emerald-50 border border-emerald-150 text-emerald-700 hover:bg-emerald-100 px-4 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all shadow-sm active:scale-95"
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-750 text-white border border-emerald-700 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-md active:scale-95"
                 >
-                  <Download size={13} className="text-emerald-600" />
+                  <Download size={13} className="text-white" />
                   Scarica Settimanale Squadre
                 </button>
               </div>
@@ -2243,56 +2487,121 @@ const OratorioFeriale: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {filteredTeams.length > 0 ? filteredTeams.map((t, idx) => {
                 const teamAnimators = t.animatorIds.map(aid => animators.find(a => a.id === aid)).filter(Boolean) as Animator[];
-                const presentToday = teamAnimators.filter(anim => !getAbsenceForAnimatorOnDay(anim.id, activeRecapDay));
-                const absentToday = teamAnimators.filter(anim => !!getAbsenceForAnimatorOnDay(anim.id, activeRecapDay));
+                const presentToday = teamAnimators.filter(anim => {
+                  const ab = getAbsenceForAnimatorOnDay(anim.id, activeRecapDay);
+                  if (!ab) return true;
+                  const isMezza = ab.reason === 'Solo Mattina' || ab.reason === 'Solo Pomeriggio' || 
+                                  (ab.startTime === '13:30' && ab.endTime === '17:30') || 
+                                  (ab.startTime === '08:30' && ab.endTime === '13:30');
+                  return isMezza;
+                });
+                const absentToday = teamAnimators.filter(anim => {
+                  const ab = getAbsenceForAnimatorOnDay(anim.id, activeRecapDay);
+                  if (!ab) return false;
+                  const isMezza = ab.reason === 'Solo Mattina' || ab.reason === 'Solo Pomeriggio' || 
+                                  (ab.startTime === '13:30' && ab.endTime === '17:30') || 
+                                  (ab.startTime === '08:30' && ab.endTime === '13:30');
+                  return !isMezza;
+                });
 
                 return (
-                  <div key={`${t.id}-${idx}`} className="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col hover:shadow-lg transition-all border-t-8" style={{ borderTopColor: t.color }}>
-                    <div className="p-8 pb-4 flex items-start justify-between">
+                  <div key={`${t.id}-${idx}`} className="bg-white rounded-[2rem] border-2 border-slate-300 shadow-md overflow-hidden flex flex-col hover:shadow-xl transition-all border-t-8" style={{ borderTopColor: t.color }}>
+                    <div className="p-6 pb-4 flex items-center justify-between bg-slate-50/70 border-b border-slate-200">
                       <div>
-                        <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tight">{t.name}</h2>
-                        <div className="flex flex-wrap gap-2 mt-4">
-                          {teamAnimators.map((anim, itemIdx) => (
-                            <span key={`${t.id}-anim-${anim.id}-${itemIdx}`} className="text-[9px] font-black uppercase tracking-widest px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg border border-blue-100 italic flex items-center gap-1.5">
-                              <UserCheck size={10} />
-                              {anim.lastName} {anim.firstName[0]}.
-                            </span>
-                          ))}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h2 className="text-xl font-black text-slate-900 uppercase italic tracking-tight">{t.name}</h2>
+                          {t.referentIds && t.referentIds.length > 0 && (
+                            <div className="flex items-center gap-1 flex-wrap">
+                              {t.referentIds.map((refId) => {
+                                const refAnim = teamAnimators.find(a => a.id === refId);
+                                if (!refAnim) return null;
+                                return (
+                                  <span key={`ref-badge-${refId}`} className="text-[8.5px] font-black uppercase tracking-wider px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded flex items-center gap-1 italic shadow-sm" title={`Referente: ${refAnim.lastName} ${refAnim.firstName}`}>
+                                    <Star size={9} className="text-amber-500 fill-amber-500 shrink-0" />
+                                    <span>{refAnim.lastName} {refAnim.firstName[0]}.</span>
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
+                        <span className="text-[9px] font-extrabold text-slate-500 uppercase tracking-widest block mt-1">
+                          {teamAnimators.length} Animatori • {t.kids?.length || 0} Ragazzi
+                        </span>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => handleOpenModal('teams', t)} className="p-3 text-blue-600 hover:bg-blue-50 rounded-2xl transition-colors"><Pencil size={20} /></button>
-                        <button onClick={() => handleDelete(t.id, teamsColl)} className="p-3 text-red-600 hover:bg-red-50 rounded-2xl transition-colors"><Trash2 size={20} /></button>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button 
+                          onClick={() => generateSingleTeamPDF(t)} 
+                          className="p-2.5 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-900 border border-slate-300 rounded-xl transition-all bg-white hover:border-emerald-500 active:scale-95"
+                          title="Scarica scheda squadra (PDF)"
+                        >
+                          <Download size={15} className="font-extrabold" />
+                        </button>
+                        <button 
+                          onClick={() => handleOpenModal('teams', t)} 
+                          className="p-2.5 text-blue-700 hover:bg-blue-50 hover:text-blue-900 border border-slate-300 rounded-xl transition-all bg-white hover:border-blue-500 active:scale-95"
+                          title="Modifica squadra"
+                        >
+                          <Pencil size={15} className="font-extrabold" />
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(t.id, teamsColl)} 
+                          className="p-2.5 text-red-700 hover:bg-red-50 hover:text-red-900 border border-slate-300 rounded-xl transition-all bg-white hover:border-red-500 active:scale-95"
+                          title="Elimina squadra"
+                        >
+                          <Trash2 size={15} className="font-extrabold" />
+                        </button>
                       </div>
                     </div>
 
                     {/* Dynamic Present / Absent Animators lists for Selected Day */}
-                    <div className="px-8 pb-4">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-5 rounded-3xl border border-slate-100">
+                    <div className="px-6 pt-4 pb-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-100/60 p-4 rounded-2xl border border-slate-250">
                         {/* Present Block */}
                         <div className="space-y-2">
-                          <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest flex items-center gap-1.5 bg-emerald-50 px-2.5 py-1 rounded-full w-fit">
-                            <CheckCircle2 size={11} className="text-emerald-500 animate-pulse" />
-                            Presenti oggi ({presentToday.length})
+                          <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest flex items-center gap-1.5 bg-emerald-100 border border-emerald-300 px-2.5 py-1.5 rounded-lg w-fit">
+                            <CheckCircle2 size={11} className="text-emerald-700 animate-pulse" />
+                            Presenti ({presentToday.length})
                           </span>
                           <div className="space-y-1.5 max-h-36 overflow-y-auto custom-scrollbar">
-                            {presentToday.map(anim => (
-                              <div key={anim.id} className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5 py-0.5 italic">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                                <span className="truncate">{anim.lastName} {anim.firstName}</span>
-                              </div>
-                            ))}
+                            {presentToday.map(anim => {
+                              const isRef = t.referentIds?.includes(anim.id);
+                              const assign = t.assignments?.[anim.id];
+                              const ab = getAbsenceForAnimatorOnDay(anim.id, activeRecapDay);
+                              const hasAbs = !!ab;
+                              return (
+                                <div key={anim.id} className="text-[11px] font-extrabold text-slate-900 flex items-center gap-1.5 py-0.5 italic flex-wrap">
+                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${hasAbs ? 'bg-amber-500 animate-pulse' : 'bg-emerald-600'}`} />
+                                  {isRef && <Star size={11} className="text-amber-500 fill-amber-500 shrink-0" />}
+                                  <span className="truncate">{anim.lastName} {anim.firstName}</span>
+                                  {assign && (
+                                    <span className={`text-[8px] font-black px-1.5 py-0.5 rounded ml-1 tracking-normal uppercase border leading-none ${
+                                      assign === 'grandi' 
+                                        ? 'bg-orange-50 text-orange-600 border-orange-200' 
+                                        : 'bg-teal-50 text-teal-600 border-teal-200'
+                                    }`}>
+                                      {assign}
+                                    </span>
+                                  )}
+                                  {ab && (
+                                    <span className="text-[7.5px] font-black bg-amber-100 text-amber-800 border border-amber-200 px-1 py-0.5 rounded uppercase leading-none" title={ab.reason}>
+                                      {ab.reason === 'Solo Mattina' || (ab.startTime === '13:30' && ab.endTime === '17:30') ? '☀️ Solo Mattina' : '⛅ Solo Pom.'}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
                             {presentToday.length === 0 && (
-                              <p className="text-[10px] text-slate-400 font-extrabold uppercase italic">Nessuno presente</p>
+                              <p className="text-[10px] text-slate-500 font-extrabold uppercase italic">Nessuno presente</p>
                             )}
                           </div>
                         </div>
 
                         {/* Absent Block */}
-                        <div className="space-y-2 border-t sm:border-t-0 sm:border-l border-slate-200/50 pt-3 sm:pt-0 sm:pl-4">
-                          <span className="text-[10px] font-black text-red-650 uppercase tracking-widest flex items-center gap-1.5 bg-red-50 px-2.5 py-1 rounded-full w-fit">
-                            <AlertCircle size={11} className="text-red-500" />
-                            Assenti oggi ({absentToday.length})
+                        <div className="space-y-2 border-t sm:border-t-0 sm:border-l border-slate-300 pt-3 sm:pt-0 sm:pl-4">
+                          <span className="text-[10px] font-black text-red-800 uppercase tracking-widest flex items-center gap-1.5 bg-red-100 border border-red-305 px-2.5 py-1.5 rounded-lg w-fit">
+                            <AlertCircle size={11} className="text-red-650" />
+                            Assenti ({absentToday.length})
                           </span>
                           <div className="space-y-1.5 max-h-36 overflow-y-auto custom-scrollbar">
                             {absentToday.map(anim => {
@@ -2306,87 +2615,231 @@ const OratorioFeriale: React.FC = () => {
                                 spec = `${ab.startTime || ''}-${ab.endTime || ''}`;
                               }
                               const reason = ab?.reason && ab.reason !== 'Solo Mattina' && ab.reason !== 'Solo Pomeriggio' ? `(${ab.reason})` : '';
+                              const isRef = t.referentIds?.includes(anim.id);
+                              const assign = t.assignments?.[anim.id];
 
                               return (
-                                <div key={anim.id} className="text-[11px] font-medium text-slate-550 flex flex-col gap-0.5 py-0.5 border-b border-dashed border-slate-100 last:border-none">
-                                  <span className="font-bold text-red-650 flex items-center gap-1.5 italic">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0 animate-ping" />
+                                <div key={anim.id} className="text-[11px] font-medium text-slate-900 flex flex-col gap-0.5 py-0.5 border-b border-dashed border-slate-200 last:border-none">
+                                  <span className="font-extrabold text-red-700 flex items-center gap-1.5 italic">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-red-600 shrink-0 animate-ping" />
+                                    {isRef && <Star size={11} className="text-amber-500 fill-amber-500 shrink-0" />}
                                     {anim.lastName} {anim.firstName[0]}.
+                                    {assign && (
+                                      <span className={`text-[8px] font-black px-1.5 py-0.5 rounded ml-1 tracking-normal uppercase border leading-none ${
+                                        assign === 'grandi' 
+                                          ? 'bg-orange-50 text-orange-600 border-orange-200' 
+                                          : 'bg-teal-50 text-teal-600 border-teal-200'
+                                      }`}>
+                                        {assign}
+                                      </span>
+                                    )}
                                   </span>
-                                  <span className="text-[9px] text-slate-400 font-mono pl-3 italic">
+                                  <span className="text-[9.5px] text-slate-600 font-mono font-bold pl-3 italic">
                                     {spec} {reason}
                                   </span>
                                 </div>
                               );
                             })}
                             {absentToday.length === 0 && (
-                              <p className="text-[10px] text-slate-400 font-extrabold uppercase italic">Nessun assente</p>
+                              <p className="text-[10px] text-slate-500 font-extrabold uppercase italic">Nessun assente</p>
                             )}
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Absences Tracker Grid inside Team Cards Row */}
-                    <div className="px-8 pb-4">
-                      <div className="bg-slate-50 border border-slate-100 p-4 rounded-3xl flex flex-col gap-2">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pb-1 border-b border-white flex items-center gap-2">
-                          <UserX size={12} className="text-red-500" />
-                          Storico presenze nel Camp
-                        </span>
-                        {teamAnimators.length > 0 ? teamAnimators.map((anim, itemIdx) => {
-                          return (
-                            <div key={`${t.id}-absence-${anim.id}-${itemIdx}`} className="flex flex-col md:flex-row md:items-center justify-between gap-2 py-2 border-b border-dashed border-slate-200/50 last:border-none">
-                              <span className="text-[11px] font-bold text-slate-700 italic shrink-0">{anim.lastName} {anim.firstName[0]}.</span>
-                              <div className="flex items-center gap-1 overflow-x-auto py-0.5 max-w-full">
-                                {activeSeasonDays.map(day => {
-                                  const isAbsent = !isAnimatorPresentInWeek(anim, activeSeason, getWeekIdForDay(day)) || absences.some(ab => ab.animatorId === anim.id && ab.date === day);
-                                  const weekdayStr = format(new Date(day), 'eeeee d', { locale: it });
-                                  return (
-                                    <div 
-                                      key={day}
-                                      className={`w-7 h-7 rounded-lg flex flex-col items-center justify-center text-[8px] font-black transition-all shrink-0 ${
-                                        isAbsent 
-                                          ? 'bg-red-500 text-white ring-2 ring-red-105' 
-                                          : 'bg-emerald-500 text-white ring-2 ring-emerald-105'
-                                      }`}
-                                      title={`${format(new Date(day), 'dd/MM/yyyy')}: ${isAbsent ? 'Assente' : 'Presente'}`}
-                                    >
-                                      <span className="text-[5px] uppercase opacity-75">{weekdayStr[0]}</span>
-                                      <span className="leading-none">{format(new Date(day), 'd')}</span>
-                                    </div>
-                                  );
-                                })}
-                                {activeSeasonDays.length === 0 && (
-                                  <span className="text-[9px] text-slate-400 font-bold italic">Nessun giorno feriale impostato</span>
+                    {/* Collapsible Details Panel (Tendina) */}
+                    {(() => {
+                      const isExpanded = !!expandedTeams[t.id];
+                      return (
+                        <>
+                          <div className="px-6 py-3">
+                            <button
+                              type="button"
+                              onClick={() => setExpandedTeams(prev => ({ ...prev, [t.id]: !prev[t.id] }))}
+                              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${
+                                isExpanded
+                                  ? 'bg-slate-900 border-slate-950 text-white shadow-inner font-sans'
+                                  : 'bg-white border-slate-350 text-slate-800 hover:bg-slate-50 hover:border-slate-800 hover:text-slate-900 shadow-sm font-sans'
+                              }`}
+                            >
+                              <span className="font-black">
+                                {isExpanded ? 'Nascondi Altri Dettagli' : `Mostra Altri Dettagli (${teamAnimators.length} Anim, ${t.kids?.length || 0} Ragazzi)`}
+                              </span>
+                              <ChevronDown
+                                size={14}
+                                className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}
+                              />
+                            </button>
+                          </div>
+
+                          {isExpanded && (
+                            <div className="space-y-4 px-6 pb-6 border-t border-slate-250 pt-4 bg-slate-50/70 animate-in fade-in duration-200 flex-grow">
+                              
+                              {/* 1. All Animators List */}
+                              <div className="space-y-1.5">
+                                <span className="text-[10px] font-black text-slate-505 uppercase tracking-widest italic block">
+                                  TUTTI GLI ANIMATORI ASSOCIATI (@ = REFERENTE)
+                                </span>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {teamAnimators.map((anim, itemIdx) => {
+                                    const isRef = t.referentIds?.includes(anim.id);
+                                    const assign = t.assignments?.[anim.id];
+                                    return (
+                                      <span key={`${t.id}-anim-${anim.id}-${itemIdx}`} className="text-[9.5px] font-black uppercase tracking-widest px-3 py-1.5 bg-white text-slate-800 rounded-lg border border-slate-300 italic flex items-center gap-1.5 shadow-sm">
+                                        {isRef ? (
+                                          <Star size={11} className="text-amber-500 fill-amber-500 font-black shrink-0" />
+                                        ) : (
+                                          <UserCheck size={11} className="text-blue-700 font-black shrink-0" />
+                                        )}
+                                        <span>{anim.lastName} {anim.firstName[0]}.</span>
+                                        {assign && (
+                                          <span className={`text-[8px] font-black px-1.5 py-0.5 rounded ml-1 tracking-normal uppercase border leading-none ${
+                                            assign === 'grandi' 
+                                              ? 'bg-orange-50 text-orange-600 border-orange-200' 
+                                              : 'bg-teal-50 text-teal-600 border-teal-200'
+                                          }`}>
+                                            {assign}
+                                          </span>
+                                        )}
+                                      </span>
+                                    );
+                                  })}
+                                  {teamAnimators.length === 0 && (
+                                    <span className="text-[10px] text-slate-500 font-bold italic">Nessun animatore associato</span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* 2. Storico presenze nel Camp - Diviso per settimane con l'attuale all'inizio */}
+                              <div className="bg-white border border-slate-305 p-4 rounded-2xl flex flex-col gap-2 shadow-sm">
+                                <span className="text-[10px] font-black text-slate-800 uppercase tracking-widest pb-1 border-b border-slate-100 flex items-center gap-2">
+                                  <UserX size={12} className="text-red-600" />
+                                  Storico Presenze Stagione {activeSeason} (Settimana Corrente Prima)
+                                </span>
+                                {teamAnimators.length > 0 ? (
+                                  <div className="space-y-3.5">
+                                    {teamAnimators.map((anim, itemIdx) => {
+                                      const isRef = t.referentIds?.includes(anim.id);
+                                      const assign = t.assignments?.[anim.id];
+                                      
+                                      // Get weeks and align the current active week at the start of the list
+                                      const weeksList = getWeeks();
+                                      const currentWeekIdx = weeksList.findIndex(w => w.days.includes(activeRecapDay));
+                                      let sortedWeeks = [...weeksList];
+                                      if (currentWeekIdx > -1) {
+                                        const [currWeek] = sortedWeeks.splice(currentWeekIdx, 1);
+                                        sortedWeeks = [currWeek, ...sortedWeeks];
+                                      }
+
+                                      return (
+                                        <div key={`${t.id}-absence-${anim.id}-${itemIdx}`} className="flex flex-col xl:flex-row xl:items-center justify-between gap-2.5 py-2 border-b border-slate-100 last:border-none">
+                                          <div className="flex items-center gap-1.5 shrink-0">
+                                            {isRef && <Star size={11} className="text-amber-500 fill-amber-500 shrink-0" />}
+                                            <span className="text-[11px] font-extrabold text-slate-900 italic">
+                                              {anim.lastName} {anim.firstName[0]}.
+                                            </span>
+                                            {assign && (
+                                              <span className={`text-[7.5px] font-black px-1 rounded uppercase border font-sans scale-90 ${
+                                                assign === 'grandi' 
+                                                  ? 'bg-orange-50 text-orange-600 border-orange-200' 
+                                                  : 'bg-teal-50 text-teal-600 border-teal-200'
+                                              }`}>
+                                                {assign[0]}
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div className="flex items-center gap-3 overflow-x-auto py-1 max-w-full scrollbar-thin">
+                                            {sortedWeeks.map(week => {
+                                              const isCurrentWeek = week.days.includes(activeRecapDay);
+                                              return (
+                                                <div key={week.id} className={`flex items-center gap-1.5 p-1 rounded-xl border-2 ${
+                                                  isCurrentWeek 
+                                                    ? 'bg-amber-55 lg:bg-amber-50/50 border-amber-300' 
+                                                    : 'bg-slate-50/50 border-slate-200'
+                                                } shrink-0`}>
+                                                  <span className={`text-[7.5px] font-black uppercase tracking-wider font-mono px-1.5 border-r border-slate-200/80 leading-tight shrink-0 text-slate-500`}>
+                                                    {week.label.replace('Settimana ', '')}
+                                                  </span>
+                                                  <div className="flex items-center gap-1">
+                                                    {week.days.map(day => {
+                                                      const matchingAbs = getAbsenceForAnimatorOnDay(anim.id, day);
+                                                      const meta = getAbsenceMeta(matchingAbs);
+                                                      const weekdayStr = format(new Date(day), 'eeeee d', { locale: it });
+                                                      const isSelectDay = day === activeRecapDay;
+                                                      
+                                                      let bgClass = 'bg-emerald-600 text-white border-emerald-700 shadow-sm font-black';
+                                                      let labelChar = ''; 
+                                                      let titleText = 'Presente';
+                                                      
+                                                      if (meta) {
+                                                        bgClass = meta.className;
+                                                        titleText = meta.tooltip;
+                                                        if (meta.label.includes('M')) {
+                                                          labelChar = 'M';
+                                                        } else if (meta.label.includes('P')) {
+                                                          labelChar = 'P';
+                                                        } else if (meta.label.includes('T')) {
+                                                          labelChar = 'T';
+                                                        } else if (meta.label.includes('-')) {
+                                                          labelChar = '-';
+                                                        } else {
+                                                          labelChar = 'H';
+                                                        }
+                                                      }
+
+                                                      return (
+                                                        <div 
+                                                          key={day}
+                                                          className={`w-7 h-7 rounded-lg flex flex-col items-center justify-center text-[7px] font-black transition-all shrink-0 border ${
+                                                            isSelectDay ? 'ring-2 ring-slate-900 scale-105 border-transparent' : ''
+                                                          } ${bgClass}`}
+                                                          title={`${format(new Date(day), 'dd/MM/yyyy')}: ${titleText}${isSelectDay ? ' (Oggi/Selezionato)' : ''}`}
+                                                        >
+                                                          <span className={`text-[4.2px] uppercase font-bold leading-none ${isSelectDay ? 'text-slate-950 font-black' : 'opacity-90'}`}>
+                                                            {weekdayStr[0]}{labelChar ? ` · ${labelChar}` : ''}
+                                                          </span>
+                                                          <span className="leading-none mt-0.5">{format(new Date(day), 'd')}</span>
+                                                        </div>
+                                                      );
+                                                    })}
+                                                  </div>
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <p className="text-[10px] text-slate-500 uppercase font-bold italic py-1 text-center">Nessun animatore associato</p>
                                 )}
                               </div>
-                            </div>
-                          );
-                        }) : (
-                          <p className="text-[10px] text-slate-400 uppercase font-black italic py-1 text-center">Nessun animatore associato</p>
-                        )}
-                      </div>
-                    </div>
 
-                    <div className="p-8 pt-2 flex-grow">
-                      <div className="bg-slate-50/50 rounded-3xl p-4 border border-slate-100 font-normal">
-                        <div className="flex items-center justify-between mb-4">
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic flex items-center gap-2">
-                            <Users size={12} /> Elenco Ragazzi ({t.kids?.length || 0})
-                          </span>
-                        </div>
-                        <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar pr-2">
-                          {t.kids && t.kids.map((k, idx) => (
-                            <div key={idx} className="flex items-center justify-between py-2 border-b border-white last:border-0">
-                              <span className="text-xs font-bold text-slate-700 italic">{k.lastName} {k.firstName}</span>
-                              {k.note && <span className="text-[9px] text-slate-400 italic truncate max-w-[120px]">{k.note}</span>}
+                              {/* 3. Elenco ragazzi */}
+                              <div className="bg-white rounded-2xl p-4 border border-slate-305 font-normal shadow-sm">
+                                <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-1.5">
+                                  <span className="text-[10px] font-black text-slate-800 uppercase tracking-widest italic flex items-center gap-2">
+                                    <Users size={12} className="text-blue-700" /> Elenco Ragazzi ({t.kids?.length || 0})
+                                  </span>
+                                </div>
+                                <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                                  {t.kids && t.kids.map((k, idx) => (
+                                    <div key={idx} className="flex items-center justify-between py-1.5 border-b border-slate-150 last:border-0 hover:bg-slate-50 px-1 rounded">
+                                      <span className="text-[11px] font-black text-slate-900 italic">{k.lastName} {k.firstName}</span>
+                                      {k.note && <span className="text-[9.5px] text-slate-600 font-bold italic truncate max-w-[150px]" title={k.note}>{k.note}</span>}
+                                    </div>
+                                  ))}
+                                  {(!t.kids || t.kids.length === 0) && <p className="text-[10px] text-slate-400 uppercase font-black italic py-2 text-center">Nessun ragazzo assegnato</p>}
+                                </div>
+                              </div>
+
                             </div>
-                          ))}
-                          {(!t.kids || t.kids.length === 0) && <p className="text-[10px] text-slate-300 uppercase font-black italic py-4 text-center">Nessun ragazzo assegnato</p>}
-                        </div>
-                      </div>
-                    </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 );
               }) : (
@@ -2507,8 +2960,14 @@ const OratorioFeriale: React.FC = () => {
               {activeSeasonDays.length > 0 ? (
                 (() => {
                   const dailyStats = displayedDays.reduce((acc, day) => {
-                    const total = activeSeasonAnimatorsList.length;
-                    const dayAbsences = absences.filter(ab => ab.date === day);
+                    const weekId = getWeekIdForDay(day);
+                    const activeAnimators = activeSeasonAnimatorsList.filter(anim => 
+                      isAnimatorPresentInWeek(anim, activeSeason, weekId)
+                    );
+                    const total = activeAnimators.length;
+                    const dayAbsences = absences.filter(ab => 
+                      ab.date === day && activeAnimators.some(anim => anim.id === ab.animatorId)
+                    );
                     const fullyAbsent = dayAbsences.filter(ab => !ab.startTime && !ab.endTime).length;
                     const partiallyAbsent = dayAbsences.filter(ab => ab.startTime || ab.endTime).length;
                     const presentTotal = total - fullyAbsent;
@@ -2564,7 +3023,7 @@ const OratorioFeriale: React.FC = () => {
                               : (displayedDays[0] || selectedRecapDay || activeSeasonDays[0]);
 
                             const activeDayStats = dailyStats[activeRecapDay] || { present: 0, absent: 0, partial: 0, total: 0 };
-                            const activeDayAbsences = absences.filter(ab => ab.date === activeRecapDay);
+                            const activeDayAbsences = absences.filter(ab => { if (ab.date !== activeRecapDay) return false; const anim = activeSeasonAnimatorsList.find(a => a.id === ab.animatorId); if (!anim) return false; const recapWeekId = getWeekIdForDay(activeRecapDay); return isAnimatorPresentInWeek(anim, activeSeason, recapWeekId); });
                             
                             const absenteesDetailedList = activeDayAbsences.map(ab => {
                               const anim = activeSeasonAnimatorsList.find(a => a.id === ab.animatorId);
@@ -3026,7 +3485,7 @@ const OratorioFeriale: React.FC = () => {
                   </div>
 
                   <div className="space-y-2">
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Note / Allergie</span>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Note</span>
                     <textarea value={animatorForm.notes} onChange={e => setAnimatorForm({...animatorForm, notes: e.target.value})} className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-inner" rows={3}/>
                   </div>
                 </div>
@@ -3047,6 +3506,23 @@ const OratorioFeriale: React.FC = () => {
                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Fine</span>
                       <input required type="time" value={shiftForm.endTime} onChange={e => setShiftForm({...shiftForm, endTime: e.target.value})} className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-inner" />
                     </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 -mt-3 bg-slate-50 p-2.5 rounded-xl border border-slate-100/50">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest self-center mr-1">Orari Rapidi:</span>
+                    {[
+                      { label: '☀️ Mattina (08:30-12:30)', start: '08:30', end: '12:30' },
+                      { label: '⛅ Pomeriggio (13:30-17:30)', start: '13:30', end: '17:30' },
+                      { label: '📅 Giornata (08:30-17:30)', start: '08:30', end: '17:30' }
+                    ].map(slot => (
+                      <button
+                        key={slot.label}
+                        type="button"
+                        onClick={() => setShiftForm({ ...shiftForm, startTime: slot.start, endTime: slot.end })}
+                        className="text-[9px] font-black uppercase text-slate-600 bg-white shadow-sm border border-slate-200/60 hover:border-blue-400 hover:text-blue-600 px-2 py-1 rounded-lg transition-all"
+                      >
+                        {slot.label}
+                      </button>
+                    ))}
                   </div>
                   <div className="space-y-2">
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Attività Principale</span>
@@ -3096,7 +3572,7 @@ const OratorioFeriale: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-4">
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Animatori della Squadra ({activeSeason})</span>
                     <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-4 bg-slate-50 rounded-[2rem] border border-slate-100 shadow-inner custom-scrollbar">
                       {activeSeasonAnimatorsList.map((a, index) => (
@@ -3107,7 +3583,21 @@ const OratorioFeriale: React.FC = () => {
                             const ids = teamForm.animatorIds.includes(a.id) 
                               ? teamForm.animatorIds.filter(id => id !== a.id)
                               : [...teamForm.animatorIds, a.id];
-                            setTeamForm({...teamForm, animatorIds: ids});
+                            
+                            // Clean up referentIds and assignments on deselect
+                            let refIds = teamForm.referentIds || [];
+                            let assigns = { ...(teamForm.assignments || {}) };
+                            if (teamForm.animatorIds.includes(a.id)) {
+                              refIds = refIds.filter(id => id !== a.id);
+                              delete assigns[a.id];
+                            }
+
+                            setTeamForm({
+                              ...teamForm,
+                              animatorIds: ids,
+                              referentIds: refIds,
+                              assignments: assigns
+                            });
                           }}
                           className={`flex items-center gap-3 p-3 rounded-xl border text-left italic ${
                             teamForm.animatorIds.includes(a.id) 
@@ -3120,6 +3610,105 @@ const OratorioFeriale: React.FC = () => {
                       ))}
                     </div>
                   </div>
+
+                  {teamForm.animatorIds.length > 0 && (
+                    <div className="space-y-3 bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                        <span className="text-[10px] font-black text-slate-800 uppercase tracking-widest">
+                          RUOLI E GRUPPI ANIMATORI
+                        </span>
+                        <span className="text-[9px] font-extrabold text-slate-400 uppercase">
+                          {teamForm.animatorIds.length} Selezionati
+                        </span>
+                      </div>
+                      <div className="space-y-3.5 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
+                        {teamForm.animatorIds.map((aid) => {
+                          const a = animators.find(anim => anim.id === aid);
+                          if (!a) return null;
+                          const isRef = (teamForm.referentIds || []).includes(a.id);
+                          const currentAssign = (teamForm.assignments || {})[a.id] || '';
+
+                          return (
+                            <div key={`form-config-anim-${a.id}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200/80 last:border-b-0">
+                              {/* Left side: Animator Name & Star toggle */}
+                              <div className="flex items-center gap-2.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const refIds = isRef
+                                      ? (teamForm.referentIds || []).filter(id => id !== a.id)
+                                      : [...(teamForm.referentIds || []), a.id];
+                                    setTeamForm({ ...teamForm, referentIds: refIds });
+                                  }}
+                                  className="p-1 px-1.5 bg-white border border-slate-200 hover:border-amber-400 hover:bg-amber-55 rounded-md transition-all group flex items-center justify-center shrink-0"
+                                  title={isRef ? "Rimuovi referente" : "Contrassegna come referente"}
+                                >
+                                  <Star 
+                                    size={14} 
+                                    className={`transition-all ${
+                                      isRef 
+                                        ? "text-amber-500 fill-amber-500 scale-110" 
+                                        : "text-slate-450 hover:text-amber-500 hover:scale-110"
+                                    }`} 
+                                  />
+                                </button>
+                                <span className="text-xs font-extrabold text-slate-800 italic truncate">
+                                  {a.lastName} {a.firstName}
+                                </span>
+                              </div>
+
+                              {/* Right side: Grandi/Piccoli designation toggle */}
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newAssignments = { ...(teamForm.assignments || {}), [a.id]: 'grandi' as const };
+                                    setTeamForm({ ...teamForm, assignments: newAssignments });
+                                  }}
+                                  className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all border ${
+                                    currentAssign === 'grandi'
+                                      ? 'bg-orange-600 text-white border-orange-700 shadow-sm'
+                                      : 'bg-white text-slate-600 border-slate-250 hover:bg-slate-100 hover:text-slate-800'
+                                  }`}
+                                >
+                                  Grandi
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newAssignments = { ...(teamForm.assignments || {}), [a.id]: 'piccoli' as const };
+                                    setTeamForm({ ...teamForm, assignments: newAssignments });
+                                  }}
+                                  className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all border ${
+                                    currentAssign === 'piccoli'
+                                      ? 'bg-teal-600 text-white border-teal-700 shadow-sm'
+                                      : 'bg-white text-slate-600 border-slate-250 hover:bg-slate-100 hover:text-slate-800'
+                                  }`}
+                                >
+                                  Piccoli
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newAssignments = { ...(teamForm.assignments || {}) };
+                                    delete newAssignments[a.id];
+                                    setTeamForm({ ...teamForm, assignments: newAssignments });
+                                  }}
+                                  className={`px-2 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-wider transition-all border ${
+                                    currentAssign === '' || !currentAssign
+                                      ? 'bg-slate-800 text-white border-slate-900 shadow-sm'
+                                      : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-55 hover:text-slate-600'
+                                  }`}
+                                >
+                                  Nessuno
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="space-y-4">
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Gestione Ragazzi</span>
@@ -3137,7 +3726,7 @@ const OratorioFeriale: React.FC = () => {
                         <input type="text" placeholder="Cognome" value={newKid.lastName} onChange={e => setNewKid({...newKid, lastName: e.target.value})} className="px-4 py-3 bg-white rounded-xl text-xs font-bold shadow-sm outline-none"/>
                       </div>
                       <div className="flex gap-2">
-                        <input type="text" placeholder="Note (es. allergie)" value={newKid.note} onChange={e => setNewKid({...newKid, note: e.target.value})} className="flex-1 px-4 py-3 bg-white rounded-xl text-xs font-bold shadow-sm outline-none"/>
+                        <input type="text" placeholder="Note" value={newKid.note} onChange={e => setNewKid({...newKid, note: e.target.value})} className="flex-1 px-4 py-3 bg-white rounded-xl text-xs font-bold shadow-sm outline-none"/>
                         <button 
                           type="button" 
                           onClick={() => {
@@ -3189,6 +3778,23 @@ const OratorioFeriale: React.FC = () => {
                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">A (opz)</span>
                       <input type="time" value={absenceForm.endTime || ''} onChange={e => setAbsenceForm({...absenceForm, endTime: e.target.value})} className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none text-sm font-bold outline-none"/>
                     </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 -mt-3 bg-slate-50 p-2.5 rounded-xl border border-slate-100/50">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest self-center mr-1">Orari Rapidi:</span>
+                    {[
+                      { label: '☀️ Mattina (08:30-12:30)', start: '08:30', end: '12:30' },
+                      { label: '⛅ Pomeriggio (13:30-17:30)', start: '13:30', end: '17:30' },
+                      { label: '📅 Giornata (08:30-17:30)', start: '08:30', end: '17:30' }
+                    ].map(slot => (
+                      <button
+                        key={slot.label}
+                        type="button"
+                        onClick={() => setAbsenceForm({ ...absenceForm, startTime: slot.start, endTime: slot.end })}
+                        className="text-[9px] font-black uppercase text-slate-600 bg-white shadow-sm border border-slate-200/60 hover:border-blue-400 hover:text-blue-600 px-2 py-1 rounded-lg transition-all"
+                      >
+                        {slot.label}
+                      </button>
+                    ))}
                   </div>
                   <div className="space-y-2">
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Motivazione / Note</span>
@@ -3705,6 +4311,23 @@ const OratorioFeriale: React.FC = () => {
                         className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold"
                       />
                     </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 bg-white border border-slate-200/50 p-2 rounded-2xl shadow-inner">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest self-center mr-1">Orari:</span>
+                    {[
+                      { label: '☀️ Mattina (08:30-12:30)', start: '08:30', end: '12:30' },
+                      { label: '⛅ Pomeriggio (13:30-17:30)', start: '13:30', end: '17:30' },
+                      { label: '📅 Giornata (08:30-17:30)', start: '08:30', end: '17:30' }
+                    ].map(slot => (
+                      <button
+                        key={slot.label}
+                        type="button"
+                        onClick={() => setCustomAbsTime({ ...customAbsTime, startTime: slot.start, endTime: slot.end })}
+                        className="text-[9px] font-bold text-slate-600 bg-slate-50 border border-slate-100 hover:border-purple-300 px-2 py-1 rounded-lg transition-all"
+                      >
+                        {slot.label}
+                      </button>
+                    ))}
                   </div>
                   <div className="space-y-1">
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Motivazione</span>

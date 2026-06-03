@@ -32,6 +32,7 @@ const Rooms: React.FC = () => {
   const [newBooking, setNewBooking] = useState({
     roomIds: [] as string[],
     requesterName: '',
+    requesterPhone: '',
     purpose: '',
     startTime: '',
     endTime: '',
@@ -121,11 +122,12 @@ const Rooms: React.FC = () => {
         start: bookingData.startTime,
         end: bookingData.endTime,
         location: bookingData.roomNames || bookingData.roomName || '',
-        description: bookingData.purpose || '',
+        description: `${bookingData.purpose || ''}${bookingData.requesterPhone ? ` (Contatto: ${bookingData.requesterPhone})` : ''}`,
         calendarId: roomsCalendarId,
         sourceBookingId: bookingId,
         isRoomBooking: true,
         requesterName: bookingData.requesterName,
+        requesterPhone: bookingData.requesterPhone || '',
         rooms: bookingData.roomNames || bookingData.roomName || '',
         purpose: bookingData.purpose || ''
       };
@@ -147,6 +149,39 @@ const Rooms: React.FC = () => {
         await updateDoc(bookingRef, { calendarEventId: null });
       }
     }
+  };
+
+  const handleStartHourPreset = (timeStr: string) => {
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    const baseDate = newBooking.startTime ? newBooking.startTime.split('T')[0] : todayStr;
+    setNewBooking(prev => ({
+      ...prev,
+      startTime: `${baseDate}T${timeStr}`
+    }));
+  };
+
+  const handleDurationPreset = (hoursNum: number) => {
+    if (!newBooking.startTime) return;
+    try {
+      const startDt = new Date(newBooking.startTime);
+      const endDt = new Date(startDt.getTime() + hoursNum * 60 * 60 * 1000);
+      setNewBooking(prev => ({
+        ...prev,
+        endTime: format(endDt, "yyyy-MM-dd'T'HH:mm")
+      }));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleFullSlotPreset = (startStr: string, endStr: string) => {
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    const baseDate = newBooking.startTime ? newBooking.startTime.split('T')[0] : todayStr;
+    setNewBooking(prev => ({
+      ...prev,
+      startTime: `${baseDate}T${startStr}`,
+      endTime: `${baseDate}T${endStr}`
+    }));
   };
 
   const handleCreateBooking = async (e: React.FormEvent) => {
@@ -194,6 +229,7 @@ const Rooms: React.FC = () => {
       setNewBooking({
         roomIds: [],
         requesterName: '',
+        requesterPhone: '',
         purpose: '',
         startTime: '',
         endTime: '',
@@ -209,6 +245,7 @@ const Rooms: React.FC = () => {
     setNewBooking({
       roomIds: booking.roomIds || [],
       requesterName: booking.requesterName,
+      requesterPhone: booking.requesterPhone || '',
       purpose: booking.purpose || '',
       startTime: booking.startTime,
       endTime: booking.endTime,
@@ -278,6 +315,7 @@ const Rooms: React.FC = () => {
               setNewBooking({
                 roomIds: [],
                 requesterName: '',
+                requesterPhone: '',
                 purpose: '',
                 startTime: '',
                 endTime: '',
@@ -315,6 +353,11 @@ const Rooms: React.FC = () => {
                       <td className="px-8 py-5">
                       <div className="space-y-1">
                         <p className="text-sm font-black text-slate-900 leading-tight">{booking.requesterName}</p>
+                        {booking.requesterPhone && (
+                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                            <span className="opacity-75">📞</span> {booking.requesterPhone}
+                          </p>
+                        )}
                         <p className="text-[11px] font-bold text-slate-400 italic">{booking.purpose || 'Nessuno scopo specificato'}</p>
                       </div>
                     </td>
@@ -658,15 +701,27 @@ const Rooms: React.FC = () => {
                    </div>
                 )}
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-700">Nome Richiedente</label>
-                <input
-                  type="text"
-                  required
-                  value={newBooking.requesterName}
-                  onChange={(e) => setNewBooking({ ...newBooking, requesterName: e.target.value })}
-                  className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-700">Nome Richiedente *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newBooking.requesterName}
+                    onChange={(e) => setNewBooking({ ...newBooking, requesterName: e.target.value })}
+                    className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-700">Numero di Telefono</label>
+                  <input
+                    type="tel"
+                    placeholder="Es. +39 333 1234567"
+                    value={newBooking.requesterPhone}
+                    onChange={(e) => setNewBooking({ ...newBooking, requesterPhone: e.target.value })}
+                    className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-slate-700">Scopo Utilizzo</label>
@@ -677,9 +732,32 @@ const Rooms: React.FC = () => {
                   className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+
+              {/* Fasce Orarie Rapide */}
+              <div className="space-y-1.5 bg-slate-50/70 p-4 rounded-2xl border border-slate-100 shadow-inner">
+                <span className="text-[10px] font-black uppercase text-indigo-700 tracking-wider block ml-1">Fasce Orarie Preimpostate (Intere)</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { label: '☀️ Mattina (08:30 - 12:30)', start: '08:30', end: '12:30' },
+                    { label: '⛅ Pomeriggio (14:30 - 18:30)', start: '14:30', end: '18:30' },
+                    { label: '🌙 Sera (20:30 - 23:00)', start: '20:30', end: '23:00' },
+                    { label: '📅 Giornata (08:30 - 18:30)', start: '08:30', end: '18:30' }
+                  ].map(slot => (
+                    <button
+                      key={slot.label}
+                      type="button"
+                      onClick={() => handleFullSlotPreset(slot.start, slot.end)}
+                      className="text-[10px] sm:text-[11px] font-bold text-slate-700 bg-white border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/40 px-2.5 py-1.5 rounded-xl transition-all shadow-sm"
+                    >
+                      {slot.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Inizio</label>
+                  <label className="text-sm font-semibold text-slate-700">Inzio</label>
                   <input
                     type="datetime-local"
                     required
@@ -687,6 +765,18 @@ const Rooms: React.FC = () => {
                     onChange={(e) => setNewBooking({ ...newBooking, startTime: e.target.value })}
                     className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
                   />
+                  <div className="flex flex-wrap gap-1">
+                    {['08:30', '10:00', '14:30', '16:00', '18:00', '20:30'].map(t => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => handleStartHourPreset(t)}
+                        className="text-[9px] font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 hover:text-indigo-600 px-2.5 py-1 rounded-lg transition-colors border border-slate-200/50"
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-slate-700">Fine</label>
@@ -697,6 +787,21 @@ const Rooms: React.FC = () => {
                     onChange={(e) => setNewBooking({ ...newBooking, endTime: e.target.value })}
                     className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
                   />
+                  <div className="flex flex-wrap gap-1">
+                    {['+1h', '+2h', '+3h', '+4h', '+6h'].map(label => {
+                      const hours = parseInt(label);
+                      return (
+                        <button
+                          key={label}
+                          type="button"
+                          onClick={() => handleDurationPreset(hours)}
+                          className="text-[9px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition-colors border border-indigo-100"
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 

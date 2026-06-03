@@ -8,6 +8,22 @@ import { GoogleAuthProvider } from 'firebase/auth';
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+import { enableMultiTabIndexedDbPersistence } from 'firebase/firestore';
+try {
+  enableMultiTabIndexedDbPersistence(db).catch((err) => {
+    if (err.code === 'failed-precondition') {
+      console.warn("Firestore offline persistence: multiple tabs open, active in another tab.");
+    } else if (err.code === 'unimplemented') {
+      console.warn("Firestore offline persistence: browser does not support persistence.");
+    } else {
+      console.warn("Firestore offline persistence error:", err.message);
+    }
+  });
+} catch (e) {
+  console.warn("Firestore offline persistence registration skipped:", e);
+}
+
 export const googleProvider = new GoogleAuthProvider();
 
 export enum OperationType {
