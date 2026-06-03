@@ -747,7 +747,11 @@ const Rooms: React.FC = () => {
                       key={slot.label}
                       type="button"
                       onClick={() => handleFullSlotPreset(slot.start, slot.end)}
-                      className="text-[10px] sm:text-[11px] font-bold text-slate-700 bg-white border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/40 px-2.5 py-1.5 rounded-xl transition-all shadow-sm"
+                      className={`text-[10px] sm:text-[11px] font-bold px-2.5 py-1.5 rounded-xl transition-all shadow-sm border ${
+                        slot.label.includes('Pomeriggio')
+                          ? 'bg-sky-50 text-sky-700 border-sky-300 hover:border-sky-500 hover:bg-sky-100 hover:text-sky-800'
+                          : 'text-slate-700 bg-white border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/40'
+                      }`}
                     >
                       {slot.label}
                     </button>

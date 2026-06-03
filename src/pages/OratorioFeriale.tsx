@@ -113,6 +113,35 @@ const OratorioFeriale: React.FC = () => {
   });
 
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const [isOratorioSettingsOpen, setIsOratorioSettingsOpen] = useState(false);
+  const [oratorioNameForm, setOratorioNameForm] = useState('');
+  const [oratorioLogoUrlForm, setOratorioLogoUrlForm] = useState('');
+  const [savingOratorioSettings, setSavingOratorioSettings] = useState(false);
+
+  useEffect(() => {
+    if (isOratorioSettingsOpen) {
+      setOratorioNameForm(parishInfo.oratorioName || parishInfo.name || '');
+      setOratorioLogoUrlForm(parishInfo.oratorioLogoUrl || '');
+    }
+  }, [isOratorioSettingsOpen, parishInfo]);
+
+  const handleSaveOratorioSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingOratorioSettings(true);
+    try {
+      await setDoc(parishSettingsDoc, {
+        oratorioName: oratorioNameForm,
+        oratorioLogoUrl: oratorioLogoUrlForm
+      }, { merge: true });
+      setSuccessStatus('Impostazioni Oratorio Feriale salvate con successo!');
+      setIsOratorioSettingsOpen(false);
+    } catch (err) {
+      console.error(err);
+      setErrorStatus('Errore nel salvataggio delle impostazioni.');
+    } finally {
+      setSavingOratorioSettings(false);
+    }
+  };
 
   const [activeTab, setActiveTab] = useState<'animators' | 'shifts' | 'teams' | 'absences'>('animators');
   const [animators, setAnimators] = useState<Animator[]>([]);
@@ -802,51 +831,62 @@ const OratorioFeriale: React.FC = () => {
         pdf.rect(0, 0, pageWidth, 32, 'F');
         
         // Parish Logo
-        if (parishInfo.logoUrl) {
+        const chosenLogoUrl = parishInfo.oratorioLogoUrl || parishInfo.logoUrl;
+        if (chosenLogoUrl) {
           try {
-            pdf.addImage(parishInfo.logoUrl, 'PNG', margin, 6, 20, 20);
+            pdf.addImage(chosenLogoUrl, 'PNG', margin, 6, 20, 20);
           } catch (e) {
             pdf.setDrawColor(30, 58, 138);
             pdf.circle(margin + 10, 16, 10, 'S');
           }
         }
 
-        const textStartX = parishInfo.logoUrl ? 38 : margin;
+        const textStartX = chosenLogoUrl ? 38 : margin;
 
-        // Parish Info Header
-        pdf.setFont('helvetica', 'bold');
-        pdf.setFontSize(12);
-        pdf.setTextColor(51, 65, 85);
-        pdf.text(parishInfo.name || 'Parrocchia', textStartX, 10);
-        
-        pdf.setFont('helvetica', 'normal');
-        pdf.setFontSize(8.5);
-        pdf.setTextColor(100, 116, 139);
-
-        let hRowY = 15;
-        if (parishInfo.diocese) {
-          pdf.text(parishInfo.diocese, textStartX, hRowY);
-          hRowY += 4;
-        }
-        if (parishInfo.pastoralCommunity) {
-          pdf.text(parishInfo.pastoralCommunity, textStartX, hRowY);
-          hRowY += 4;
-        }
-        pdf.text(parishInfo.address || '', textStartX, hRowY);
-        if (parishInfo.phone) {
-          hRowY += 4;
-          pdf.text(`Tel: ${parishInfo.phone}`, textStartX, hRowY);
-        }
-        if (parishInfo.email) {
-          hRowY += 4;
-          pdf.text(parishInfo.email, textStartX, hRowY);
-        }
-        
         // Blue Info Box at Top Right
         const boxWidth = 95;
         const boxHeight = 22;
         const boxX = pageWidth - margin - boxWidth;
         const boxY = 5;
+
+        // Auto-fit function to prevent overlap
+        const maxWidth = boxX - textStartX - 5;
+        const drawTextFit = (text: string, x: number, y: number, bSize: number, fontStyle: string = 'normal') => {
+          pdf.setFont('helvetica', fontStyle);
+          pdf.setFontSize(bSize);
+          let currentSize = bSize;
+          while (pdf.getTextWidth(text) > maxWidth && currentSize > 6) {
+            currentSize -= 0.5;
+            pdf.setFontSize(currentSize);
+          }
+          pdf.text(text, x, y);
+        };
+
+        // Parish Info Header
+        pdf.setTextColor(51, 65, 85);
+        drawTextFit(`${parishInfo.oratorioName || parishInfo.name || 'Oratorio Feriale'} - ${activeSeason}`, textStartX, 10, 11, 'bold');
+        
+        pdf.setTextColor(100, 116, 139);
+
+        let hRowY = 15;
+        if (parishInfo.diocese) {
+          drawTextFit(parishInfo.diocese, textStartX, hRowY, 8.5);
+          hRowY += 4;
+        }
+        if (parishInfo.pastoralCommunity) {
+          drawTextFit(parishInfo.pastoralCommunity, textStartX, hRowY, 8.5);
+          hRowY += 4;
+        }
+        if (parishInfo.address) {
+          drawTextFit(parishInfo.address, textStartX, hRowY, 8.5);
+          hRowY += 4;
+        }
+        if (parishInfo.phone || parishInfo.email) {
+          const contacts: string[] = [];
+          if (parishInfo.phone) contacts.push(`Tel: ${parishInfo.phone}`);
+          if (parishInfo.email) contacts.push(`Email: ${parishInfo.email}`);
+          drawTextFit(contacts.join(' - '), textStartX, hRowY, 8.5);
+        }
 
         pdf.setFillColor(blueColor[0], blueColor[1], blueColor[2]);
         pdf.roundedRect(boxX, boxY, boxWidth, boxHeight, 2, 2, 'F');
@@ -1122,51 +1162,63 @@ const OratorioFeriale: React.FC = () => {
         pdf.rect(0, 0, pageWidth, 32, 'F');
         
         // Parish Logo
-        if (parishInfo.logoUrl) {
+        const chosenLogoUrl = parishInfo.oratorioLogoUrl || parishInfo.logoUrl;
+        if (chosenLogoUrl) {
           try {
-            pdf.addImage(parishInfo.logoUrl, 'PNG', margin, 6, 20, 20);
+            pdf.addImage(chosenLogoUrl, 'PNG', margin, 6, 20, 20);
           } catch (e) {
             pdf.setDrawColor(30, 58, 138);
             pdf.circle(margin + 10, 16, 10, 'S');
           }
         }
 
-        const textStartX = parishInfo.logoUrl ? 38 : margin;
+        const textStartX = chosenLogoUrl ? 38 : margin;
 
-        // Parish Info Header
-        pdf.setFont('helvetica', 'bold');
-        pdf.setFontSize(11);
-        pdf.setTextColor(51, 65, 85);
-        pdf.text(parishInfo.name || 'Parrocchia', textStartX, 10);
-        
-        pdf.setFont('helvetica', 'normal');
-        pdf.setFontSize(8);
-        pdf.setTextColor(100, 116, 139);
-
-        let hRowY = 14;
-        if (parishInfo.diocese) {
-          pdf.text(parishInfo.diocese, textStartX, hRowY);
-          hRowY += 3.5;
-        }
-        if (parishInfo.pastoralCommunity) {
-          pdf.text(parishInfo.pastoralCommunity, textStartX, hRowY);
-          hRowY += 3.5;
-        }
-        pdf.text(parishInfo.address || '', textStartX, hRowY);
-
-        if (parishInfo.phone || parishInfo.email) {
-          hRowY += 3.5;
-          const contacts: string[] = [];
-          if (parishInfo.phone) contacts.push(`Tel: ${parishInfo.phone}`);
-          if (parishInfo.email) contacts.push(`Email: ${parishInfo.email}`);
-          pdf.text(contacts.join(' - '), textStartX, hRowY);
-        }
-        
         // Blue Info Box at Top Right
         const boxWidth = 92;
         const boxHeight = 22;
         const boxX = pageWidth - margin - boxWidth;
         const boxY = 5;
+
+        // Auto-fit function inside drawHeader to prevent overlap
+        const maxWidth = boxX - textStartX - 5;
+        const drawTextFit = (text: string, x: number, y: number, bSize: number, fontStyle: string = 'normal') => {
+          pdf.setFont('helvetica', fontStyle);
+          pdf.setFontSize(bSize);
+          let currentSize = bSize;
+          while (pdf.getTextWidth(text) > maxWidth && currentSize > 6) {
+            currentSize -= 0.5;
+            pdf.setFontSize(currentSize);
+          }
+          pdf.text(text, x, y);
+        };
+
+        // Parish Info Header
+        pdf.setTextColor(51, 65, 85);
+        drawTextFit(`${parishInfo.oratorioName || parishInfo.name || 'Oratorio Feriale'} - ${activeSeason}`, textStartX, 10, 10.5, 'bold');
+        
+        pdf.setTextColor(100, 116, 139);
+
+        let hRowY = 14;
+        if (parishInfo.diocese) {
+          drawTextFit(parishInfo.diocese, textStartX, hRowY, 8);
+          hRowY += 3.5;
+        }
+        if (parishInfo.pastoralCommunity) {
+          drawTextFit(parishInfo.pastoralCommunity, textStartX, hRowY, 8);
+          hRowY += 3.5;
+        }
+        if (parishInfo.address) {
+          drawTextFit(parishInfo.address, textStartX, hRowY, 8);
+          hRowY += 3.5;
+        }
+
+        if (parishInfo.phone || parishInfo.email) {
+          const contacts: string[] = [];
+          if (parishInfo.phone) contacts.push(`Tel: ${parishInfo.phone}`);
+          if (parishInfo.email) contacts.push(`Email: ${parishInfo.email}`);
+          drawTextFit(contacts.join(' - '), textStartX, hRowY, 8);
+        }
 
         pdf.setFillColor(blueColor[0], blueColor[1], blueColor[2]);
         pdf.roundedRect(boxX, boxY, boxWidth, boxHeight, 2, 2, 'F');
@@ -1341,51 +1393,63 @@ const OratorioFeriale: React.FC = () => {
         pdf.rect(0, 0, pageWidth, 32, 'F');
         
         // Parish Logo
-        if (parishInfo.logoUrl) {
+        const chosenLogoUrl = parishInfo.oratorioLogoUrl || parishInfo.logoUrl;
+        if (chosenLogoUrl) {
           try {
-            pdf.addImage(parishInfo.logoUrl, 'PNG', margin, 6, 20, 20);
+            pdf.addImage(chosenLogoUrl, 'PNG', margin, 6, 20, 20);
           } catch (e) {
             pdf.setDrawColor(30, 58, 138);
             pdf.circle(margin + 10, 16, 10, 'S');
           }
         }
 
-        const textStartX = parishInfo.logoUrl ? 38 : margin;
+        const textStartX = chosenLogoUrl ? 38 : margin;
 
-        // Parish Info Header
-        pdf.setFont('helvetica', 'bold');
-        pdf.setFontSize(11);
-        pdf.setTextColor(51, 65, 85);
-        pdf.text(parishInfo.name || 'Parrocchia', textStartX, 10);
-        
-        pdf.setFont('helvetica', 'normal');
-        pdf.setFontSize(8);
-        pdf.setTextColor(100, 116, 139);
-
-        let hRowY = 14;
-        if (parishInfo.diocese) {
-          pdf.text(parishInfo.diocese, textStartX, hRowY);
-          hRowY += 3.5;
-        }
-        if (parishInfo.pastoralCommunity) {
-          pdf.text(parishInfo.pastoralCommunity, textStartX, hRowY);
-          hRowY += 3.5;
-        }
-        pdf.text(parishInfo.address || '', textStartX, hRowY);
-
-        if (parishInfo.phone || parishInfo.email) {
-          hRowY += 3.5;
-          const contacts: string[] = [];
-          if (parishInfo.phone) contacts.push(`Tel: ${parishInfo.phone}`);
-          if (parishInfo.email) contacts.push(`Email: ${parishInfo.email}`);
-          pdf.text(contacts.join(' - '), textStartX, hRowY);
-        }
-        
         // Blue Info Box at Top Right
         const boxWidth = 92;
         const boxHeight = 22;
         const boxX = pageWidth - margin - boxWidth;
         const boxY = 5;
+
+        // Auto-fit function inside drawHeader to prevent overlap
+        const maxWidth = boxX - textStartX - 5;
+        const drawTextFit = (text: string, x: number, y: number, bSize: number, fontStyle: string = 'normal') => {
+          pdf.setFont('helvetica', fontStyle);
+          pdf.setFontSize(bSize);
+          let currentSize = bSize;
+          while (pdf.getTextWidth(text) > maxWidth && currentSize > 6) {
+            currentSize -= 0.5;
+            pdf.setFontSize(currentSize);
+          }
+          pdf.text(text, x, y);
+        };
+
+        // Parish Info Header
+        pdf.setTextColor(51, 65, 85);
+        drawTextFit(`${parishInfo.oratorioName || parishInfo.name || 'Oratorio Feriale'} - ${activeSeason}`, textStartX, 10, 11, 'bold');
+        
+        pdf.setTextColor(100, 116, 139);
+
+        let hRowY = 14;
+        if (parishInfo.diocese) {
+          drawTextFit(parishInfo.diocese, textStartX, hRowY, 8);
+          hRowY += 3.5;
+        }
+        if (parishInfo.pastoralCommunity) {
+          drawTextFit(parishInfo.pastoralCommunity, textStartX, hRowY, 8);
+          hRowY += 3.5;
+        }
+        if (parishInfo.address) {
+          drawTextFit(parishInfo.address, textStartX, hRowY, 8);
+          hRowY += 3.5;
+        }
+
+        if (parishInfo.phone || parishInfo.email) {
+          const contacts: string[] = [];
+          if (parishInfo.phone) contacts.push(`Tel: ${parishInfo.phone}`);
+          if (parishInfo.email) contacts.push(`Email: ${parishInfo.email}`);
+          drawTextFit(contacts.join(' - '), textStartX, hRowY, 8);
+        }
 
         pdf.setFillColor(blueColor[0], blueColor[1], blueColor[2]);
         pdf.roundedRect(boxX, boxY, boxWidth, boxHeight, 2, 2, 'F');
@@ -1567,7 +1631,7 @@ const OratorioFeriale: React.FC = () => {
       const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 14;
 
-      const ferialeName = parishInfo.name || 'Oratorio Feriale';
+      const ferialeName = `${parishInfo.oratorioName || parishInfo.name || 'Oratorio Feriale'} - ${activeSeason}`;
       const seasonText = `Stagione Feriale ${activeSeason}`;
       const targetWeekId = selectedWeekId !== 'all' ? selectedWeekId : getWeekIdForDay(activeRecapDay);
       const targetWeekObj = weeks.find(w => w.id === targetWeekId);
@@ -1587,31 +1651,41 @@ const OratorioFeriale: React.FC = () => {
 
       // 2. Parish Logo on top-left if it exists
       let textStartX = margin;
-      if (parishInfo.logoUrl) {
+      const chosenLogoUrl = parishInfo.oratorioLogoUrl || parishInfo.logoUrl;
+      if (chosenLogoUrl) {
         try {
-          doc.addImage(parishInfo.logoUrl, 'PNG', margin, headerY - 4, 18, 18);
+          doc.addImage(chosenLogoUrl, 'PNG', margin, headerY - 4, 18, 18);
           textStartX += 22;
         } catch (e) {
           // Fallback if image load fails
         }
       }
 
-      // 3. Left Side Title details
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9);
-      doc.setTextColor(100, 116, 139); // Slate-400
-      doc.text(ferialeName.toUpperCase(), textStartX, headerY);
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(22);
-      doc.setTextColor(30, 41, 59); // Slate-800
-      doc.text(team.name.toUpperCase(), textStartX, headerY + 8);
-
-      // 4. Right Side: Reference Period Card
+      // 4. Right Side: Reference Period Card (Declared early to calculate maxWidth)
       const cardWidth = 72;
       const cardHeight = 18;
       const cardX = pageWidth - margin - cardWidth;
       const cardY = headerY - 4;
+
+      // Auto-fit function to prevent overlap
+      const maxWidth = cardX - textStartX - 5;
+      const drawTextFit = (text: string, x: number, y: number, bSize: number, fontStyle: string = 'normal') => {
+        doc.setFont('helvetica', fontStyle);
+        doc.setFontSize(bSize);
+        let currentSize = bSize;
+        while (doc.getTextWidth(text) > maxWidth && currentSize > 6) {
+          currentSize -= 0.5;
+          doc.setFontSize(currentSize);
+        }
+        doc.text(text, x, y);
+      };
+
+      // 3. Left Side Title details (using auto-fit to avoid collision)
+      doc.setTextColor(148, 163, 184); // Slate-400
+      drawTextFit(ferialeName.toUpperCase(), textStartX, headerY, 8.5, 'bold');
+
+      doc.setTextColor(30, 41, 59); // Slate-800
+      drawTextFit(team.name.toUpperCase(), textStartX, headerY + 8, 19, 'bold');
 
       doc.setFillColor(248, 250, 252); // Slate-50 background
       doc.setDrawColor(226, 232, 240); // Slate-200 border
@@ -1708,16 +1782,31 @@ const OratorioFeriale: React.FC = () => {
         }
       });
 
-      currentY = (doc as any).lastAutoTable.finalY + 10;
-
-      if (currentY > pageHeight - 35) {
-        doc.addPage();
-        currentY = 15;
-      }
+      // Always start the kids' grid on the second page for clean page breaks
+      doc.addPage();
+      
+      // Draw top decoration line on page 2
+      doc.setFillColor(r_accent, g_accent, b_accent);
+      doc.rect(0, 0, pageWidth, 5, 'F');
+      
+      currentY = 16;
+      
+      // Draw Page 2 header matching team style for extreme polish
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`${ferialeName.toUpperCase()}`, margin, currentY);
+      
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.setTextColor(30, 41, 59);
+      doc.text(`SQUADRA: ${team.name.toUpperCase()}`, margin, currentY + 7);
+      
+      currentY += 18;
 
       // RAGAZZI SECTION TITLE
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(13);
+      doc.setFontSize(12);
       doc.setTextColor(30, 41, 59);
       doc.text(`ELENCO RAGAZZI SQUADRA (${team.kids?.length || 0})`, margin, currentY);
       currentY += 5;
@@ -1768,9 +1857,9 @@ const OratorioFeriale: React.FC = () => {
 
     if (r.includes('Settimana non selezionata')) {
       return {
-        label: '-',
-        tooltip: 'Non iscritto in questa settimana feriale',
-        className: 'bg-slate-100 border border-slate-205 text-slate-400 font-normal hover:bg-slate-100 ring-0 cursor-not-allowed cursor-default opacity-50 shadow-none'
+        label: '(NI)',
+        tooltip: 'Non iscritto in questa settimana feriale (NI)',
+        className: 'bg-red-500 text-white ring-2 ring-red-100 font-extrabold text-[8px]'
       };
     }
 
@@ -1785,7 +1874,7 @@ const OratorioFeriale: React.FC = () => {
       return {
         label: '⛅ P',
         tooltip: 'Fa solo Pomeriggio (Assente Mattina: 08:30-13:30)',
-        className: 'bg-orange-500 text-white ring-2 ring-orange-100'
+        className: 'bg-sky-500 text-white ring-2 ring-sky-100'
       };
     }
     if (!s && !e) {
@@ -1984,58 +2073,68 @@ const OratorioFeriale: React.FC = () => {
         </div>
 
         {/* Sleek Season Selector Header (Low Visual Impact) */}
-        <div className="relative">
-          <button
-            id="season-selector-btn"
-            onClick={() => setIsSeasonDropdownOpen(!isSeasonDropdownOpen)}
-            className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-155 rounded-full text-xs font-black uppercase tracking-wider text-slate-700 hover:text-slate-900 shadow-sm transition-all hover:shadow hover:border-slate-300 focus:ring-2 focus:ring-blue-500"
-          >
-            <Calendar size={14} className="text-blue-500" />
-            <span>Stagione: <span className="text-blue-600 font-extrabold">{activeSeason}</span></span>
-            <span className="text-[10px] text-slate-400">▼</span>
-          </button>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <button
+              id="season-selector-btn"
+              onClick={() => setIsSeasonDropdownOpen(!isSeasonDropdownOpen)}
+              className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-155 rounded-full text-xs font-black uppercase tracking-wider text-slate-700 hover:text-slate-900 shadow-sm transition-all hover:shadow hover:border-slate-300 focus:ring-2 focus:ring-blue-500"
+            >
+              <Calendar size={14} className="text-blue-500" />
+              <span>Stagione: <span className="text-blue-600 font-extrabold">{activeSeason}</span></span>
+              <span className="text-[10px] text-slate-400">▼</span>
+            </button>
 
-          {isSeasonDropdownOpen && (
-            <>
-              <div className="fixed inset-0 z-[150]" onClick={() => setIsSeasonDropdownOpen(false)} />
-              <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-100 rounded-2xl shadow-xl z-[160] py-2 animate-in fade-in slide-in-from-top-2 duration-200">
-                <div className="px-3 pb-2 mb-2 border-b border-slate-50">
-                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Seleziona Stagione</span>
-                </div>
-                <div className="max-h-48 overflow-y-auto custom-scrollbar">
-                  {allSeasons.map((sId) => (
+            {isSeasonDropdownOpen && (
+              <>
+                <div className="fixed inset-0 z-[150]" onClick={() => setIsSeasonDropdownOpen(false)} />
+                <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-100 rounded-2xl shadow-xl z-[160] py-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="px-3 pb-2 mb-2 border-b border-slate-50">
+                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Seleziona Stagione</span>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto custom-scrollbar">
+                    {allSeasons.map((sId) => (
+                      <button
+                        key={sId}
+                        onClick={() => {
+                          setActiveSeason(sId);
+                          localStorage.setItem('oratorio_active_season', sId);
+                          setIsSeasonDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-4 py-2 text-xs font-bold transition-colors flex items-center justify-between ${
+                          activeSeason === sId
+                            ? 'bg-blue-50 text-blue-600'
+                            : 'text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span>{sId}</span>
+                        {activeSeason === sId && <Check size={12} className="text-blue-600" />}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="border-t border-slate-50 mt-2 pt-2 px-2">
                     <button
-                      key={sId}
                       onClick={() => {
-                        setActiveSeason(sId);
-                        localStorage.setItem('oratorio_active_season', sId);
                         setIsSeasonDropdownOpen(false);
+                        setIsSeasonManagerOpen(true);
                       }}
-                      className={`w-full text-left px-4 py-2 text-xs font-bold transition-colors flex items-center justify-between ${
-                        activeSeason === sId
-                          ? 'bg-blue-50 text-blue-600'
-                          : 'text-slate-600 hover:bg-slate-50'
-                      }`}
+                      className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 bg-slate-50 hover:bg-slate-100 text-[10px] font-extrabold uppercase tracking-wider text-slate-600 rounded-xl border border-slate-200"
                     >
-                      <span>{sId}</span>
-                      {activeSeason === sId && <Check size={12} className="text-blue-600" />}
+                      Gestisci Stagioni...
                     </button>
-                  ))}
+                  </div>
                 </div>
-                <div className="border-t border-slate-50 mt-2 pt-2 px-2">
-                  <button
-                    onClick={() => {
-                      setIsSeasonDropdownOpen(false);
-                      setIsSeasonManagerOpen(true);
-                    }}
-                    className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 bg-slate-50 hover:bg-slate-100 text-[10px] font-extrabold uppercase tracking-wider text-slate-600 rounded-xl border border-slate-200"
-                  >
-                    Gestisci Stagioni...
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
+              </>
+            )}
+          </div>
+
+          <button
+            onClick={() => setIsOratorioSettingsOpen(true)}
+            className="p-2.5 bg-white border border-slate-150 text-slate-600 hover:text-orange-600 hover:border-orange-200 rounded-full shadow-sm transition-all hover:shadow focus:ring-2 focus:ring-blue-500"
+            title="Configura Logo e Nome Oratorio Feriale"
+          >
+            <Sun size={14} className="text-orange-500 hover:rotate-45 transition-transform" />
+          </button>
         </div>
 
         {activeTab !== 'animators' && (
@@ -2484,7 +2583,7 @@ const OratorioFeriale: React.FC = () => {
             </div>
 
             {/* Teams Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="flex flex-col gap-6">
               {filteredTeams.length > 0 ? filteredTeams.map((t, idx) => {
                 const teamAnimators = t.animatorIds.map(aid => animators.find(a => a.id === aid)).filter(Boolean) as Animator[];
                 const presentToday = teamAnimators.filter(anim => {
@@ -2583,11 +2682,18 @@ const OratorioFeriale: React.FC = () => {
                                       {assign}
                                     </span>
                                   )}
-                                  {ab && (
-                                    <span className="text-[7.5px] font-black bg-amber-100 text-amber-800 border border-amber-200 px-1 py-0.5 rounded uppercase leading-none" title={ab.reason}>
-                                      {ab.reason === 'Solo Mattina' || (ab.startTime === '13:30' && ab.endTime === '17:30') ? '☀️ Solo Mattina' : '⛅ Solo Pom.'}
-                                    </span>
-                                  )}
+                                  {ab && (() => {
+                                    const isMorning = ab.reason === 'Solo Mattina' || (ab.startTime === '13:30' && ab.endTime === '17:30');
+                                    return (
+                                      <span className={`text-[7.5px] font-black px-1 py-0.5 rounded uppercase leading-none border ${
+                                        isMorning 
+                                          ? 'bg-amber-100 text-amber-800 border-amber-200' 
+                                          : 'bg-sky-50 text-sky-700 border-sky-300'
+                                      }`} title={ab.reason}>
+                                        {isMorning ? '☀️ Solo Mattina' : '⛅ Solo Pom.'}
+                                      </span>
+                                    );
+                                  })()}
                                 </div>
                               );
                             })}
@@ -3055,7 +3161,7 @@ const OratorioFeriale: React.FC = () => {
                               if (ab.reason === 'Solo Pomeriggio') {
                                 return {
                                   text: 'Solo Pomeriggio ⛅ (Assente AM)',
-                                  colorClass: 'bg-orange-50 text-orange-600 border border-orange-100'
+                                  colorClass: 'bg-sky-50 text-sky-700 border border-sky-100'
                                 };
                               }
                               return {
@@ -3326,11 +3432,15 @@ const OratorioFeriale: React.FC = () => {
                           <span>Assente tutto il giorno</span>
                         </div>
                         <div className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-slate-600">
+                          <span className="w-5 h-5 rounded-md bg-red-500 text-white flex items-center justify-center font-bold text-[8px]">NI</span>
+                          <span>Non Iscritto in settimana (NI)</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-slate-600">
                           <span className="w-5 h-5 rounded-md bg-amber-500 text-white flex items-center justify-center font-bold text-[8px]">☀️ M</span>
                           <span>Fa solo mattina (Assente PM)</span>
                         </div>
                         <div className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-slate-600">
-                          <span className="w-5 h-5 rounded-md bg-orange-500 text-white flex items-center justify-center font-bold text-[8px]">⛅ P</span>
+                          <span className="w-5 h-5 rounded-md bg-sky-500 text-white flex items-center justify-center font-bold text-[8px]">⛅ P</span>
                           <span>Fa solo pomeriggio (Assente AM)</span>
                         </div>
                         <div className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-slate-600">
@@ -3518,7 +3628,11 @@ const OratorioFeriale: React.FC = () => {
                         key={slot.label}
                         type="button"
                         onClick={() => setShiftForm({ ...shiftForm, startTime: slot.start, endTime: slot.end })}
-                        className="text-[9px] font-black uppercase text-slate-600 bg-white shadow-sm border border-slate-200/60 hover:border-blue-400 hover:text-blue-600 px-2 py-1 rounded-lg transition-all"
+                        className={`text-[9px] font-black uppercase shadow-sm px-2 py-1 rounded-lg transition-all border ${
+                          slot.label.includes('Pomeriggio')
+                            ? 'bg-sky-50 text-sky-750 border-sky-300 hover:border-sky-500 hover:bg-sky-100'
+                            : 'text-slate-600 bg-white border-slate-200/60 hover:border-blue-400 hover:text-blue-600'
+                        }`}
                       >
                         {slot.label}
                       </button>
@@ -3790,7 +3904,11 @@ const OratorioFeriale: React.FC = () => {
                         key={slot.label}
                         type="button"
                         onClick={() => setAbsenceForm({ ...absenceForm, startTime: slot.start, endTime: slot.end })}
-                        className="text-[9px] font-black uppercase text-slate-600 bg-white shadow-sm border border-slate-200/60 hover:border-blue-400 hover:text-blue-600 px-2 py-1 rounded-lg transition-all"
+                        className={`text-[9px] font-black uppercase shadow-sm px-2 py-1 rounded-lg transition-all border ${
+                          slot.label.includes('Pomeriggio')
+                            ? 'bg-sky-50 text-sky-755 border-sky-300 hover:border-sky-500 hover:bg-sky-100'
+                            : 'text-slate-600 bg-white border-slate-200/60 hover:border-blue-400 hover:text-blue-600'
+                        }`}
                       >
                         {slot.label}
                       </button>
@@ -3837,6 +3955,141 @@ const OratorioFeriale: React.FC = () => {
               <CheckCircle2 size={20} />
               <span className="text-[11px] font-black uppercase tracking-widest italic">{successStatus}</span>
            </div>
+        </div>
+      )}
+
+      {/* Oratorio Feriale Settings Modal */}
+      {isOratorioSettingsOpen && (
+        <div className="fixed inset-0 z-[180] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden border border-white animate-in zoom-in-95 fade-in duration-200">
+            <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
+              <div>
+                <h2 className="text-xl font-black text-slate-900 uppercase italic flex items-center gap-2">
+                  <Sun size={20} className="text-orange-500" />
+                  Intestazione &amp; Logo Oratorio
+                </h2>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Configura nome e logo visibili nei PDF dell'Oratorio Feriale</p>
+              </div>
+              <button 
+                onClick={() => setIsOratorioSettingsOpen(false)} 
+                className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleSaveOratorioSettings} className="p-8 space-y-6">
+              {/* Form Input: Name */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">
+                  Nome Oratorio Feriale (per Intestazioni)
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Es. Oratorio San Luigi"
+                  value={oratorioNameForm}
+                  onChange={(e) => setOratorioNameForm(e.target.value)}
+                  className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all shadow-inner"
+                />
+              </div>
+
+              {/* Form Input: Logo */}
+              <div className="space-y-4">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">
+                  Logo Oratorio Feriale
+                </span>
+                
+                <div className="flex flex-col sm:flex-row items-center gap-6 p-4 rounded-3xl bg-slate-50/50 border border-slate-100 shadow-inner">
+                  {/* Current Logo Preview */}
+                  <div className="relative group shrink-0">
+                    {oratorioLogoUrlForm ? (
+                      <div className="relative">
+                        <img 
+                          src={oratorioLogoUrlForm} 
+                          alt="Logo Oratorio" 
+                          className="w-20 h-20 rounded-2xl object-cover border-2 border-white shadow-md bg-white"
+                          referrerPolicy="no-referrer"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setOratorioLogoUrlForm('')}
+                          className="absolute -top-1.5 -right-1.5 p-1 bg-red-500 hover:bg-red-600 text-white rounded-full shadow-lg transition-transform hover:scale-110"
+                          title="Rimuovi Logo"
+                        >
+                          <X size={10} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="w-20 h-20 bg-slate-100/80 rounded-2xl border border-slate-200/60 flex flex-col items-center justify-center text-slate-400">
+                        <Sun size={24} className="text-slate-300" />
+                        <span className="text-[8px] uppercase font-bold mt-1 text-slate-400">Default</span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Upload Controls */}
+                  <div className="flex-1 w-full space-y-3">
+                    {/* File Upload */}
+                    <div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        id="oratorio-logo-file-upload"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setOratorioLogoUrlForm(reader.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                      <label 
+                        htmlFor="oratorio-logo-file-upload"
+                        className="w-full border border-dashed border-slate-200 rounded-xl p-3 flex flex-col items-center justify-center gap-1 hover:border-blue-400 hover:bg-blue-50/50 cursor-pointer transition-all text-slate-500 hover:text-blue-600"
+                      >
+                        <span className="text-[10px] font-black uppercase tracking-wider text-center block">Scegli file logo...</span>
+                      </label>
+                    </div>
+
+                    {/* URL Input */}
+                    <div className="space-y-1">
+                      <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block ml-1">Oppure inserisci URL immagine</span>
+                      <input
+                        type="url"
+                        placeholder="https://..."
+                        value={oratorioLogoUrlForm.startsWith('data:') ? '' : oratorioLogoUrlForm}
+                        onChange={(e) => setOratorioLogoUrlForm(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-bold outline-none focus:ring-1 focus:ring-blue-500 focus:bg-white transition-all shadow-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsOratorioSettingsOpen(false)}
+                  className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all"
+                >
+                  Annulla
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingOratorioSettings}
+                  className="px-8 py-3 bg-slate-900 hover:bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-md transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {savingOratorioSettings ? 'Salvataggio...' : 'Salva'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
@@ -4258,15 +4511,15 @@ const OratorioFeriale: React.FC = () => {
                 }}
                 className={`w-full flex items-center justify-between p-4 rounded-2xl border text-left font-bold transition-all ${
                   selectedGridAbsence.existingAbs && selectedGridAbsence.existingAbs.reason === 'Solo Pomeriggio'
-                    ? 'border-orange-500 bg-orange-50/50 text-orange-800' 
-                    : 'border-slate-100 hover:border-orange-250 text-slate-600 hover:bg-slate-50'
+                    ? 'border-sky-500 bg-sky-50/50 text-sky-800' 
+                    : 'border-slate-100 hover:border-sky-250 text-slate-600 hover:bg-slate-50'
                 }`}
               >
                 <div>
                   <span className="text-xs font-black uppercase tracking-wider block">⛅ Solo Pomeriggio</span>
                   <span className="text-[10px] font-normal text-slate-400 font-medium">Lavora solo al pomeriggio, assente la mattina</span>
                 </div>
-                {selectedGridAbsence.existingAbs && selectedGridAbsence.existingAbs.reason === 'Solo Pomeriggio' && <Check size={16} className="text-orange-600" />}
+                {selectedGridAbsence.existingAbs && selectedGridAbsence.existingAbs.reason === 'Solo Pomeriggio' && <Check size={16} className="text-sky-600" />}
               </button>
 
               {/* Option 5: Custom hours */}
@@ -4323,7 +4576,11 @@ const OratorioFeriale: React.FC = () => {
                         key={slot.label}
                         type="button"
                         onClick={() => setCustomAbsTime({ ...customAbsTime, startTime: slot.start, endTime: slot.end })}
-                        className="text-[9px] font-bold text-slate-600 bg-slate-50 border border-slate-100 hover:border-purple-300 px-2 py-1 rounded-lg transition-all"
+                        className={`text-[9px] font-bold px-2 py-1 rounded-lg transition-all border ${
+                          slot.label.includes('Pomeriggio')
+                            ? 'bg-sky-50 text-sky-755 border-sky-200 hover:border-sky-400 hover:bg-sky-100'
+                            : 'text-slate-600 bg-slate-50 border-slate-100 hover:border-purple-300'
+                        }`}
                       >
                         {slot.label}
                       </button>
