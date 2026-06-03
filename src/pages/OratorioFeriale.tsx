@@ -61,6 +61,7 @@ interface Shift {
   activity: string;
   animatorIds: string[];
   season?: string;
+  requiredPeopleCount?: number;
   createdAt: string;
 }
 

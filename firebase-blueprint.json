@@ -354,6 +354,7 @@
         "endTime": { "type": "string" },
         "activity": { "type": "string" },
         "animatorIds": { "type": "array", "items": { "type": "string" } },
+        "requiredPeopleCount": { "type": "number", "description": "Number of animators required for this shift" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["date", "startTime", "endTime"]
