@@ -34,7 +34,11 @@ import {
   UserMinus,
   Save,
   ChevronDown,
-  Star
+  Star,
+  List,
+  Copy,
+  Square,
+  CheckSquare
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -178,6 +182,11 @@ const OratorioFeriale: React.FC = () => {
   // Modal and custom generation states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [shiftsSubTab, setShiftsSubTab] = useState<'list' | 'weekly'>('weekly');
+  const [selectedWeeklyWeekId, setSelectedWeeklyWeekId] = useState<string>('');
+  const [isMultiDayShift, setIsMultiDayShift] = useState(false);
+  const [shiftFormSelectedDates, setShiftFormSelectedDates] = useState<string[]>([]);
+  const [copiedShiftsDay, setCopiedShiftsDay] = useState<string | null>(null);
   const [onlyActiveSeasonAnimators, setOnlyActiveSeasonAnimators] = useState(true);
 
   // Seasons dropdown and days popup states
@@ -251,7 +260,8 @@ const OratorioFeriale: React.FC = () => {
     startTime: '08:30',
     endTime: '17:30',
     activity: '',
-    animatorIds: [] as string[]
+    animatorIds: [] as string[],
+    requiredPeopleCount: '' as number | ''
   });
 
   const [teamForm, setTeamForm] = useState({
@@ -537,20 +547,25 @@ const OratorioFeriale: React.FC = () => {
 
   const resetForms = () => {
     setAnimatorForm({ firstName: '', lastName: '', email: '', phone: '', notes: '', seasons: [activeSeason] });
-    setShiftForm({ date: format(new Date(), 'yyyy-MM-dd'), startTime: '08:30', endTime: '17:30', activity: '', animatorIds: [] });
+    setShiftForm({ date: format(new Date(), 'yyyy-MM-dd'), startTime: '08:30', endTime: '17:30', activity: '', animatorIds: [], requiredPeopleCount: '' });
     setTeamForm({ name: '', color: '#3B82F6', animatorIds: [], kids: [], referentIds: [], assignments: {} });
     setAbsenceForm({ animatorId: '', date: format(new Date(), 'yyyy-MM-dd'), startTime: '', endTime: '', reason: '' });
     setNewKid({ firstName: '', lastName: '', note: '' });
     setEditingId(null);
     setErrorStatus(null);
+    setIsMultiDayShift(false);
+    setShiftFormSelectedDates([]);
   };
 
-  const handleOpenModal = (type: typeof activeTab, data?: any) => {
+  const handleOpenModal = (type: typeof activeTab, data?: any, presetData?: any) => {
     resetForms();
     if (data) {
       setEditingId(data.id);
       if (type === 'animators') setAnimatorForm({ ...data, seasons: data.seasons || [activeSeason] });
-      if (type === 'shifts') setShiftForm({ ...data });
+      if (type === 'shifts') {
+        setShiftForm({ ...data, requiredPeopleCount: data.requiredPeopleCount !== undefined && data.requiredPeopleCount !== null ? data.requiredPeopleCount : '' });
+        setShiftFormSelectedDates([data.date]);
+      }
       if (type === 'teams') {
         setTeamForm({
           name: data.name || '',
@@ -562,6 +577,18 @@ const OratorioFeriale: React.FC = () => {
         });
       }
       if (type === 'absences') setAbsenceForm({ ...data });
+    } else if (presetData) {
+      if (type === 'shifts') {
+        setShiftForm(prev => ({ ...prev, ...presetData }));
+        if (presetData.date) {
+          setShiftFormSelectedDates([presetData.date]);
+        }
+      }
+    } else {
+      if (type === 'shifts') {
+        const todayStr = format(new Date(), 'yyyy-MM-dd');
+        setShiftFormSelectedDates([todayStr]);
+      }
     }
     setIsModalOpen(true);
   };
@@ -1620,6 +1647,269 @@ const OratorioFeriale: React.FC = () => {
     }
   };
 
+  const generateWeeklyShiftsPDF = () => {
+    try {
+      const currentWeeklyWeek = weeks.find(w => w.id === selectedWeeklyWeekId) || weeks[0];
+      const daysToPrint = currentWeeklyWeek ? currentWeeklyWeek.days : [];
+
+      if (daysToPrint.length === 0) {
+        setErrorStatus('Nessun giorno feriale programmato per la settimana selezionata.');
+        return;
+      }
+
+      const doc = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 14;
+
+      const drawHeader = (pdf: jsPDF, titleName: string) => {
+        const blueColor = [37, 99, 235];
+
+        // Header Background
+        pdf.setFillColor(248, 250, 252);
+        pdf.rect(0, 0, pageWidth, 32, 'F');
+        
+        // Parish Logo
+        const chosenLogoUrl = parishInfo.oratorioLogoUrl || parishInfo.logoUrl;
+        if (chosenLogoUrl) {
+          try {
+            pdf.addImage(chosenLogoUrl, 'PNG', margin, 6, 20, 20);
+          } catch (e) {
+            pdf.setDrawColor(30, 58, 138);
+            pdf.circle(margin + 10, 16, 10, 'S');
+          }
+        }
+
+        const textStartX = chosenLogoUrl ? 38 : margin;
+
+        // Blue Info Box at Top Right
+        const boxWidth = 92;
+        const boxHeight = 22;
+        const boxX = pageWidth - margin - boxWidth;
+        const boxY = 5;
+
+        // Auto-fit function inside drawHeader to prevent overlap
+        const maxWidth = boxX - textStartX - 5;
+        const drawTextFit = (text: string, x: number, y: number, bSize: number, fontStyle: string = 'normal') => {
+          pdf.setFont('helvetica', fontStyle);
+          pdf.setFontSize(bSize);
+          let currentSize = bSize;
+          while (pdf.getTextWidth(text) > maxWidth && currentSize > 6) {
+            currentSize -= 0.5;
+            pdf.setFontSize(currentSize);
+          }
+          pdf.text(text, x, y);
+        };
+
+        // Parish Info Header
+        pdf.setTextColor(51, 65, 85);
+        drawTextFit(`${parishInfo.oratorioName || parishInfo.name || 'Oratorio Feriale'} - ${activeSeason}`, textStartX, 10, 11, 'bold');
+        
+        pdf.setTextColor(100, 116, 139);
+
+        let hRowY = 14;
+        if (parishInfo.diocese) {
+          drawTextFit(parishInfo.diocese, textStartX, hRowY, 8);
+          hRowY += 3.5;
+        }
+        if (parishInfo.pastoralCommunity) {
+          drawTextFit(parishInfo.pastoralCommunity, textStartX, hRowY, 8);
+          hRowY += 3.5;
+        }
+        if (parishInfo.address) {
+          drawTextFit(parishInfo.address, textStartX, hRowY, 8);
+          hRowY += 3.5;
+        }
+
+        if (parishInfo.phone || parishInfo.email) {
+          const contacts: string[] = [];
+          if (parishInfo.phone) contacts.push(`Tel: ${parishInfo.phone}`);
+          if (parishInfo.email) contacts.push(`Email: ${parishInfo.email}`);
+          drawTextFit(contacts.join(' - '), textStartX, hRowY, 8);
+        }
+
+        pdf.setFillColor(blueColor[0], blueColor[1], blueColor[2]);
+        pdf.roundedRect(boxX, boxY, boxWidth, boxHeight, 2, 2, 'F');
+
+        // Status / Title inside info box
+        pdf.setFontSize(8.5);
+        pdf.setTextColor(255, 255, 255);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text(titleName, boxX + boxWidth / 2, boxY + 6, { align: 'center' });
+        
+        pdf.setFontSize(7.5);
+        pdf.setFont('helvetica', 'normal');
+        const weekLabel = currentWeeklyWeek ? currentWeeklyWeek.label : '';
+        pdf.text(`Riferimento: ${weekLabel}`, boxX + boxWidth / 2, boxY + 11.5, { align: 'center' });
+        pdf.setFont('helvetica', 'italic');
+        pdf.setFontSize(7);
+        pdf.text(`Stagione: ${activeSeason}`, boxX + boxWidth / 2, boxY + 17, { align: 'center' });
+
+        // Bottom Decorative Line
+        pdf.setDrawColor(blueColor[0], blueColor[1], blueColor[2]);
+        pdf.setLineWidth(0.6);
+        pdf.line(0, 32, pageWidth, 32);
+      };
+
+      drawHeader(doc, 'TABELLA SETTIMANALE TURNI');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(30, 41, 59);
+      doc.text('PROGRAMMAZIONE SETTIMANALE DEI TURNI A GRIGLIA', margin, 42);
+
+      // We have columns for each day of ferial selected week:
+      const colHeaders = daysToPrint.map(dayStr => {
+        const parts = dayStr.split('-');
+        const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 12, 0, 0);
+        const dayLabelName = format(d, 'eeee', { locale: it }).toUpperCase();
+        const dayLabelDate = format(d, 'dd/MM/yyyy', { locale: it });
+        return `${dayLabelName}\n${dayLabelDate}`;
+      });
+
+      // Let's index shifts by day
+      const shiftsByDay: { [key: string]: any[] } = {};
+      daysToPrint.forEach(dayStr => {
+        shiftsByDay[dayStr] = [...filteredShifts]
+          .filter(s => s.date === dayStr)
+          .sort((a, b) => a.startTime.localeCompare(b.startTime));
+      });
+
+      const maxShifts = Math.max(...daysToPrint.map(dayStr => shiftsByDay[dayStr].length));
+
+      const rows: any[] = [];
+      if (maxShifts > 0) {
+        for (let r = 0; r < maxShifts; r++) {
+          const rowData = daysToPrint.map(dayStr => {
+            const shift = shiftsByDay[dayStr][r];
+            if (!shift) return '';
+
+            const animList = shift.animatorIds.map(aid => {
+              const a = animators.find(anim => anim.id === aid);
+              return a ? `- ${a.lastName} ${a.firstName[0]}.` : '';
+            }).filter(Boolean).join('\n');
+
+            const reqText = shift.requiredPeopleCount ? ` (Copertura: ${shift.animatorIds.length}/${shift.requiredPeopleCount})` : '';
+
+            return `SERVIZIO: ${shift.activity.toUpperCase()}\nOrario: ${shift.startTime} - ${shift.endTime}${reqText}\nAnimatori:\n${animList || 'Nessun assegnato'}`;
+          });
+          rows.push(rowData);
+        }
+      } else {
+        rows.push(daysToPrint.map(() => 'Nessun turno programmato'));
+      }
+
+      autoTable(doc, {
+        startY: 46,
+        head: [colHeaders],
+        body: rows,
+        theme: 'grid',
+        styles: { 
+          fontSize: 7.5, 
+          cellPadding: 4, 
+          font: 'helvetica', 
+          valign: 'top', 
+          halign: 'left',
+          overflow: 'linebreak'
+        },
+        headStyles: { 
+          fillColor: [37, 99, 235], 
+          textColor: [255, 255, 255], 
+          fontStyle: 'bold',
+          halign: 'center'
+        },
+        alternateRowStyles: { 
+          fillColor: [248, 250, 252] 
+        },
+        columnStyles: daysToPrint.reduce((acc, _, index) => {
+          acc[index] = { cellWidth: (pageWidth - (margin * 2)) / daysToPrint.length };
+          return acc;
+        }, {} as any),
+        willDrawCell: (data) => {
+          if (data.section === 'body' && data.cell.raw) {
+            data.cell.text = [];
+          }
+        },
+        didDrawCell: (data) => {
+          if (data.section === 'body' && data.cell.raw) {
+            const rawText = data.cell.raw as string;
+            if (!rawText || rawText === 'Nessun turno programmato') {
+              const doc = data.doc;
+              doc.setFont('helvetica', 'italic');
+              doc.setFontSize(7.5);
+              doc.setTextColor(148, 163, 184);
+              const padding = data.cell.styles.cellPadding as number || 4;
+              doc.text(rawText || 'Nessun turno', data.cell.x + padding, data.cell.y + padding + 3);
+              return;
+            }
+
+            const doc = data.doc;
+            const padding = data.cell.styles.cellPadding as number || 4;
+            const cellWidth = data.cell.width - (padding * 2);
+            const startX = data.cell.x + padding;
+            let startY = data.cell.y + padding + 3;
+
+            const paragraphs = rawText.split('\n');
+
+            paragraphs.forEach(p => {
+              if (p.startsWith('SERVIZIO:')) {
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(8.5);
+                
+                const serviceName = p.replace('SERVIZIO:', '').trim();
+                
+                // Draw a beautiful subtle background strip for the service header
+                doc.setFillColor(239, 246, 255); // soft blue-50 instead of grey
+                doc.rect(data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, 8, 'F');
+                
+                doc.setDrawColor(191, 219, 254); // blue-200 border for separation
+                doc.rect(data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, 8, 'S');
+
+                doc.setTextColor(29, 78, 216); // blue-700
+                doc.text(serviceName, startX, data.cell.y + 6.2, { maxWidth: cellWidth });
+                
+                startY = data.cell.y + 13;
+              } else if (p.startsWith('Orario:')) {
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(7.5);
+                doc.setTextColor(71, 85, 105);
+                doc.text(p, startX, startY, { maxWidth: cellWidth });
+                startY += 4.5;
+              } else if (p.startsWith('Animatori:')) {
+                startY += 1;
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(7);
+                doc.setTextColor(100, 116, 139);
+                doc.text(p.toUpperCase(), startX, startY, { maxWidth: cellWidth });
+                startY += 3.5;
+              } else if (p.trim().length > 0) {
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(7.5);
+                doc.setTextColor(15, 23, 42);
+                doc.text(p, startX, startY, { maxWidth: cellWidth });
+                startY += 3.5;
+              }
+            });
+          }
+        }
+      });
+
+      setSuccessStatus('Download completato!');
+      setTimeout(() => setSuccessStatus(null), 2000);
+
+      const weekFilename = currentWeeklyWeek ? currentWeeklyWeek.id : 'settimana';
+      doc.save(`Griglia_Turni_Settimanale_${activeSeason}_${weekFilename}.pdf`);
+    } catch (err) {
+      console.error('PDF Generation Error:', err);
+      setErrorStatus('Impossibile generare la griglia settimanale dei turni.');
+    }
+  };
+
   const generateSingleTeamPDF = (team: Team) => {
     try {
       const doc = new jsPDF({
@@ -1973,7 +2263,8 @@ const OratorioFeriale: React.FC = () => {
         payload = { ...animatorForm };
       } else if (activeTab === 'shifts') {
         coll = shiftsColl;
-        payload = { ...shiftForm, season: activeSeason };
+        const reqCount = shiftForm.requiredPeopleCount === '' ? 0 : Number(shiftForm.requiredPeopleCount);
+        payload = { ...shiftForm, requiredPeopleCount: reqCount, season: activeSeason };
       } else if (activeTab === 'teams') {
         coll = teamsColl;
         payload = { ...teamForm, season: activeSeason };
@@ -1982,10 +2273,29 @@ const OratorioFeriale: React.FC = () => {
         payload = { ...absenceForm, season: activeSeason };
       }
 
-      if (editingId) {
-        await updateDoc(doc(coll, editingId), { ...payload, updatedAt: new Date().toISOString() });
+      if (activeTab === 'shifts' && !editingId && isMultiDayShift) {
+        if (shiftFormSelectedDates.length === 0) {
+          throw new Error("Seleziona almeno una giornata!");
+        }
+        const reqCount = shiftForm.requiredPeopleCount === '' ? 0 : Number(shiftForm.requiredPeopleCount);
+        
+        // Loop over selected dates and save independent Shift docs with blank animator list and copy details
+        for (const targetDate of shiftFormSelectedDates) {
+          const multiPayload = {
+            ...shiftForm,
+            date: targetDate,
+            requiredPeopleCount: reqCount,
+            season: activeSeason,
+            createdAt: new Date().toISOString()
+          };
+          await addDoc(shiftsColl, multiPayload);
+        }
       } else {
-        await addDoc(coll, { ...payload, createdAt: new Date().toISOString() });
+        if (editingId) {
+          await updateDoc(doc(coll, editingId), { ...payload, updatedAt: new Date().toISOString() });
+        } else {
+          await addDoc(coll, { ...payload, createdAt: new Date().toISOString() });
+        }
       }
 
       setSuccessStatus('Salvataggio completato!');
@@ -2157,20 +2467,12 @@ const OratorioFeriale: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 gap-6">
-        {(successStatus || errorStatus) && (
+        {errorStatus && (
           <div className="space-y-2">
-            {successStatus && (
-              <div className="bg-emerald-50 border border-emerald-100/50 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 text-xs font-bold animate-in fade-in duration-300">
-                <CheckCircle2 size={16} className="text-emerald-500 animate-bounce cursor-pointer" onClick={() => setSuccessStatus(null)} />
-                <span>{successStatus}</span>
-              </div>
-            )}
-            {errorStatus && (
-              <div className="bg-red-50 border border-red-100 p-4 rounded-2xl flex items-center gap-3 text-red-800 text-xs font-bold animate-in fade-in duration-300">
-                <AlertCircle size={16} className="text-red-500 shrink-0 cursor-pointer" onClick={() => setErrorStatus(null)} />
-                <span>{errorStatus}</span>
-              </div>
-            )}
+            <div className="bg-red-50 border border-red-100 p-4 rounded-2xl flex items-center gap-3 text-red-800 text-xs font-bold animate-in fade-in duration-300">
+              <AlertCircle size={16} className="text-red-500 shrink-0 cursor-pointer" onClick={() => setErrorStatus(null)} />
+              <span>{errorStatus}</span>
+            </div>
           </div>
         )}
 
@@ -2464,47 +2766,518 @@ const OratorioFeriale: React.FC = () => {
         )}
 
         {/* Turni Tab */}
-        {activeTab === 'shifts' && (
-          <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {filteredShifts.length > 0 ? filteredShifts.map((s, idx) => (
-              <div key={`${s.id}-${idx}`} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 hover:shadow-md transition-all">
-                <div className="flex items-center gap-6">
-                  <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex flex-col items-center min-w-[80px]">
-                    <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">{format(new Date(s.date), 'MMM', { locale: it })}</span>
-                    <span className="text-2xl font-black text-blue-600">{format(new Date(s.date), 'dd')}</span>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-black text-slate-900 uppercase italic tracking-tight">{s.activity || 'Attività Oratorio'}</h3>
-                    <div className="flex items-center gap-3 mt-1.5">
-                      <span className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                        <Clock size={12} /> {s.startTime} - {s.endTime}
-                      </span>
+        {activeTab === 'shifts' && (() => {
+          const currentWeeklyWeek = weeks.find(w => w.id === selectedWeeklyWeekId) || weeks[0];
+          const weeklyDays = currentWeeklyWeek ? currentWeeklyWeek.days : [];
+          
+          return (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              {/* Sub-navigation & Actions Bar - HIGHER CONTRAST & RESPONSIVE DESIGN */}
+              <div className="bg-white p-5 rounded-[2rem] border border-slate-200 shadow-md flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+                {/* Segmented Controls for Sub-tabs */}
+                <div className="flex bg-slate-100 p-1 rounded-2xl w-full lg:w-auto shadow-inner border border-slate-200">
+                  <button
+                    onClick={() => setShiftsSubTab('weekly')}
+                    className={`flex-1 lg:flex-initial flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200 ${
+                      shiftsSubTab === 'weekly'
+                        ? 'bg-slate-900 text-white shadow-md'
+                        : 'text-slate-600 hover:text-slate-950 bg-transparent hover:bg-slate-200/50'
+                    }`}
+                  >
+                    <Calendar size={13} />
+                    Visione Settimanale
+                  </button>
+                  <button
+                    onClick={() => setShiftsSubTab('list')}
+                    className={`flex-1 lg:flex-initial flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200 ${
+                      shiftsSubTab === 'list'
+                        ? 'bg-slate-900 text-white shadow-md'
+                        : 'text-slate-600 hover:text-slate-950 bg-transparent hover:bg-slate-200/50'
+                    }`}
+                  >
+                    <List size={13} />
+                    Lista Semplice
+                  </button>
+                </div>
+
+                {/* Week Selector (rendered only for weekly view) */}
+                {shiftsSubTab === 'weekly' && weeks.length > 0 && (
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
+                    <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest self-center text-center sm:text-left">Settimana Attiva:</span>
+                    <div className="relative flex-1 sm:flex-none">
+                      <select
+                        value={selectedWeeklyWeekId || (weeks[0]?.id || '')}
+                        onChange={(e) => setSelectedWeeklyWeekId(e.target.value)}
+                        className="w-full sm:w-auto pl-5 pr-10 py-3 rounded-2xl bg-white hover:bg-slate-50 border border-slate-250 outline-none font-black text-xs text-slate-900 uppercase tracking-wider appearance-none cursor-pointer transition-colors shadow-sm"
+                      >
+                        {weeks.map(w => (
+                          <option key={w.id} value={w.id}>
+                            {w.label}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-600">
+                        <ChevronDown size={14} />
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="flex-1 flex flex-wrap gap-2 px-4">
-                  {s.animatorIds.map((aid, itemIdx) => {
-                    const anim = animators.find(a => a.id === aid);
-                    return anim ? (
-                      <span key={`${s.id}-anim-${aid}-${itemIdx}`} className="text-[9px] font-black uppercase tracking-widest px-3 py-1.5 bg-slate-50 text-slate-500 rounded-lg border border-slate-100 italic">
-                        {anim.lastName} {anim.firstName[0]}.
-                      </span>
-                    ) : null;
-                  })}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => handleOpenModal('shifts', s)} className="p-3 text-blue-600 hover:bg-blue-50 rounded-2xl transition-colors"><Pencil size={18} /></button>
-                  <button onClick={() => handleDelete(s.id, shiftsColl)} className="p-3 text-red-600 hover:bg-red-50 rounded-2xl transition-colors"><Trash2 size={18} /></button>
+                )}
+
+                {/* Actions & Buttons */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full lg:w-auto">
+                  {shiftsSubTab === 'weekly' && weeks.length > 0 && (
+                    <button
+                      onClick={generateWeeklyShiftsPDF}
+                      className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-3.5 bg-emerald-700 hover:bg-emerald-800 text-white border border-emerald-850 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all shadow-md hover:shadow-lg active:scale-95"
+                      title="Scarica la programmazione dei turni settimanali a griglia in formato PDF"
+                    >
+                      <Download size={14} strokeWidth={3} />
+                      Scarica Griglia
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleOpenModal('shifts')}
+                    className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-3.5 bg-blue-700 hover:bg-blue-800 text-white border border-blue-850 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all shadow-md hover:shadow-lg active:scale-95"
+                  >
+                    <Plus size={14} strokeWidth={3} />
+                    Nuovo Turno
+                  </button>
                 </div>
               </div>
-            )) : (
-              <div className="py-20 text-center bg-white rounded-[3rem] border-2 border-dashed border-slate-100">
-                <Clock size={48} className="mx-auto text-slate-200 mb-4" />
-                <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Nessun turno registrato per la stagione {activeSeason}</p>
-              </div>
-            )}
-          </div>
-        )}
+
+              {/* Clipboard Info Bar (when structure is copied) */}
+              {copiedShiftsDay && (
+                <div className="bg-indigo-50 border border-indigo-150 p-4 rounded-[2rem] shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 animate-in fade-in zoom-in-95 duration-300">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-indigo-600 text-white p-3 rounded-2xl">
+                      <Copy size={16} />
+                    </div>
+                    <div>
+                      <p className="text-xs font-black text-indigo-950 uppercase italic leading-none">
+                        Struttura Turni Copiata!
+                      </p>
+                      <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest mt-1">
+                        Copiati i turni di: {format(new Date(copiedShiftsDay), 'eeee dd MMMM', { locale: it })}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    {shiftsSubTab === 'weekly' && weeks.length > 0 && (
+                      <button
+                        onClick={async () => {
+                          const sourceShifts = filteredShifts.filter(s => s.date === copiedShiftsDay);
+                          if (sourceShifts.length === 0) {
+                            setErrorStatus("Nessun turno trovato nel giorno copiato!");
+                            setTimeout(() => setErrorStatus(null), 2500);
+                            return;
+                          }
+                          
+                          const targetDays = weeklyDays.filter(d => d !== copiedShiftsDay);
+                          if (targetDays.length === 0) return;
+
+                          setIsSaving(true);
+                          try {
+                            for (const targetDay of targetDays) {
+                              const existingForDay = filteredShifts.filter(s => s.date === targetDay);
+                              
+                              for (const s of sourceShifts) {
+                                const alreadyExists = existingForDay.some(ex => 
+                                  ex.activity.toLowerCase() === s.activity.toLowerCase() && 
+                                  ex.startTime === s.startTime && 
+                                  ex.endTime === s.endTime
+                                );
+                                
+                                if (!alreadyExists) {
+                                  const replica = {
+                                    activity: s.activity,
+                                    startTime: s.startTime,
+                                    endTime: s.endTime,
+                                    requiredPeopleCount: s.requiredPeopleCount || 0,
+                                    animatorIds: [], // Keep Empty so they can assign them
+                                    season: activeSeason,
+                                    date: targetDay,
+                                    createdAt: new Date().toISOString()
+                                  };
+                                  await addDoc(shiftsColl, replica);
+                                }
+                              }
+                            }
+                            setSuccessStatus("Turni applicati a tutta la settimana con successo!");
+                            setTimeout(() => setSuccessStatus(null), 2000);
+                            setCopiedShiftsDay(null); // Clear clipboard
+                          } catch (err) {
+                            console.error(err);
+                            setErrorStatus("Errore nell'applicazione di gruppo.");
+                            setTimeout(() => setErrorStatus(null), 2500);
+                          } finally {
+                            setIsSaving(false);
+                          }
+                        }}
+                        className="px-5 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-wider rounded-xl shadow-sm transition"
+                      >
+                        ⚡ Applica a tutta la settimana
+                      </button>
+                    )}
+                    
+                    <button
+                      onClick={() => setCopiedShiftsDay(null)}
+                      className="px-5 py-3 bg-white text-slate-500 hover:text-slate-850 text-[10px] font-black uppercase tracking-wider rounded-xl border border-slate-205 transition"
+                    >
+                      Annulla Copia
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Sub-tab 1: Visione Settimanale */}
+              {shiftsSubTab === 'weekly' && (
+                <div className="space-y-6">
+                  {weeks.length === 0 ? (
+                    <div className="py-20 text-center bg-white rounded-[3rem] border-2 border-dashed border-slate-100">
+                      <Calendar size={48} className="mx-auto text-slate-200 mb-4" />
+                      <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Aggiungi dei giorni alla stagione nella barra in alto per caricare le settimane</p>
+                    </div>
+                  ) : (
+                    <div>
+                      {/* Weekly Grid - RESPONSIVE COLUMNS CONFIG */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5 items-stretch">
+                        {weeklyDays.map(dayStr => {
+                          const dayDateObj = new Date(dayStr);
+                          const dayName = format(dayDateObj, 'EEEE', { locale: it });
+                          const capitalizedDayName = dayName.charAt(0).toUpperCase() + dayName.slice(1);
+                          const formattedDate = format(dayDateObj, 'dd MMMM', { locale: it });
+
+                          const isDayToday = format(new Date(), 'yyyy-MM-dd') === dayStr;
+                          const cssToday = isDayToday 
+                            ? 'border-2 border-blue-500 shadow-md ring-4 ring-blue-50 bg-white' 
+                            : 'bg-white border border-slate-150 shadow-sm';
+
+                          // Filter shifts for this day and sort by startTime
+                          const dayShifts = [...filteredShifts]
+                            .filter(s => s.date === dayStr)
+                            .sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+                          return (
+                            <div 
+                              key={dayStr} 
+                              className={`rounded-[2.5rem] p-5 flex flex-col min-h-[460px] hover:shadow-md transition-all duration-300 relative ${cssToday}`}
+                            >
+                              {/* Day Header - MAX CONTRAST & SEPARATION PILL */}
+                              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 mb-4 flex items-center justify-between gap-2 shadow-xs">
+                                <div className="min-w-0">
+                                  <h3 className="text-xs font-black text-slate-900 uppercase tracking-tight italic flex items-center gap-1 leading-none">
+                                    <span className="truncate">{capitalizedDayName}</span>
+                                    {isDayToday && (
+                                      <span className="text-[7.5px] px-1.5 py-0.5 bg-blue-600 text-white rounded uppercase tracking-wider font-extrabold not-italic leading-none shrink-0 shadow-xs">Oggi</span>
+                                    )}
+                                  </h3>
+                                  <span className="text-[9.5px] font-black text-slate-500 uppercase tracking-wider mt-1.5 block">
+                                    {formattedDate}
+                                  </span>
+                                </div>
+                                
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {/* Copy Button */}
+                                  <button
+                                    onClick={() => {
+                                      setCopiedShiftsDay(dayStr);
+                                      const dObj = new Date(dayStr);
+                                      setSuccessStatus(`Struttura turni copiata per ${format(dObj, 'dd/MM')}!`);
+                                      setTimeout(() => setSuccessStatus(null), 1500);
+                                    }}
+                                    className={`p-1.5 rounded-lg border transition-all ${
+                                      copiedShiftsDay === dayStr 
+                                        ? 'text-indigo-805 bg-indigo-100 border-indigo-300 shadow-xs' 
+                                        : 'text-slate-600 hover:text-indigo-600 bg-white border-slate-200 hover:bg-indigo-50/20'
+                                    }`}
+                                    title="Copia struttura turni di questo giorno"
+                                  >
+                                    <Copy size={11} strokeWidth={3} />
+                                  </button>
+
+                                  {/* Paste Button (only visible if copiedShiftsDay is set and is NOT the current day) */}
+                                  {copiedShiftsDay && copiedShiftsDay !== dayStr && (
+                                    <button
+                                      onClick={async () => {
+                                        const sourceShifts = filteredShifts.filter(s => s.date === copiedShiftsDay);
+                                        
+                                        if (sourceShifts.length === 0) {
+                                          setErrorStatus("Nessun turno trovato nel giorno copiato!");
+                                          setTimeout(() => setErrorStatus(null), 2500);
+                                          return;
+                                        }
+
+                                        setIsSaving(true);
+                                        try {
+                                          const existingForDay = filteredShifts.filter(s => s.date === dayStr);
+                                          
+                                          for (const s of sourceShifts) {
+                                            const alreadyExists = existingForDay.some(ex => 
+                                              ex.activity.toLowerCase() === s.activity.toLowerCase() && 
+                                              ex.startTime === s.startTime && 
+                                              ex.endTime === s.endTime
+                                            );
+                                            
+                                            if (!alreadyExists) {
+                                              const replica = {
+                                                activity: s.activity,
+                                                startTime: s.startTime,
+                                                endTime: s.endTime,
+                                                requiredPeopleCount: s.requiredPeopleCount || 0,
+                                                animatorIds: [], // Empty list of animators to begin clean selection
+                                                season: activeSeason,
+                                                date: dayStr,
+                                                createdAt: new Date().toISOString()
+                                              };
+                                              await addDoc(shiftsColl, replica);
+                                            }
+                                          }
+                                          const dObj = new Date(dayStr);
+                                          setSuccessStatus(`Turni pronti per ${format(dObj, 'dd/MM')}!`);
+                                          setTimeout(() => setSuccessStatus(null), 1500);
+                                        } catch (err) {
+                                          console.error("Paste error:", err);
+                                          setErrorStatus("Errore durante l'incollamento.");
+                                          setTimeout(() => setErrorStatus(null), 2500);
+                                        } finally {
+                                          setIsSaving(false);
+                                        }
+                                      }}
+                                      className="p-1.5 text-indigo-900 bg-indigo-50 hover:bg-indigo-150 border border-indigo-250 rounded-lg transition-all shadow-xs"
+                                      title="Incolla turni copiati qui"
+                                    >
+                                      <Check size={11} strokeWidth={3.5} />
+                                    </button>
+                                  )}
+
+                                  {/* Create shift shortcut for this specific day */}
+                                  <button
+                                    onClick={() => handleOpenModal('shifts', null, { date: dayStr })}
+                                    className="p-1.5 text-blue-900 bg-blue-50 hover:bg-blue-150 border border-blue-200 rounded-lg transition-all shadow-xs"
+                                    title={`Crea un turno per ${capitalizedDayName}`}
+                                  >
+                                    <Plus size={11} strokeWidth={3} />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Shifts list for this day */}
+                              <div className="space-y-4 flex-1">
+                                {dayShifts.map((s, sIdx) => {
+                                  const matchedCount = s.animatorIds?.length || 0;
+                                  const requiredCount = s.requiredPeopleCount || 0;
+                                  const isFulfilled = requiredCount > 0 && matchedCount >= requiredCount;
+
+                                  return (
+                                    <div 
+                                      key={`${s.id}-${sIdx}`} 
+                                      className="bg-slate-50/65 border border-slate-100/80 hover:bg-white hover:border-slate-200 rounded-[1.8rem] p-4 shadow-sm hover:shadow-md transition-all space-y-3 relative group"
+                                    >
+                                      <div className="flex items-start justify-between gap-1">
+                                        <div className="min-w-0 flex-1">
+                                          <h4 className="text-xs font-black uppercase text-slate-900 tracking-tight italic leading-tight truncate" title={s.activity}>
+                                            {s.activity || 'Attività Oratorio'}
+                                          </h4>
+                                          <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest mt-1 block">
+                                            ⏱️ {s.startTime} - {s.endTime}
+                                          </span>
+                                        </div>
+                                        
+                                        <div className="flex gap-1 items-center opacity-40 group-hover:opacity-100 transition-opacity shrink-0">
+                                          <button 
+                                            onClick={() => handleOpenModal('shifts', s)}
+                                            className="p-1 text-blue-650 text-blue-650 hover:bg-blue-50 bg-white rounded-lg border border-slate-100 transition"
+                                            title="Modifica Orario/Attività"
+                                          >
+                                            <Pencil size={11} />
+                                          </button>
+                                          <button 
+                                            onClick={() => handleDelete(s.id, shiftsColl)}
+                                            className="p-1 text-red-600 hover:bg-red-55 rounded-lg bg-white border border-slate-100 transition"
+                                            title="Elimina Turno"
+                                          >
+                                            <Trash2 size={11} />
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      {/* Progress badge with required counts */}
+                                      {requiredCount > 0 && (
+                                        <div className="space-y-1">
+                                          <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-wider">
+                                            <span className={isFulfilled ? 'text-emerald-600' : 'text-amber-600'}>
+                                              Copertura: {matchedCount} / {requiredCount}
+                                            </span>
+                                            <span className="text-slate-400">
+                                              {Math.round((matchedCount / requiredCount) * 100)}%
+                                            </span>
+                                          </div>
+                                          <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                                            <div 
+                                              className={`h-full rounded-full transition-all duration-300 ${
+                                                isFulfilled ? 'bg-emerald-500' : 'bg-amber-500'
+                                              }`} 
+                                              style={{ width: `${Math.min((matchedCount / requiredCount) * 100, 100)}%` }}
+                                            />
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* List of currently assigned animators with individual remove buttons */}
+                                      <div className="space-y-1.5">
+                                        <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest block">Animatori Assegnati:</span>
+                                        <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto custom-scrollbar">
+                                          {s.animatorIds.map((aid, index) => {
+                                            const anim = animators.find(a => a.id === aid);
+                                            if (!anim) return null;
+                                            return (
+                                              <div key={`${s.id}-animlist-${aid}-${index}`} className="flex items-center justify-between gap-1 px-2 py-1 bg-white text-[9.5px] font-bold text-slate-700 rounded-lg border border-slate-150/60 italic leading-none shadow-sm shrink-0">
+                                                <span className="truncate max-w-[85px]">{anim.lastName} {anim.firstName[0]}.</span>
+                                                <button 
+                                                  onClick={async () => {
+                                                    const newIds = s.animatorIds.filter(id => id !== aid);
+                                                    await updateDoc(doc(shiftsColl, s.id), { animatorIds: newIds });
+                                                    setSuccessStatus(`Animatore rimosso!`);
+                                                    setTimeout(() => setSuccessStatus(null), 1200);
+                                                  }}
+                                                  className="text-red-500 hover:text-red-700 font-black px-1 rounded-sm hover:bg-red-50 transition"
+                                                  title="Rimuovi"
+                                                >
+                                                  &times;
+                                                </button>
+                                              </div>
+                                            );
+                                          })}
+                                          {matchedCount === 0 && (
+                                            <span className="text-[10px] text-slate-450 italic">Nessuno ancora assegnato</span>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      {/* Dropdown to add an animator */}
+                                      <div className="pt-2 border-t border-slate-200/50">
+                                        <select 
+                                          className="w-full text-[9px] font-black uppercase tracking-wider p-2 bg-white border border-slate-200 hover:border-slate-350 rounded-xl text-slate-605 text-slate-600 focus:ring-2 focus:ring-blue-500 cursor-pointer transition-all appearance-none outline-none"
+                                          value=""
+                                          onChange={async (e) => {
+                                            const val = e.target.value;
+                                            if (!val) return;
+                                            if (s.animatorIds.includes(val)) return;
+                                            const newIds = [...s.animatorIds, val];
+                                            await updateDoc(doc(shiftsColl, s.id), { animatorIds: newIds });
+                                            setSuccessStatus(`Animatore assegnato!`);
+                                            setTimeout(() => setSuccessStatus(null), 1200);
+                                          }}
+                                        >
+                                          <option value="">+ Assegna...</option>
+                                          <optgroup label="Presenti questa settimana">
+                                            {activeSeasonAnimatorsList
+                                              .filter(a => isAnimatorPresentInWeek(a, activeSeason, currentWeeklyWeek.id) && !s.animatorIds.includes(a.id))
+                                              .map(a => {
+                                                const hasAbsence = getAbsenceForAnimatorOnDay(a.id, dayStr);
+                                                const isAbsentInfo = hasAbsence ? ` (${hasAbsence.reason || 'S.M./P.'})` : '';
+                                                return (
+                                                  <option key={a.id} value={a.id}>
+                                                    👤 {a.lastName} {a.firstName}{isAbsentInfo}
+                                                  </option>
+                                                );
+                                              })
+                                            }
+                                          </optgroup>
+                                          <optgroup label="Altri della stagione">
+                                            {activeSeasonAnimatorsList
+                                              .filter(a => !isAnimatorPresentInWeek(a, activeSeason, currentWeeklyWeek.id) && !s.animatorIds.includes(a.id))
+                                              .map(a => (
+                                                <option key={a.id} value={a.id}>
+                                                  💤 {a.lastName} {a.firstName} (Non iscritto)
+                                                </option>
+                                              ))
+                                            }
+                                          </optgroup>
+                                        </select>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+
+                                {dayShifts.length === 0 && (
+                                  <div className="border border-dashed border-slate-200 rounded-[1.8rem] p-6 text-center text-slate-400 italic flex flex-col items-center justify-center min-h-[140px] bg-slate-50/20">
+                                    <Clock size={20} className="text-slate-300 mb-2" />
+                                    <span className="text-[10px] font-black uppercase tracking-wider">Nessun Turno</span>
+                                    <span className="text-[9px] text-slate-400 mt-1">Clicca + per crearne uno</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Sub-tab 2: Lista Semplice (the original layout, updated to show required counts) */}
+              {shiftsSubTab === 'list' && (
+                <div className="space-y-4 animate-in fade-in duration-300">
+                  {filteredShifts.length > 0 ? filteredShifts.map((s, idx) => {
+                    const matchedCount = s.animatorIds?.length || 0;
+                    const requiredCount = s.requiredPeopleCount || 0;
+                    const isFulfilled = requiredCount > 0 && matchedCount >= requiredCount;
+
+                    return (
+                      <div key={`${s.id}-${idx}`} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 hover:shadow-md transition-all">
+                        <div className="flex items-center gap-6">
+                          <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex flex-col items-center min-w-[80px]">
+                            <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">{format(new Date(s.date), 'MMM', { locale: it })}</span>
+                            <span className="text-2xl font-black text-blue-600">{format(new Date(s.date), 'dd')}</span>
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-black text-slate-900 uppercase italic tracking-tight">{s.activity || 'Attività Oratorio'}</h3>
+                            <div className="flex items-center gap-3 mt-1.5">
+                              <span className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                <Clock size={12} /> {s.startTime} - {s.endTime}
+                              </span>
+                              {requiredCount > 0 && (
+                                <span className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-1.5 rounded-lg border flex items-center gap-1 leading-none ${
+                                  isFulfilled 
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
+                                    : 'bg-amber-50 text-amber-700 border-amber-100'
+                                }`}>
+                                  <Users size={10} /> {matchedCount} / {requiredCount} richiesti
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex-1 flex flex-wrap gap-2 px-4">
+                          {s.animatorIds.map((aid, itemIdx) => {
+                            const anim = animators.find(a => a.id === aid);
+                            return anim ? (
+                              <span key={`${s.id}-anim-${aid}-${itemIdx}`} className="text-[9px] font-black uppercase tracking-widest px-3 py-1.5 bg-slate-50 text-slate-500 rounded-lg border border-slate-100 italic">
+                                {anim.lastName} {anim.firstName[0]}.
+                              </span>
+                            ) : null;
+                          })}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => handleOpenModal('shifts', s)} className="p-3 text-blue-600 hover:bg-blue-50 rounded-2xl transition-colors"><Pencil size={18} /></button>
+                          <button onClick={() => handleDelete(s.id, shiftsColl)} className="p-3 text-red-600 hover:bg-red-50 rounded-2xl transition-colors"><Trash2 size={18} /></button>
+                        </div>
+                      </div>
+                    );
+                  }) : (
+                    <div className="py-20 text-center bg-white rounded-[3rem] border-2 border-dashed border-slate-100">
+                      <Clock size={48} className="mx-auto text-slate-200 mb-4" />
+                      <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Nessun turno registrato per la stagione {activeSeason}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Squadre Tab */}
         {activeTab === 'teams' && (
@@ -2612,11 +3385,11 @@ const OratorioFeriale: React.FC = () => {
                           <h2 className="text-xl font-black text-slate-900 uppercase italic tracking-tight">{t.name}</h2>
                           {t.referentIds && t.referentIds.length > 0 && (
                             <div className="flex items-center gap-1 flex-wrap">
-                              {t.referentIds.map((refId) => {
+                              {t.referentIds.map((refId, rIdx) => {
                                 const refAnim = teamAnimators.find(a => a.id === refId);
                                 if (!refAnim) return null;
                                 return (
-                                  <span key={`ref-badge-${refId}`} className="text-[8.5px] font-black uppercase tracking-wider px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded flex items-center gap-1 italic shadow-sm" title={`Referente: ${refAnim.lastName} ${refAnim.firstName}`}>
+                                  <span key={`ref-badge-${refId}-${rIdx}`} className="text-[8.5px] font-black uppercase tracking-wider px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded flex items-center gap-1 italic shadow-sm" title={`Referente: ${refAnim.lastName} ${refAnim.firstName}`}>
                                     <Star size={9} className="text-amber-500 fill-amber-500 shrink-0" />
                                     <span>{refAnim.lastName} {refAnim.firstName[0]}.</span>
                                   </span>
@@ -2664,13 +3437,13 @@ const OratorioFeriale: React.FC = () => {
                             Presenti ({presentToday.length})
                           </span>
                           <div className="space-y-1.5 max-h-36 overflow-y-auto custom-scrollbar">
-                            {presentToday.map(anim => {
+                            {presentToday.map((anim, idx) => {
                               const isRef = t.referentIds?.includes(anim.id);
                               const assign = t.assignments?.[anim.id];
                               const ab = getAbsenceForAnimatorOnDay(anim.id, activeRecapDay);
                               const hasAbs = !!ab;
                               return (
-                                <div key={anim.id} className="text-[11px] font-extrabold text-slate-900 flex items-center gap-1.5 py-0.5 italic flex-wrap">
+                                <div key={`${anim.id}-${idx}`} className="text-[11px] font-extrabold text-slate-900 flex items-center gap-1.5 py-0.5 italic flex-wrap">
                                   <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${hasAbs ? 'bg-amber-500 animate-pulse' : 'bg-emerald-600'}`} />
                                   {isRef && <Star size={11} className="text-amber-500 fill-amber-500 shrink-0" />}
                                   <span className="truncate">{anim.lastName} {anim.firstName}</span>
@@ -2711,7 +3484,7 @@ const OratorioFeriale: React.FC = () => {
                             Assenti ({absentToday.length})
                           </span>
                           <div className="space-y-1.5 max-h-36 overflow-y-auto custom-scrollbar">
-                            {absentToday.map(anim => {
+                            {absentToday.map((anim, idx) => {
                               const ab = getAbsenceForAnimatorOnDay(anim.id, activeRecapDay);
                               let spec = 'Tutto il giorno';
                               if (ab?.reason === 'Solo Mattina') {
@@ -2726,7 +3499,7 @@ const OratorioFeriale: React.FC = () => {
                               const assign = t.assignments?.[anim.id];
 
                               return (
-                                <div key={anim.id} className="text-[11px] font-medium text-slate-900 flex flex-col gap-0.5 py-0.5 border-b border-dashed border-slate-200 last:border-none">
+                                <div key={`${anim.id}-${idx}`} className="text-[11px] font-medium text-slate-900 flex flex-col gap-0.5 py-0.5 border-b border-dashed border-slate-200 last:border-none">
                                   <span className="font-extrabold text-red-700 flex items-center gap-1.5 italic">
                                     <span className="w-1.5 h-1.5 rounded-full bg-red-600 shrink-0 animate-ping" />
                                     {isRef && <Star size={11} className="text-amber-500 fill-amber-500 shrink-0" />}
@@ -3604,19 +4377,164 @@ const OratorioFeriale: React.FC = () => {
 
               {activeTab === 'shifts' && (
                 <div className="space-y-6">
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Data</span>
-                      <input required type="date" value={shiftForm.date} onChange={e => setShiftForm({...shiftForm, date: e.target.value})} className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-inner"/>
+                  {/* Single Day vs Multi Day toggler (only when creating) */}
+                  {!editingId && (
+                    <div className="bg-slate-100 p-1 rounded-2xl flex shadow-inner border border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => setIsMultiDayShift(false)}
+                        className={`flex-1 py-3.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center justify-center gap-1.5 ${
+                          !isMultiDayShift
+                            ? 'bg-white text-blue-600 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        <Calendar size={13} />
+                        Giorno Singolo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsMultiDayShift(true);
+                          // Ensure we have current date selected by default
+                          if (shiftFormSelectedDates.length === 0) {
+                            setShiftFormSelectedDates([shiftForm.date]);
+                          }
+                        }}
+                        className={`flex-1 py-3.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center justify-center gap-1.5 ${
+                          isMultiDayShift
+                            ? 'bg-white text-blue-600 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        <Users size={13} />
+                        Più Giorni Contemporaneamente
+                      </button>
                     </div>
-                    <div className="space-y-2">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Inizio</span>
-                      <input required type="time" value={shiftForm.startTime} onChange={e => setShiftForm({...shiftForm, startTime: e.target.value})} className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-inner" />
-                    </div>
-                    <div className="space-y-2">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Fine</span>
-                      <input required type="time" value={shiftForm.endTime} onChange={e => setShiftForm({...shiftForm, endTime: e.target.value})} className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-inner" />
-                    </div>
+                  )}
+
+                  {/* Date, Start, End controls */}
+                  <div className="space-y-4">
+                    {(!isMultiDayShift || editingId) ? (
+                      <div className="grid grid-cols-3 gap-4">
+                        <div className="space-y-2">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Data</span>
+                          <input required type="date" value={shiftForm.date} onChange={e => setShiftForm({...shiftForm, date: e.target.value})} className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-inner"/>
+                        </div>
+                        <div className="space-y-2">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Inizio</span>
+                          <input required type="time" value={shiftForm.startTime} onChange={e => setShiftForm({...shiftForm, startTime: e.target.value})} className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-inner" />
+                        </div>
+                        <div className="space-y-2">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Fine</span>
+                          <input required type="time" value={shiftForm.endTime} onChange={e => setShiftForm({...shiftForm, endTime: e.target.value})} className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-inner" />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Orario Inizio</span>
+                            <input required type="time" value={shiftForm.startTime} onChange={e => setShiftForm({...shiftForm, startTime: e.target.value})} className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-inner" />
+                          </div>
+                          <div className="space-y-2">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Orario Fine</span>
+                            <input required type="time" value={shiftForm.endTime} onChange={e => setShiftForm({...shiftForm, endTime: e.target.value})} className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-inner" />
+                          </div>
+                        </div>
+
+                        {/* Multi Day picker */}
+                        <div className="space-y-3 bg-slate-50 border border-slate-100 p-4 rounded-[2rem] shadow-inner">
+                          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-2 border-b border-slate-200">
+                            <div>
+                              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">Seleziona Giorni</span>
+                              <span className="text-[11px] font-black text-blue-650 uppercase italic tracking-tight block">
+                                {shiftFormSelectedDates.length} giornate selezionate
+                              </span>
+                            </div>
+                            
+                            {/* Fast Week selector within modal */}
+                            {weeks.length > 0 && (
+                              <div className="flex items-center gap-1">
+                                <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-wider">Settimana:</span>
+                                <select
+                                  value={selectedWeeklyWeekId || (weeks[0]?.id || '')}
+                                  onChange={(e) => setSelectedWeeklyWeekId(e.target.value)}
+                                  className="text-[9px] font-black uppercase tracking-wider p-2 bg-white border border-slate-150 rounded-xl text-slate-700 outline-none cursor-pointer"
+                                >
+                                  {weeks.map(w => (
+                                    <option key={w.id} value={w.id}>{w.label}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Render Days for the currently chosen week with interactive checkbox labels */}
+                          {(() => {
+                            const modalWeek = weeks.find(w => w.id === selectedWeeklyWeekId) || weeks[0];
+                            const modalDaysList = modalWeek ? modalWeek.days : activeSeasonDays;
+
+                            return (
+                              <div className="space-y-2.5">
+                                <div className="flex justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const allChecked = modalDaysList.every(d => shiftFormSelectedDates.includes(d));
+                                      if (allChecked) {
+                                        setShiftFormSelectedDates(shiftFormSelectedDates.filter(d => !modalDaysList.includes(d)));
+                                      } else {
+                                        const merged = Array.from(new Set([...shiftFormSelectedDates, ...modalDaysList]));
+                                        setShiftFormSelectedDates(merged);
+                                      }
+                                    }}
+                                    className="text-[9.5px] font-black uppercase text-blue-600 hover:text-blue-800 transition"
+                                  >
+                                    {modalDaysList.every(d => shiftFormSelectedDates.includes(d)) ? '❌ Deseleziona Settimana' : '✔️ Seleziona Intera Settimana'}
+                                  </button>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto px-1 custom-scrollbar">
+                                  {modalDaysList.map(dayStr => {
+                                    const dObj = new Date(dayStr);
+                                    const isChecked = shiftFormSelectedDates.includes(dayStr);
+                                    return (
+                                      <button
+                                        key={`modal-day-${dayStr}`}
+                                        type="button"
+                                        onClick={() => {
+                                          if (isChecked) {
+                                            setShiftFormSelectedDates(shiftFormSelectedDates.filter(d => d !== dayStr));
+                                          } else {
+                                            setShiftFormSelectedDates([...shiftFormSelectedDates, dayStr]);
+                                          }
+                                        }}
+                                        className={`flex items-center gap-3 p-3 rounded-xl border text-left italic transition-all ${
+                                          isChecked
+                                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                            : 'bg-white text-slate-500 border-slate-100 hover:border-slate-300'
+                                        }`}
+                                      >
+                                        {isChecked ? <CheckSquare size={13} strokeWidth={3} /> : <Square size={13} className="text-slate-300" />}
+                                        <div className="min-w-0">
+                                          <span className="text-[10px] font-black uppercase tracking-tight block leading-none">
+                                            {format(dObj, 'eeee', { locale: it })}
+                                          </span>
+                                          <span className="text-[8.5px] font-bold block opacity-75 mt-0.5">
+                                            {format(dObj, 'dd MMM', { locale: it })}
+                                          </span>
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="flex flex-wrap gap-2 -mt-3 bg-slate-50 p-2.5 rounded-xl border border-slate-100/50">
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest self-center mr-1">Orari Rapidi:</span>
@@ -3639,9 +4557,20 @@ const OratorioFeriale: React.FC = () => {
                       </button>
                     ))}
                   </div>
-                  <div className="space-y-2">
+                   <div className="space-y-2">
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Attività Principale</span>
                     <input required type="text" value={shiftForm.activity} onChange={e => setShiftForm({...shiftForm, activity: e.target.value})} className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-inner"/>
+                  </div>
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Numero di Animatori Richiesti</span>
+                    <input 
+                      type="number" 
+                      min="1" 
+                      placeholder="Es. 4"
+                      value={shiftForm.requiredPeopleCount} 
+                      onChange={e => setShiftForm({...shiftForm, requiredPeopleCount: e.target.value === '' ? '' : Number(e.target.value)})} 
+                      className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-inner"
+                    />
                   </div>
                   <div className="space-y-2">
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Seleziona Animatori di {activeSeason}</span>
@@ -3737,14 +4666,14 @@ const OratorioFeriale: React.FC = () => {
                         </span>
                       </div>
                       <div className="space-y-3.5 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
-                        {teamForm.animatorIds.map((aid) => {
+                        {teamForm.animatorIds.map((aid, idx) => {
                           const a = animators.find(anim => anim.id === aid);
                           if (!a) return null;
                           const isRef = (teamForm.referentIds || []).includes(a.id);
                           const currentAssign = (teamForm.assignments || {})[a.id] || '';
 
                           return (
-                            <div key={`form-config-anim-${a.id}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200/80 last:border-b-0">
+                            <div key={`form-config-anim-${a.id}-${idx}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200/80 last:border-b-0">
                               {/* Left side: Animator Name & Star toggle */}
                               <div className="flex items-center gap-2.5">
                                 <button
