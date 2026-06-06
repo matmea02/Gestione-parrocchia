@@ -13,6 +13,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { useParish, useParishCollection, useParishDoc } from '../components/ParishContext';
+import { useAuth } from '../components/AuthContext';
 import { 
   Sun, 
   Plus, 
@@ -38,7 +39,8 @@ import {
   List,
   Copy,
   Square,
-  CheckSquare
+  CheckSquare,
+  BookOpen
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -98,13 +100,26 @@ interface Absence {
   createdAt: string;
 }
 
+interface Workshop {
+  id: string;
+  name: string;
+  maxSubscribers: number;
+  animatorIds: string[];
+  referentId: string;
+  weeks: string[];
+  season: string;
+  createdAt: string;
+}
+
 const OratorioFeriale: React.FC = () => {
   const { currentParish } = useParish();
+  const { portalUser } = useAuth();
   const animatorsColl = useParishCollection('oratorio_animators');
   const shiftsColl = useParishCollection('oratorio_shifts');
   const teamsColl = useParishCollection('oratorio_teams');
   const absencesColl = useParishCollection('oratorio_absences');
   const seasonsColl = useParishCollection('oratorio_seasons');
+  const workshopsColl = useParishCollection('oratorio_workshops');
   const parishSettingsDoc = useParishDoc('settings', 'parish');
 
   const [parishInfo, setParishInfo] = useState<any>({
@@ -148,11 +163,12 @@ const OratorioFeriale: React.FC = () => {
     }
   };
 
-  const [activeTab, setActiveTab] = useState<'animators' | 'shifts' | 'teams' | 'absences'>('animators');
+  const [activeTab, setActiveTab] = useState<'animators' | 'shifts' | 'teams' | 'absences' | 'workshops'>('animators');
   const [animators, setAnimators] = useState<Animator[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [absences, setAbsences] = useState<Absence[]>([]);
+  const [workshops, setWorkshops] = useState<Workshop[]>([]);
   const [seasonsData, setSeasonsData] = useState<{ [seasonId: string]: string[] }>({});
   const [loading, setLoading] = useState(true);
 
@@ -164,6 +180,18 @@ const OratorioFeriale: React.FC = () => {
   const [errorStatus, setErrorStatus] = useState<string | null>(null);
   const [successStatus, setSuccessStatus] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  const allowedTabs = portalUser?.isAdmin 
+    ? ['animators', 'shifts', 'teams', 'absences', 'workshops']
+    : portalUser 
+      ? (portalUser.permissions?.[currentParish?.id || '']?.oratorioTabs || ['animators', 'shifts', 'teams', 'absences', 'workshops'])
+      : ['animators', 'shifts', 'teams', 'absences', 'workshops'];
+
+  useEffect(() => {
+    if (allowedTabs && allowedTabs.length > 0 && !allowedTabs.includes(activeTab)) {
+      setActiveTab(allowedTabs[0] as 'animators' | 'shifts' | 'teams' | 'absences' | 'workshops');
+    }
+  }, [allowedTabs, activeTab]);
 
   useEffect(() => {
     if (errorStatus) {
@@ -282,6 +310,14 @@ const OratorioFeriale: React.FC = () => {
     reason: ''
   });
 
+  const [workshopForm, setWorkshopForm] = useState({
+    name: '',
+    maxSubscribers: '' as number | '',
+    animatorIds: [] as string[],
+    referentId: '',
+    weeks: [] as string[]
+  });
+
   // Helper helper to generate weedkays in a range
   const getDatesInRange = (startDateStr: string, endDateStr: string) => {
     const dates = [];
@@ -320,6 +356,7 @@ const OratorioFeriale: React.FC = () => {
   const filteredShifts = shifts.filter(s => s.season === activeSeason || (!s.season && new Date(s.date).getFullYear().toString() === activeSeason));
   const filteredTeams = teams.filter(t => t.season === activeSeason || (!t.season && (activeSeason === '2026' || activeSeason === '26')));
   const filteredAbsences = absences.filter(ab => ab.season === activeSeason || (!ab.season && (activeSeason === '2026' || activeSeason === '26')));
+  const filteredWorkshops = workshops.filter(w => w.season === activeSeason);
 
   const activeSeasonDays = seasonsData[activeSeason] || [];
 
@@ -462,6 +499,10 @@ const OratorioFeriale: React.FC = () => {
       setAbsences(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Absence)));
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'oratorio_absences'));
 
+    const unsubWorkshops = onSnapshot(query(workshopsColl, orderBy('name', 'asc')), (snap) => {
+      setWorkshops(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Workshop)));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'oratorio_workshops'));
+
     const unsubSeasons = onSnapshot(seasonsColl, (snap) => {
       const result: { [seasonId: string]: string[] } = {};
       snap.docs.forEach(docSnap => {
@@ -490,6 +531,7 @@ const OratorioFeriale: React.FC = () => {
       unsubShifts();
       unsubTeams();
       unsubAbsences();
+      unsubWorkshops();
       unsubSeasons();
       unsubParish();
     };
@@ -550,6 +592,7 @@ const OratorioFeriale: React.FC = () => {
     setShiftForm({ date: format(new Date(), 'yyyy-MM-dd'), startTime: '08:30', endTime: '17:30', activity: '', animatorIds: [], requiredPeopleCount: '' });
     setTeamForm({ name: '', color: '#3B82F6', animatorIds: [], kids: [], referentIds: [], assignments: {} });
     setAbsenceForm({ animatorId: '', date: format(new Date(), 'yyyy-MM-dd'), startTime: '', endTime: '', reason: '' });
+    setWorkshopForm({ name: '', maxSubscribers: '', animatorIds: [], referentId: '', weeks: [] });
     setNewKid({ firstName: '', lastName: '', note: '' });
     setEditingId(null);
     setErrorStatus(null);
@@ -577,6 +620,15 @@ const OratorioFeriale: React.FC = () => {
         });
       }
       if (type === 'absences') setAbsenceForm({ ...data });
+      if (type === 'workshops') {
+        setWorkshopForm({
+          name: data.name || '',
+          maxSubscribers: data.maxSubscribers || '',
+          animatorIds: data.animatorIds || [],
+          referentId: data.referentId || '',
+          weeks: data.weeks || []
+        });
+      }
     } else if (presetData) {
       if (type === 'shifts') {
         setShiftForm(prev => ({ ...prev, ...presetData }));
@@ -588,6 +640,16 @@ const OratorioFeriale: React.FC = () => {
       if (type === 'shifts') {
         const todayStr = format(new Date(), 'yyyy-MM-dd');
         setShiftFormSelectedDates([todayStr]);
+      }
+      if (type === 'workshops') {
+        const currentWeeks = getWeeks();
+        setWorkshopForm({
+          name: '',
+          maxSubscribers: '',
+          animatorIds: [],
+          referentId: '',
+          weeks: currentWeeks.map(w => w.id)
+        });
       }
     }
     setIsModalOpen(true);
@@ -2102,7 +2164,13 @@ const OratorioFeriale: React.FC = () => {
       doc.text(`ELENCO RAGAZZI SQUADRA (${team.kids?.length || 0})`, margin, currentY);
       currentY += 5;
 
-      const kidsRows = (team.kids || []).map((k, kIdx) => [
+      const sortedKids = [...(team.kids || [])].sort((a, b) => {
+        const comp = (a.lastName || '').localeCompare(b.lastName || '', 'it', { sensitivity: 'base' });
+        if (comp !== 0) return comp;
+        return (a.firstName || '').localeCompare(b.firstName || '', 'it', { sensitivity: 'base' });
+      });
+
+      const kidsRows = sortedKids.map((k, kIdx) => [
         (kIdx + 1).toString(),
         k.lastName.toUpperCase(),
         k.firstName.toUpperCase(),
@@ -2193,6 +2261,10 @@ const OratorioFeriale: React.FC = () => {
   };
 
   const toggleParticipation = async (anim: Animator) => {
+    if (!animators.some(a => a.id === anim.id)) {
+      setErrorStatus("Impossibile aggiornare: l'animatore non esiste più.");
+      return;
+    }
     const currentSeasons = anim.seasons || [];
     let nextSeasons;
     if (currentSeasons.includes(activeSeason)) {
@@ -2205,13 +2277,19 @@ const OratorioFeriale: React.FC = () => {
       setSuccessStatus(`Stato iscrizione aggiornato per ${activeSeason}!`);
       setTimeout(() => setSuccessStatus(null), 2000);
     } catch (err) {
-      console.error(err);
+      console.warn('Could not update animator enrollment status', err);
       setErrorStatus("Errore nell'aggiornamento.");
     }
   };
 
   const handleSaveWeeks = async () => {
     if (!selectedWeeksAnimator) return;
+    if (!animators.some(a => a.id === selectedWeeksAnimator.id)) {
+      setErrorStatus("Impossibile salvare: l'animatore non esiste più.");
+      setSelectedWeeksAnimator(null);
+      setWeeksModalOpen(false);
+      return;
+    }
     setIsSaving(true);
     setErrorStatus(null);
     try {
@@ -2242,7 +2320,7 @@ const OratorioFeriale: React.FC = () => {
       setSuccessStatus('Presenze settimanali salvate con successo!');
       setTimeout(() => setSuccessStatus(null), 2000);
     } catch (err) {
-      console.error(err);
+      console.warn('Could not save animator present weeks', err);
       setErrorStatus('Errore nel salvataggio delle presenze.');
     } finally {
       setIsSaving(false);
@@ -2268,9 +2346,13 @@ const OratorioFeriale: React.FC = () => {
       } else if (activeTab === 'teams') {
         coll = teamsColl;
         payload = { ...teamForm, season: activeSeason };
-      } else {
+      } else if (activeTab === 'absences') {
         coll = absencesColl;
         payload = { ...absenceForm, season: activeSeason };
+      } else {
+        coll = workshopsColl;
+        const maxSub = workshopForm.maxSubscribers === '' ? 0 : Number(workshopForm.maxSubscribers);
+        payload = { ...workshopForm, maxSubscribers: maxSub, season: activeSeason };
       }
 
       if (activeTab === 'shifts' && !editingId && isMultiDayShift) {
@@ -2292,6 +2374,24 @@ const OratorioFeriale: React.FC = () => {
         }
       } else {
         if (editingId) {
+          // Robust checking before updateDoc to prevent No Document To Update errors
+          let exists = false;
+          if (activeTab === 'animators') {
+            exists = animators.some(a => a.id === editingId);
+          } else if (activeTab === 'shifts') {
+            exists = shifts.some(s => s.id === editingId);
+          } else if (activeTab === 'teams') {
+            exists = teams.some(t => t.id === editingId);
+          } else if (activeTab === 'absences') {
+            exists = absences.some(ab => ab.id === editingId);
+          } else if (activeTab === 'workshops') {
+            exists = workshops.some(w => w.id === editingId);
+          }
+
+          if (!exists) {
+            throw new Error("L'elemento selezionato non esiste più o è stato rimosso.");
+          }
+
           await updateDoc(doc(coll, editingId), { ...payload, updatedAt: new Date().toISOString() });
         } else {
           await addDoc(coll, { ...payload, createdAt: new Date().toISOString() });
@@ -2302,9 +2402,9 @@ const OratorioFeriale: React.FC = () => {
       setTimeout(() => setSuccessStatus(null), 3000);
       setIsModalOpen(false);
       resetForms();
-    } catch (error) {
-      console.error('Save error:', error);
-      setErrorStatus('Errore durante il salvataggio.');
+    } catch (error: any) {
+      console.warn('Save error:', error);
+      setErrorStatus(error.message || 'Errore durante il salvataggio.');
     } finally {
       setIsSaving(false);
     }
@@ -2367,6 +2467,20 @@ const OratorioFeriale: React.FC = () => {
   );
 
   if (loading && !currentParish) return null;
+
+  if (portalUser && !portalUser.isAdmin && allowedTabs.length === 0) {
+    return (
+      <div className="min-h-[400px] flex flex-col items-center justify-center text-slate-400 space-y-4 px-6 text-center py-24 bg-white rounded-[3rem] border border-slate-100 shadow-sm">
+        <div className="w-16 h-16 bg-orange-50 border border-orange-100 rounded-2xl flex items-center justify-center text-orange-500 shadow-inner">
+          <AlertCircle size={32} />
+        </div>
+        <p className="font-bold uppercase tracking-widest text-[10px] text-slate-500">Accesso Limitato</p>
+        <p className="text-xs text-slate-400 max-w-sm">
+          Non sei abilitato a nessuna delle sezioni di questa pagina. Contatta l'amministratore per abilitare i tuoi accessi granulari per l'Oratorio Feriale.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 pb-20">
@@ -2454,16 +2568,17 @@ const OratorioFeriale: React.FC = () => {
             className="flex items-center justify-center gap-2 bg-blue-600 text-white px-8 py-4 rounded-full font-black uppercase italic tracking-wider hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 active:scale-95 text-[11px] self-start md:self-auto"
           >
             <Plus size={20} />
-            Aggiungi {activeTab === 'shifts' ? 'Turno' : activeTab === 'teams' ? 'Squadra' : 'Assenza'}
+            Aggiungi {activeTab === 'shifts' ? 'Turno' : activeTab === 'teams' ? 'Squadra' : activeTab === 'absences' ? 'Assenza' : 'Laboratorio'}
           </button>
         )}
       </div>
 
       <div className="flex flex-wrap gap-3 overflow-x-auto pb-2 custom-scrollbar">
-        <TabItem id="animators" label="Animatori" icon={Users} />
-        <TabItem id="shifts" label="Turni" icon={Clock} />
-        <TabItem id="teams" label="Squadre" icon={Trophy} />
-        <TabItem id="absences" label="Assenze" icon={UserX} />
+        {allowedTabs.includes('animators') && <TabItem id="animators" label="Animatori" icon={Users} />}
+        {allowedTabs.includes('shifts') && <TabItem id="shifts" label="Turni" icon={Clock} />}
+        {allowedTabs.includes('teams') && <TabItem id="teams" label="Squadre" icon={Trophy} />}
+        {allowedTabs.includes('absences') && <TabItem id="absences" label="Assenze" icon={UserX} />}
+        {allowedTabs.includes('workshops') && <TabItem id="workshops" label="Laboratori" icon={BookOpen} />}
       </div>
 
       <div className="grid grid-cols-1 gap-6">
@@ -2642,6 +2757,11 @@ const OratorioFeriale: React.FC = () => {
                                   <button
                                     onClick={async () => {
                                       if (!editingAnimatorForm.firstName || !editingAnimatorForm.lastName) return;
+                                      if (!animators.some(o => o.id === a.id)) {
+                                        setErrorStatus("Impossibile salvare: l'animatore non esiste più.");
+                                        setEditingAnimatorId(null);
+                                        return;
+                                      }
                                       setIsSaving(true);
                                       try {
                                         await updateDoc(doc(animatorsColl, a.id), {
@@ -2652,6 +2772,7 @@ const OratorioFeriale: React.FC = () => {
                                         setSuccessStatus('Membro salvato con successo!');
                                         setTimeout(() => setSuccessStatus(null), 2000);
                                       } catch (err) {
+                                        console.warn('Could not save inline edited animator', err);
                                         setErrorStatus('Errore nel salvataggio.');
                                       } finally {
                                         setIsSaving(false);
@@ -3178,7 +3299,7 @@ const OratorioFeriale: React.FC = () => {
                                                 const hasAbsence = getAbsenceForAnimatorOnDay(a.id, dayStr);
                                                 const isAbsentInfo = hasAbsence ? ` (${hasAbsence.reason || 'S.M./P.'})` : '';
                                                 return (
-                                                  <option key={a.id} value={a.id}>
+                                                  <option key={`opt-${s.id}-${a.id}`} value={a.id}>
                                                     👤 {a.lastName} {a.firstName}{isAbsentInfo}
                                                   </option>
                                                 );
@@ -3189,7 +3310,7 @@ const OratorioFeriale: React.FC = () => {
                                             {activeSeasonAnimatorsList
                                               .filter(a => !isAnimatorPresentInWeek(a, activeSeason, currentWeeklyWeek.id) && !s.animatorIds.includes(a.id))
                                               .map(a => (
-                                                <option key={a.id} value={a.id}>
+                                                <option key={`opt-non-${s.id}-${a.id}`} value={a.id}>
                                                   💤 {a.lastName} {a.firstName} (Non iscritto)
                                                 </option>
                                               ))
@@ -3283,9 +3404,9 @@ const OratorioFeriale: React.FC = () => {
         {activeTab === 'teams' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* Day Selector and PDF export panel - HIGH CONTRAST & COMPACT */}
-            <div className="bg-slate-900 text-white p-5 rounded-[2rem] border border-slate-950 shadow-md flex flex-col xl:flex-row items-center justify-between gap-4">
-              <div className="flex-1 space-y-2 w-full">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+            <div className="bg-slate-900 text-white p-5 rounded-[2rem] border border-slate-950 shadow-md">
+              <div className="space-y-4 w-full">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800 pb-4">
                   <div className="flex items-center gap-2">
                     <Calendar size={18} className="text-amber-400 shrink-0" />
                     <div>
@@ -3299,9 +3420,27 @@ const OratorioFeriale: React.FC = () => {
                       )}
                     </div>
                   </div>
-                  <div>
+                  
+                  {/* PDF Actions directly nested inside the day box header */}
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => generateDailyTeamsPDF(activeRecapDay)}
+                      className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-750 text-white border border-indigo-700 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-md active:scale-95"
+                    >
+                      <Download size={13} className="text-white" />
+                      Scarica Presenti/Assenti Oggi
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => generateWeeklyTeamsPDF()}
+                      className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-750 text-white border border-emerald-700 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-md active:scale-95"
+                    >
+                      <Download size={13} className="text-white" />
+                      Scarica Settimanale Squadre
+                    </button>
                     {activeRecapDay && (
-                      <span className="bg-amber-400 text-slate-950 text-[9px] font-black uppercase px-2.5 py-1 rounded-full tracking-wider italic">
+                      <span className="bg-amber-400 text-slate-950 text-[9px] font-black uppercase px-2.5 py-2.5 rounded-xl tracking-wider italic flex items-center shadow-sm">
                         Visualizzato Ora
                       </span>
                     )}
@@ -3333,26 +3472,6 @@ const OratorioFeriale: React.FC = () => {
                     <span className="text-xs text-slate-400 font-bold italic">Nessun giorno impostato nella stagione.</span>
                   )}
                 </div>
-              </div>
-
-              {/* PDF Actions with supreme contrast */}
-              <div className="flex flex-wrap gap-2.5 shrink-0 w-full xl:w-auto justify-end">
-                <button
-                  type="button"
-                  onClick={() => generateDailyTeamsPDF(activeRecapDay)}
-                  className="w-full sm:w-auto flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-750 text-white border border-indigo-700 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-md active:scale-95"
-                >
-                  <Download size={13} className="text-white" />
-                  Scarica Presenti/Assenti Oggi
-                </button>
-                <button
-                  type="button"
-                  onClick={() => generateWeeklyTeamsPDF()}
-                  className="w-full sm:w-auto flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-750 text-white border border-emerald-700 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-md active:scale-95"
-                >
-                  <Download size={13} className="text-white" />
-                  Scarica Settimanale Squadre
-                </button>
               </div>
             </div>
 
@@ -3705,7 +3824,11 @@ const OratorioFeriale: React.FC = () => {
                                   </span>
                                 </div>
                                 <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar pr-1">
-                                  {t.kids && t.kids.map((k, idx) => (
+                                  {t.kids && [...t.kids].sort((a, b) => {
+                                    const comp = (a.lastName || '').localeCompare(b.lastName || '', 'it', { sensitivity: 'base' });
+                                    if (comp !== 0) return comp;
+                                    return (a.firstName || '').localeCompare(b.firstName || '', 'it', { sensitivity: 'base' });
+                                  }).map((k, idx) => (
                                     <div key={idx} className="flex items-center justify-between py-1.5 border-b border-slate-150 last:border-0 hover:bg-slate-50 px-1 rounded">
                                       <span className="text-[11px] font-black text-slate-900 italic">{k.lastName} {k.firstName}</span>
                                       {k.note && <span className="text-[9.5px] text-slate-600 font-bold italic truncate max-w-[150px]" title={k.note}>{k.note}</span>}
@@ -4297,6 +4420,225 @@ const OratorioFeriale: React.FC = () => {
             </div>
           </div>
         )}
+
+        {activeTab === 'workshops' && (
+          <div className="space-y-6">
+            {/* Stats Display */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center gap-4">
+                <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center shrink-0">
+                  <BookOpen size={24} />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Laboratori Totali</span>
+                  <span className="text-2xl font-black italic text-slate-900">{filteredWorkshops.length}</span>
+                </div>
+              </div>
+              <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center gap-4">
+                <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0">
+                  <Users size={24} />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Capacità Iscritti Sommata</span>
+                  <span className="text-2xl font-black italic text-slate-900">
+                    {filteredWorkshops.reduce((acc, w) => acc + (w.maxSubscribers || 0), 0)}
+                  </span>
+                </div>
+              </div>
+              <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center gap-4">
+                <div className="w-12 h-12 bg-orange-50 text-orange-600 rounded-2xl flex items-center justify-center shrink-0">
+                  <Star size={24} />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Animatori Coinvolti</span>
+                  <span className="text-2xl font-black italic text-slate-900">
+                    {new Set(filteredWorkshops.flatMap(w => [w.referentId, ...(w.animatorIds || [])]).filter(Boolean)).size}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Week Selector / Filters */}
+            <div className="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-100 mb-6">
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 uppercase italic tracking-widest flex items-center gap-3">
+                    <BookOpen size={18} className="text-blue-600" />
+                    Pianificazione Laboratori per Settimana
+                  </h3>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
+                    Visualizza e suddividi i laboratori attivi
+                  </p>
+                </div>
+                
+                {/* Horizontal scrollable selector of weeks */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedWeekId('all')}
+                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all select-none border shrink-0 ${
+                      selectedWeekId === 'all'
+                        ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
+                        : 'bg-slate-50 text-slate-500 hover:text-slate-800 border-slate-200 hover:bg-slate-105'
+                    }`}
+                  >
+                    Tutti i Laboratori
+                  </button>
+                  {weeks.map((w, idx) => (
+                    <button
+                      key={w.id}
+                      type="button"
+                      onClick={() => setSelectedWeekId(w.id)}
+                      className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all select-none border shrink-0 ${
+                        selectedWeekId === w.id
+                          ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
+                          : 'bg-slate-50 text-slate-500 hover:text-slate-800 border-slate-200 hover:bg-slate-105'
+                      }`}
+                    >
+                      Sett. {idx + 1} ({w.label.replace('Settimana ', '')})
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Workshops Grid */}
+              {(() => {
+                const workshopsToShow = selectedWeekId === 'all'
+                  ? filteredWorkshops
+                  : filteredWorkshops.filter(w => w.weeks?.includes(selectedWeekId));
+
+                if (workshopsToShow.length > 0) {
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {workshopsToShow.map(w => {
+                        const referent = animators.find(a => a.id === w.referentId);
+                        const supportAnimators = (w.animatorIds || [])
+                          .map(id => animators.find(a => a.id === id))
+                          .filter(Boolean) as Animator[];
+
+                        return (
+                          <div
+                            key={w.id}
+                            className="group bg-white p-6 rounded-[2.5rem] border border-slate-150 hover:border-slate-250 hover:shadow-lg transition-all relative overflow-hidden flex flex-col justify-between"
+                          >
+                            <div className="space-y-4">
+                              <div className="flex items-start justify-between gap-4">
+                                <div>
+                                  <h4 className="text-lg font-black text-slate-900 italic uppercase tracking-tight">
+                                    {w.name}
+                                  </h4>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <span className="text-[10px] font-black uppercase bg-slate-50 text-slate-500 px-2 py-0.5 rounded-md border border-slate-100">
+                                      {w.maxSubscribers} iscritti max
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-all shrink-0">
+                                  <button
+                                    onClick={() => handleOpenModal('workshops', w)}
+                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
+                                    title="Modifica"
+                                  >
+                                    <Pencil size={15} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDelete(w.id, workshopsColl)}
+                                    className="p-2 text-red-650 hover:bg-red-50 rounded-xl transition-all"
+                                    title="Elimina"
+                                  >
+                                    <Trash2 size={15} />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Referent display */}
+                              <div className="p-3 bg-amber-50/20 border border-amber-100/50 rounded-2xl flex items-center gap-3">
+                                <div className="w-8 h-8 bg-amber-50 rounded-xl flex items-center justify-center shrink-0 text-amber-500 shadow-sm border border-amber-100/30">
+                                  <Star size={14} className="fill-amber-450 text-amber-500" />
+                                </div>
+                                <div>
+                                  <span className="text-[8.5px] font-black uppercase text-amber-600 tracking-wider block">
+                                    Referente Laboratorio
+                                  </span>
+                                  <span className="text-xs font-black text-slate-800">
+                                    {referent ? `${referent.lastName} ${referent.firstName}` : 'Referente non impostato'}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Supports display */}
+                              <div className="space-y-1.5">
+                                <span className="text-[8.5px] font-black uppercase text-slate-400 tracking-wider block ml-1">
+                                  Animatori di Supporto ({supportAnimators.length})
+                                </span>
+                                <div className="flex flex-wrap gap-1">
+                                  {supportAnimators.map(a => (
+                                    <span
+                                      key={`${w.id}-support-${a.id}`}
+                                      className="text-[10px] font-bold text-slate-600 bg-slate-50 border border-slate-100 px-2.5 py-1 rounded-lg"
+                                    >
+                                      {a.lastName} {a.firstName[0]}.
+                                    </span>
+                                  ))}
+                                  {supportAnimators.length === 0 && (
+                                    <span className="text-[10px] text-slate-400 italic ml-1 block">
+                                      Nessun altro animatore assegnato
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Weeks display */}
+                              <div className="space-y-1.5 pt-2 border-t border-slate-50">
+                                <span className="text-[8.5px] font-black uppercase text-slate-400 tracking-wider block ml-1">
+                                  Attivo nelle settimane:
+                                </span>
+                                <div className="flex flex-wrap gap-1">
+                                  {w.weeks && w.weeks.map(weekId => {
+                                    const weekObj = weeks.find(wk => wk.id === weekId);
+                                    const weekIndex = weeks.findIndex(wk => wk.id === weekId);
+                                    return weekObj ? (
+                                      <span
+                                        key={`${w.id}-active-week-${weekId}`}
+                                        className="text-[9px] font-black uppercase tracking-wider text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-md"
+                                      >
+                                        Sett. {weekIndex + 1}
+                                      </span>
+                                    ) : null;
+                                  })}
+                                  {(!w.weeks || w.weeks.length === 0) && (
+                                    <span className="text-[10px] text-red-500 italic block ml-1">
+                                      ⚠️ Non attivo in alcuna settimana
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div className="py-20 text-center bg-slate-50/50 rounded-[2rem] border border-dashed border-slate-205">
+                      <BookOpen size={48} className="mx-auto text-slate-200 mb-4 animate-pulse" />
+                      <p className="text-slate-405 font-black uppercase tracking-widest text-[10px]">
+                        Nessun laboratorio pianificato per questa selezione
+                      </p>
+                      <button
+                        onClick={() => handleOpenModal('workshops')}
+                        className="mt-4 px-6 py-2.5 bg-blue-600 text-white font-extrabold uppercase italic tracking-wider rounded-full hover:bg-blue-700 transition-all text-[9px] shadow-md shadow-blue-105"
+                      >
+                        Pianifica Primo Laboratorio
+                      </button>
+                    </div>
+                  );
+                }
+              })()}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Creation/Edit dialogue modal */}
@@ -4306,7 +4648,7 @@ const OratorioFeriale: React.FC = () => {
             <div className="p-8 border-b border-slate-50 flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-black text-slate-900 uppercase italic">
-                  {editingId ? 'Modifica' : 'Nuovo'} {activeTab === 'animators' ? 'Animatore' : activeTab === 'shifts' ? 'Turno' : activeTab === 'teams' ? 'Squadra' : 'Assenza'}
+                  {editingId ? 'Modifica' : 'Nuovo'} {activeTab === 'animators' ? 'Animatore' : activeTab === 'shifts' ? 'Turno' : activeTab === 'teams' ? 'Squadra' : activeTab === 'absences' ? 'Assenza' : 'Laboratorio'}
                 </h2>
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Configurazione Oratorio Feriale ({activeSeason})</p>
               </div>
@@ -4847,6 +5189,126 @@ const OratorioFeriale: React.FC = () => {
                   <div className="space-y-2">
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Motivazione / Note</span>
                     <textarea value={absenceForm.reason || ''} onChange={e => setAbsenceForm({...absenceForm, reason: e.target.value})} className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none text-sm font-bold shadow-inner" rows={2}/>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'workshops' && (
+                <div className="space-y-6">
+                  {/* Name field */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Nome Laboratorio</span>
+                    <input 
+                      required 
+                      type="text" 
+                      placeholder="Es. Laboratorio di Falegnameria"
+                      value={workshopForm.name} 
+                      onChange={e => setWorkshopForm({...workshopForm, name: e.target.value})} 
+                      className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-inner"
+                    />
+                  </div>
+
+                  {/* Max subscribers */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Numero Iscritti Massimi</span>
+                    <input 
+                      required 
+                      type="number" 
+                      min="1"
+                      placeholder="Es. 20"
+                      value={workshopForm.maxSubscribers} 
+                      onChange={e => setWorkshopForm({...workshopForm, maxSubscribers: e.target.value === '' ? '' : Number(e.target.value)})} 
+                      className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-inner"
+                    />
+                  </div>
+
+                  {/* Referent Animator Select list */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Seleziona Referente (Responsabile)</span>
+                    <select
+                      required
+                      value={workshopForm.referentId}
+                      onChange={e => setWorkshopForm({...workshopForm, referentId: e.target.value})}
+                      className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-inner"
+                    >
+                      <option value="">-- Seleziona un Animatore --</option>
+                      {activeSeasonAnimatorsList.map(a => (
+                        <option key={a.id} value={a.id}>
+                          {a.lastName} {a.firstName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Support Animators Checkbox Grid */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Seleziona Animatori di Supporto</span>
+                    <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-4 bg-slate-50 rounded-[2rem] border border-slate-100 shadow-inner custom-scrollbar">
+                      {activeSeasonAnimatorsList.map(a => {
+                        const isSelected = workshopForm.animatorIds.includes(a.id);
+                        return (
+                          <button
+                            key={`${a.id}-workshop-support`}
+                            type="button"
+                            onClick={() => {
+                              const ids = isSelected 
+                                ? workshopForm.animatorIds.filter(id => id !== a.id)
+                                : [...workshopForm.animatorIds, a.id];
+                              setWorkshopForm({...workshopForm, animatorIds: ids});
+                            }}
+                            className={`flex items-center gap-3 p-3 rounded-xl border text-left italic ${
+                              isSelected 
+                                ? 'bg-blue-600 text-white border-blue-600 shadow-sm' 
+                                : 'bg-white text-slate-500 border-slate-100'
+                            }`}
+                          >
+                            <span className="text-[11px] font-bold truncate">{a.lastName} {a.firstName}</span>
+                          </button>
+                        );
+                      })}
+                      {activeSeasonAnimatorsList.length === 0 && (
+                        <p className="col-span-full py-4 text-center text-[10px] font-black text-slate-300 uppercase">
+                          Nessun animatore iscritto in questa stagione Ledger
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Active Weeks Checkbox Grid */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Seleziona in quali Settimane attivare</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto p-4 bg-slate-50 rounded-[2rem] border border-slate-100 shadow-inner custom-scrollbar">
+                      {weeks.map((w, idx) => {
+                        const isSelected = workshopForm.weeks.includes(w.id);
+                        return (
+                          <button
+                            key={w.id}
+                            type="button"
+                            onClick={() => {
+                              const ids = isSelected
+                                ? workshopForm.weeks.filter(id => id !== w.id)
+                                : [...workshopForm.weeks, w.id];
+                              setWorkshopForm({...workshopForm, weeks: ids});
+                            }}
+                            className={`flex items-center justify-between p-3.5 rounded-xl border text-left ${
+                              isSelected
+                                ? 'bg-orange-50/30 border-orange-200 text-orange-900 shadow-sm font-extrabold'
+                                : 'bg-white text-slate-500 border-slate-100'
+                            }`}
+                          >
+                            <span className="text-[10px] font-bold truncate">Settimana {idx + 1} ({w.label.replace('Settimana ', '')})</span>
+                            <div className={`w-4 h-4 rounded border flex items-center shrink-0 justify-center ${isSelected ? 'bg-orange-500 border-orange-500 text-white' : 'border-slate-200'}`}>
+                              {isSelected && <Check size={10} />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                      {weeks.length === 0 && (
+                        <p className="col-span-full py-4 text-center text-[10px] font-black text-red-400 uppercase">
+                          Nessuna settimana feriale avviata. Abilita dei giorni in alto.
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

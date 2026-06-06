@@ -12,6 +12,7 @@ interface PortalUser {
     [parishId: string]: {
       enabled: boolean;
       modules: string[];
+      oratorioTabs?: string[];
     }
   };
   isAdmin?: boolean;

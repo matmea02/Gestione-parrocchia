@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { collection, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { Users as UsersIcon, Shield, Search, X, Check, Trash2, Key, Building2, LayoutGrid, AlertCircle, Pencil } from 'lucide-react';
+import { Users as UsersIcon, Shield, Search, X, Check, Trash2, Key, Building2, LayoutGrid, AlertCircle, Pencil, Sun } from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface PortalUser {
@@ -17,6 +17,7 @@ interface PortalUser {
     [parishId: string]: {
       enabled: boolean;
       modules: string[];
+      oratorioTabs?: string[];
     }
   };
 }
@@ -34,6 +35,14 @@ const MODULES = [
   { id: 'maintenance', label: 'Manutenzione' },
   { id: 'councils', label: 'Consulte' },
   { id: 'settings', label: 'Impostazioni' },
+];
+
+const ORATORIO_TABS = [
+  { id: 'animators', label: 'Animatori' },
+  { id: 'shifts', label: 'Turni' },
+  { id: 'teams', label: 'Squadre' },
+  { id: 'absences', label: 'Assenze' },
+  { id: 'workshops', label: 'Laboratori' },
 ];
 
 const Users: React.FC = () => {
@@ -126,6 +135,39 @@ const Users: React.FC = () => {
       [parishId]: {
         ...(currentPermissions[parishId] || { modules: [] }),
         enabled
+      }
+    };
+
+    try {
+      await updateDoc(doc(db, 'portal_users', selectedUser.id), {
+        permissions: updatedPermissions
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'portal_users');
+    }
+  };
+
+  const handleUpdateOratorioTabs = async (parishId: string, tabId: string, checked: boolean) => {
+    if (!selectedUser) return;
+
+    const currentPermissions = selectedUser.permissions || {};
+    const parishPerms = currentPermissions[parishId] || { enabled: false, modules: [], oratorioTabs: [] };
+    
+    // Default to all tabs if it's not set
+    let currentTabs = parishPerms.oratorioTabs || ['animators', 'shifts', 'teams', 'absences', 'workshops'];
+    let newTabs = [...currentTabs];
+    
+    if (checked) {
+      if (!newTabs.includes(tabId)) newTabs.push(tabId);
+    } else {
+      newTabs = newTabs.filter(t => t !== tabId);
+    }
+
+    const updatedPermissions = {
+      ...currentPermissions,
+      [parishId]: {
+        ...parishPerms,
+        oratorioTabs: newTabs
       }
     };
 
@@ -352,28 +394,66 @@ const Users: React.FC = () => {
                          </div>
 
                          {parishPerms.enabled && (
-                           <div className="flex-1 grid grid-cols-2 lg:grid-cols-3 gap-2">
-                             {MODULES.map(module => {
-                               const isChecked = parishPerms.modules.includes(module.id);
-                               return (
-                                 <button
-                                   key={module.id}
-                                   onClick={() => handleUpdatePermissions(parish.id, module.id, !isChecked)}
-                                   className={`p-3 rounded-xl text-left transition-all border flex items-center justify-between gap-2 ${
-                                     isChecked 
-                                       ? 'bg-white border-blue-200 shadow-sm' 
-                                       : 'bg-slate-100/50 border-transparent opacity-60'
-                                   }`}
-                                 >
-                                   <span className={`text-[9px] font-black uppercase tracking-widest truncate ${isChecked ? 'text-blue-600' : 'text-slate-400'}`}>
-                                     {module.label}
+                           <div className="flex-1 space-y-4">
+                             <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
+                               {MODULES.map(module => {
+                                 const isChecked = parishPerms.modules.includes(module.id);
+                                 return (
+                                   <button
+                                     key={module.id}
+                                     onClick={() => handleUpdatePermissions(parish.id, module.id, !isChecked)}
+                                     className={`p-3 rounded-xl text-left transition-all border flex items-center justify-between gap-2 ${
+                                       isChecked 
+                                         ? 'bg-white border-blue-200 shadow-sm' 
+                                         : 'bg-slate-100/50 border-transparent opacity-60'
+                                     }`}
+                                   >
+                                     <span className={`text-[9px] font-black uppercase tracking-widest truncate ${isChecked ? 'text-blue-600 font-extrabold' : 'text-slate-400'}`}>
+                                       {module.label}
+                                     </span>
+                                     <div className={`w-3.5 h-3.5 rounded-full border flex items-center shrink-0 justify-center ${isChecked ? 'bg-blue-600 border-blue-600' : 'border-slate-200'}`}>
+                                       {isChecked && <Check size={8} className="text-white" />}
+                                     </div>
+                                   </button>
+                                 );
+                               })}
+                             </div>
+
+                             {parishPerms.modules.includes('oratorio') && (
+                               <div className="p-4 bg-white border border-slate-100 rounded-2xl space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                                 <div className="flex items-center gap-2">
+                                   <Sun size={14} className="text-orange-500 animate-[spin_8s_linear_infinite]" />
+                                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                                     Schermate Oratorio Feriale Abilitate
                                    </span>
-                                   <div className={`w-3.5 h-3.5 rounded-full border flex items-center shrink-0 justify-center ${isChecked ? 'bg-blue-600 border-blue-600' : 'border-slate-200'}`}>
-                                     {isChecked && <Check size={8} className="text-white" />}
-                                   </div>
-                                 </button>
-                               );
-                             })}
+                                 </div>
+                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                   {ORATORIO_TABS.map(tab => {
+                                     const oratorioTabs = parishPerms.oratorioTabs || ['animators', 'shifts', 'teams', 'absences', 'workshops'];
+                                     const isTabChecked = oratorioTabs.includes(tab.id);
+                                     return (
+                                       <button
+                                         key={tab.id}
+                                         type="button"
+                                         onClick={() => handleUpdateOratorioTabs(parish.id, tab.id, !isTabChecked)}
+                                         className={`p-3 rounded-xl text-left transition-all border flex items-center justify-between gap-3 ${
+                                           isTabChecked 
+                                             ? 'bg-orange-50/20 border-orange-200 shadow-sm' 
+                                             : 'bg-slate-50 border-transparent opacity-60'
+                                         }`}
+                                       >
+                                         <span className={`text-[9px] font-black uppercase tracking-widest truncate ${isTabChecked ? 'text-orange-600 font-extrabold' : 'text-slate-400'}`}>
+                                           {tab.label}
+                                         </span>
+                                         <div className={`w-3.5 h-3.5 rounded-full border flex items-center shrink-0 justify-center ${isTabChecked ? 'bg-orange-500 border-orange-500' : 'border-slate-200'}`}>
+                                           {isTabChecked && <Check size={8} className="text-white" />}
+                                         </div>
+                                       </button>
+                                     );
+                                   })}
+                                 </div>
+                                </div>
+                              )}
                            </div>
                          )}
                        </div>

@@ -396,6 +396,21 @@
       },
       "required": ["animatorId", "date"]
     },
+    "OratorioWorkshop": {
+      "title": "Oratorio Workshop",
+      "description": "Workshops/laboratories for Oratorio Feriale.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "maxSubscribers": { "type": "number" },
+        "animatorIds": { "type": "array", "items": { "type": "string" } },
+        "referentId": { "type": "string" },
+        "weeks": { "type": "array", "items": { "type": "string" } },
+        "season": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "maxSubscribers", "referentId"]
+    },
     "Parish": {
       "title": "Parish",
       "description": "A parish or service unit managed by the portal.",
@@ -435,6 +450,7 @@
     "/parishes/{parishId}/oratorio_animators": { "schema": "OratorioAnimator", "description": "Animators for the Oratorio Feriale" },
     "/parishes/{parishId}/oratorio_shifts": { "schema": "OratorioShift", "description": "Shifts for Oratorio Feriale" },
     "/parishes/{parishId}/oratorio_teams": { "schema": "OratorioTeam", "description": "Teams for Oratorio Feriale" },
-    "/parishes/{parishId}/oratorio_absences": { "schema": "OratorioAbsence", "description": "Absences for Oratorio Feriale animators" }
+    "/parishes/{parishId}/oratorio_absences": { "schema": "OratorioAbsence", "description": "Absences for Oratorio Feriale animators" },
+    "/parishes/{parishId}/oratorio_workshops": { "schema": "OratorioWorkshop", "description": "Workshops for Oratorio Feriale" }
   }
 }
