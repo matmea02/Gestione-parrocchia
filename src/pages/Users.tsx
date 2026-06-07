@@ -98,8 +98,9 @@ const Users: React.FC = () => {
 
   const handleUpdatePermissions = async (parishId: string, moduleId: string, checked: boolean) => {
     if (!selectedUser) return;
+    const latestUser = portalUsers.find(u => u.id === selectedUser.id) || selectedUser;
 
-    const currentPermissions = selectedUser.permissions || {};
+    const currentPermissions = latestUser.permissions || {};
     const parishPerms = currentPermissions[parishId] || { enabled: false, modules: [] };
     
     let newModules = [...parishPerms.modules];
@@ -129,8 +130,9 @@ const Users: React.FC = () => {
 
   const handleToggleParishAccess = async (parishId: string, enabled: boolean) => {
     if (!selectedUser) return;
+    const latestUser = portalUsers.find(u => u.id === selectedUser.id) || selectedUser;
 
-    const currentPermissions = selectedUser.permissions || {};
+    const currentPermissions = latestUser.permissions || {};
     const updatedPermissions = {
       ...currentPermissions,
       [parishId]: {
@@ -150,8 +152,9 @@ const Users: React.FC = () => {
 
   const handleUpdateOratorioTabs = async (parishId: string, tabId: string, checked: boolean) => {
     if (!selectedUser) return;
+    const latestUser = portalUsers.find(u => u.id === selectedUser.id) || selectedUser;
 
-    const currentPermissions = selectedUser.permissions || {};
+    const currentPermissions = latestUser.permissions || {};
     const parishPerms = currentPermissions[parishId] || { enabled: false, modules: [], oratorioTabs: [] };
     
     // Default to all tabs if it's not set

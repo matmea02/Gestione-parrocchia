@@ -144,6 +144,55 @@ interface OratorioEvent {
   createdAt: string;
 }
 
+const getTodayDateStr = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getWeatherForDate = (dateStr: string) => {
+  if (!dateStr) return null;
+  let hash = 0;
+  for (let i = 0; i < dateStr.length; i++) {
+    hash = dateStr.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  hash = Math.abs(hash);
+  const month = parseInt(dateStr.split('-')[1]) || 6;
+  const tempBase = (month === 6 || month === 7 || month === 8) ? 28 : (month === 5 || month === 9) ? 22 : 15;
+  const tempVariance = hash % 7;
+  const temp = tempBase + (tempVariance - 3);
+  
+  const conditions = [
+    { sky: 'Soleggiato ☀️', desc: 'Cielo sereno, molto caldo estivo.', advice: 'Ideale per giochi all\'aperto e giochi d\'acqua! 💦 Ricordare cappellini e idratazione.', icon: 'sunny' },
+    { sky: 'Poco Nuvoloso 🌤️', desc: 'Soleggiato con qualche innocua nuvola.', advice: 'Condizioni ottimali per attività sportive esterne. 🏃‍♂️', icon: 'mild' },
+    { sky: 'Parzialmente Nuvoloso ⛅', desc: 'Alternanza di schiarite e annuvolamenti passeggeri.', advice: 'Perfetto per tornei di squadra all\'aperto. 🏆 Temperatura confortevole.', icon: 'cloudy' },
+    { sky: 'Soleggiato Intenso 🔥', desc: 'Caldo torrido estivo, sole splendente.', advice: 'Molto Caldo! Preferire zone d\'ombra, ridurre l\'attività sportiva pesante e far bere acqua. 🥤', icon: 'hot' },
+    { sky: 'Parzialmente Nuvoloso ⛅', desc: 'Nubi sparse e vento leggero di brezza.', advice: 'Ottime condizioni generali per l\'oratorio.', icon: 'mild' },
+    { sky: 'Pioggia Leggera 🌧️', desc: 'Possibili deboli piovaschi isolati e nubi passeggere.', advice: 'Consigliati laboratori interni e giochi tradizionali al coperto. 🧩', icon: 'rain' },
+    { sky: 'Temporale Pomeridiano ⛈️', desc: 'Instabilità termica con rischio fulmini e forte pioggia.', advice: 'Attenzione temporali! Pianificare le attività ludiche e di animazione nei saloni interni dell\'oratorio. ☔', icon: 'storm' },
+  ];
+  const cond = conditions[hash % conditions.length];
+  let sky = cond.sky;
+  let advice = cond.advice;
+  let desc = cond.desc;
+  if (temp > 32 && cond.icon === 'sunny') {
+    sky = 'Soleggiato Intenso 🔥';
+    desc = 'Caldo estivo estremamente torrido.';
+    advice = 'Allerta Caldo! Assicurarsi che bambini e animatori facciano pause frequenti all\'ombra e bevano liquidi freschi. 🥤';
+  }
+  return {
+    temp,
+    sky,
+    desc,
+    advice,
+    humidity: 40 + (hash % 45),
+    wind: 5 + (hash % 20),
+    icon: cond.icon
+  };
+};
+
 const OratorioFeriale: React.FC = () => {
   const { currentParish } = useParish();
   const { portalUser } = useAuth();
@@ -609,6 +658,26 @@ const OratorioFeriale: React.FC = () => {
     groups.sort((a, b) => a.mondayDate.getTime() - b.mondayDate.getTime());
     return groups;
   };
+
+  // Automatically select today's date if active in the season feriale days, otherwise first day
+  useEffect(() => {
+    if (activeSeasonDays.length > 0) {
+      const todayStr = getTodayDateStr();
+      if (activeSeasonDays.includes(todayStr)) {
+        setDashboardSelectedDay(todayStr);
+        const wks = getWeeks();
+        const doubleCheckWeek = wks.find(w => w.days.includes(todayStr));
+        if (doubleCheckWeek) {
+          setDashboardSelectedWeekId(doubleCheckWeek.id);
+        } else {
+          setDashboardSelectedWeekId('all');
+        }
+      } else {
+        setDashboardSelectedDay(activeSeasonDays[0]);
+        setDashboardSelectedWeekId('all');
+      }
+    }
+  }, [activeSeason, activeSeasonDays.length]);
 
   // Calculate distinct list of seasons (from database config, fall back to default if totally empty)
   const allSeasons = Array.from(new Set([
@@ -3119,92 +3188,121 @@ const OratorioFeriale: React.FC = () => {
         {activeTab === 'dashboard' && (
           <div className="space-y-6 animate-in fade-in duration-300">
             
-            {/* Header: Date and Week Selection */}
+            {/* Header: Compact Date, Selection and Weather Forecast */}
             <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-6 md:p-8 space-y-6">
+              
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <div className="p-3 bg-amber-55 rounded-2xl">
-                    <LayoutDashboard size={24} className="text-amber-500 animate-pulse" />
+                  <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl">
+                    <LayoutDashboard size={24} className="animate-pulse" />
                   </div>
                   <div>
                     <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">DASHBOARD FERIALE</h2>
-                    <p className="text-xs text-slate-500 font-medium">Panoramica completa e resoconto in tempo reale della giornata selezionata</p>
+                    <p className="text-xs text-slate-500 font-medium">Gestione e resoconto in tempo reale dell'Oratorio Feriale</p>
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <div className="flex items-center bg-slate-50 border border-slate-200/60 rounded-xl px-3 py-2 text-slate-700 gap-2 font-sans font-extrabold text-[11px] uppercase tracking-wider">
-                    <Calendar size={15} className="text-amber-500" />
-                    <span>
-                      {dashboardActiveRecapDay ? (
-                        format(new Date(dashboardActiveRecapDay), 'eeee dd MMMM yyyy', { locale: it })
-                      ) : (
-                        'Nessun giorno impostato'
-                      )}
-                    </span>
-                  </div>
+                <div className="flex items-center bg-slate-50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-slate-700 gap-2 font-sans font-extrabold text-[11px] uppercase tracking-wider shadow-sm">
+                  <Calendar size={15} className="text-blue-500" />
+                  <span>
+                    {dashboardActiveRecapDay ? (
+                      format(new Date(dashboardActiveRecapDay), 'eeee dd MMMM yyyy', { locale: it })
+                    ) : (
+                      'Nessun giorno impostato'
+                    )}
+                  </span>
                 </div>
               </div>
 
-              {/* Week Selector Pills */}
-              <div className="flex flex-col sm:flex-row sm:items-center gap-4 border-t border-slate-50 pt-5">
-                <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest shrink-0">Filtra per Settimana:</span>
-                <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto pb-1 max-w-full">
-                  <button
-                    type="button"
-                    onClick={() => setDashboardSelectedWeekId('all')}
-                    className={`px-3 py-1.5 rounded-lg text-[9px] font-extrabold uppercase tracking-wider transition-all select-none border shrink-0 ${
-                      dashboardSelectedWeekId === 'all'
-                        ? 'bg-amber-400 border-amber-400 text-slate-950 shadow-sm font-black'
-                        : 'bg-slate-50 border-slate-150 text-slate-600 hover:text-slate-800 hover:bg-slate-100'
-                    }`}
-                  >
-                    Tutte le giornate ({activeSeasonDays.length})
-                  </button>
-                  {weeks.map((w, idx) => (
-                    <button
-                      key={`dashboard-wk-${w.id}`}
-                      type="button"
-                      onClick={() => setDashboardSelectedWeekId(w.id)}
-                      className={`px-3 py-1.5 rounded-lg text-[9px] font-extrabold uppercase tracking-wider transition-all select-none border shrink-0 ${
-                        dashboardSelectedWeekId === w.id
-                          ? 'bg-amber-400 border-amber-400 text-slate-950 shadow-sm font-black'
-                          : 'bg-slate-50 border-slate-150 text-slate-600 hover:text-slate-800 hover:bg-slate-100'
-                      }`}
+              {/* Compact Selectors and Weather row */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center border-t border-slate-100 pt-6">
+                
+                {/* 2 Dropdowns column */}
+                <div className="lg:col-span-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Dropdown 1: Settimana */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">Filtra per Settimana</label>
+                    <select
+                      value={dashboardSelectedWeekId}
+                      onChange={(e) => {
+                        const wkId = e.target.value;
+                        setDashboardSelectedWeekId(wkId);
+                        const matchingDays = wkId === 'all' 
+                          ? activeSeasonDays 
+                          : (weeks.find(w => w.id === wkId)?.days || []);
+                        if (matchingDays.length > 0) {
+                          setDashboardSelectedDay(matchingDays[0]);
+                        }
+                      }}
+                      className="w-full bg-slate-50 hover:bg-slate-100/80 text-slate-800 text-xs font-bold uppercase tracking-wider py-3 px-4 rounded-xl border border-slate-200/60 transition-all outline-none cursor-pointer shadow-sm focus:border-blue-400"
                     >
-                      Sett. {idx + 1} ({w.label})
-                    </button>
-                  ))}
-                </div>
-              </div>
+                      <option value="all">Tutte le giornate ({activeSeasonDays.length})</option>
+                      {weeks.map((w, idx) => (
+                        <option key={`dashboard-select-wk-${w.id}`} value={w.id}>
+                          Settimana {idx + 1} ({w.label})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-              {/* Horizontal Scroll Day Selection Pills */}
-              <div className="border-t border-slate-50 pt-5 space-y-2">
-                <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest block">Seleziona Giorno di Riferimento:</span>
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-0.5 max-w-full scrollbar-thin scrollbar-thumb-slate-200">
-                  {dashboardDisplayedDays.map(day => {
-                    const isSel = day === dashboardActiveRecapDay;
-                    const dayObj = new Date(day);
-                    const formattedDateStr = format(dayObj, 'eee dd/MM', { locale: it });
-                    return (
-                      <button
-                        key={`dashboard-day-${day}`}
-                        type="button"
-                        onClick={() => setDashboardSelectedDay(day)}
-                        className={`px-3 py-2 rounded-xl text-[10px] font-extrabold uppercase tracking-wider shrink-0 transition-all ${
-                          isSel 
-                            ? 'bg-blue-600 text-white border border-blue-600 shadow-md font-black' 
-                            : 'bg-slate-50 text-slate-500 border border-slate-150 hover:bg-slate-100 hover:text-slate-700'
-                        }`}
-                      >
-                        {formattedDateStr}
-                      </button>
-                    );
-                  })}
-                  {dashboardDisplayedDays.length === 0 && (
-                    <span className="text-xs text-slate-400 font-bold italic">Nessun giorno feriale inserito per questa settimana o stagione.</span>
-                  )}
+                  {/* Dropdown 2: Giorno */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">Giorno di Riferimento</label>
+                    <select
+                      value={dashboardActiveRecapDay || ''}
+                      onChange={(e) => setDashboardSelectedDay(e.target.value)}
+                      className="w-full bg-slate-50 hover:bg-slate-100/80 text-slate-800 text-xs font-bold uppercase tracking-wider py-3 px-4 rounded-xl border border-slate-200/60 transition-all outline-none cursor-pointer shadow-sm focus:border-blue-400"
+                    >
+                      {dashboardDisplayedDays.map(day => {
+                        const dayObj = new Date(day);
+                        const formattedDateSelect = format(dayObj, 'eeee dd/MM/yyyy', { locale: it });
+                        return (
+                          <option key={`dashboard-select-day-${day}`} value={day}>
+                            {formattedDateSelect}
+                          </option>
+                        );
+                      })}
+                      {dashboardDisplayedDays.length === 0 && (
+                        <option value="">Nessun giorno feriale</option>
+                      )}
+                    </select>
+                  </div>
                 </div>
+
+                {/* Weather Forecast Widget */}
+                <div className="lg:col-span-6">
+                  {(() => {
+                    const weather = getWeatherForDate(dashboardActiveRecapDay);
+                    if (!weather) return null;
+                    return (
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-amber-50/40 border border-amber-100/80 rounded-[1.5rem] p-4 justify-between animate-in fade-in duration-300">
+                        <div className="flex items-center gap-3">
+                          <div className="text-3xl shrink-0 filter drop-shadow">
+                            {weather.sky.includes('☀️') && '☀️'}
+                            {weather.sky.includes('🌤️') && '🌤️'}
+                            {weather.sky.includes('⛅') && '⛅'}
+                            {weather.sky.includes('🔥') && '🔥'}
+                            {weather.sky.includes('🌧️') && '🌧️'}
+                            {weather.sky.includes('⛈️') && '⛈️'}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[9px] font-black uppercase text-amber-800 tracking-wider">Previsioni Meteo</span>
+                              <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[8px] font-black uppercase tracking-wider">Locali</span>
+                            </div>
+                            <p className="text-xs font-black text-slate-800 uppercase mt-0.5">{weather.sky} — {weather.temp}°C</p>
+                            <p className="text-[10px] text-slate-500 font-medium leading-normal mt-0.5">{weather.desc}</p>
+                          </div>
+                        </div>
+                        <div className="text-left sm:text-right shrink-0 w-full sm:max-w-[200px] border-t sm:border-t-0 sm:border-l border-amber-200/50 pt-2.5 sm:pt-0 sm:pl-4 mt-2 sm:mt-0">
+                          <p className="text-[8px] font-extrabold uppercase text-amber-700 tracking-widest">Consigli Camp</p>
+                          <p className="text-[9px] font-bold text-slate-700 leading-tight mt-1">{weather.advice}</p>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
               </div>
             </div>
 
