@@ -149,6 +149,7 @@ const OratorioFeriale: React.FC = () => {
   const seasonsColl = useParishCollection('oratorio_seasons');
   const workshopsColl = useParishCollection('oratorio_workshops');
   const eventsColl = useParishCollection('oratorio_events');
+  const dailyTeamsColl = useParishCollection('oratorio_daily_teams');
   const parishSettingsDoc = useParishDoc('settings', 'parish');
 
   const [parishInfo, setParishInfo] = useState<any>({
@@ -196,6 +197,7 @@ const OratorioFeriale: React.FC = () => {
   const [animators, setAnimators] = useState<Animator[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [dailyTeams, setDailyTeams] = useState<{ id: string; date: string; teamId: string; season: string; }[]>([]);
   const [absences, setAbsences] = useState<Absence[]>([]);
   const [workshops, setWorkshops] = useState<Workshop[]>([]);
   const [events, setEvents] = useState<OratorioEvent[]>([]);
@@ -210,6 +212,7 @@ const OratorioFeriale: React.FC = () => {
   const [errorStatus, setErrorStatus] = useState<string | null>(null);
   const [successStatus, setSuccessStatus] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   const allowedTabs = portalUser?.isAdmin 
     ? ['animators', 'shifts', 'teams', 'absences', 'workshops', 'events']
@@ -621,6 +624,10 @@ const OratorioFeriale: React.FC = () => {
       setEvents(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as OratorioEvent)));
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'oratorio_events'));
 
+    const unsubDailyTeams = onSnapshot(query(dailyTeamsColl), (snap) => {
+      setDailyTeams(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)));
+    }, (err) => console.error("Could not load daily teams", err));
+
     const unsubSeasons = onSnapshot(seasonsColl, (snap) => {
       const result: { [seasonId: string]: string[] } = {};
       snap.docs.forEach(docSnap => {
@@ -648,6 +655,7 @@ const OratorioFeriale: React.FC = () => {
       unsubAnimators();
       unsubShifts();
       unsubTeams();
+      unsubDailyTeams();
       unsubAbsences();
       unsubWorkshops();
       unsubEvents();
@@ -1883,7 +1891,7 @@ const OratorioFeriale: React.FC = () => {
 
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
-      const margin = 14;
+      const margin = 10;
 
       const drawHeader = (pdf: jsPDF, titleName: string) => {
         const blueColor = [37, 99, 235];
@@ -1977,9 +1985,9 @@ const OratorioFeriale: React.FC = () => {
       drawHeader(doc, 'TABELLA SETTIMANALE TURNI');
 
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(12);
+      doc.setFontSize(10.5);
       doc.setTextColor(30, 41, 59);
-      doc.text('PROGRAMMAZIONE SETTIMANALE DEI TURNI A GRIGLIA', margin, 42);
+      doc.text('PROGRAMMAZIONE SETTIMANALE DEI TURNI A GRIGLIA', margin, 36.5);
 
       // We have columns for each day of ferial selected week:
       const colHeaders = daysToPrint.map(dayStr => {
@@ -1987,7 +1995,12 @@ const OratorioFeriale: React.FC = () => {
         const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 12, 0, 0);
         const dayLabelName = format(d, 'eeee', { locale: it }).toUpperCase();
         const dayLabelDate = format(d, 'dd/MM/yyyy', { locale: it });
-        return `${dayLabelName}\n${dayLabelDate}`;
+        
+        const dayTeamConfig = dailyTeams.find(dt => dt.date === dayStr);
+        const dayTeam = dayTeamConfig ? filteredTeams.find(t => t.id === dayTeamConfig.teamId) : null;
+        const teamSuffix = dayTeam ? `\n🛡️ ${dayTeam.name.toUpperCase()}` : '';
+
+        return `${dayLabelName}\n${dayLabelDate}${teamSuffix}`;
       });
 
       // Let's index shifts by day
@@ -2007,14 +2020,21 @@ const OratorioFeriale: React.FC = () => {
             const shift = shiftsByDay[dayStr][r];
             if (!shift) return '';
 
-            const animList = shift.animatorIds.map(aid => {
+            const animNames = shift.animatorIds.map(aid => {
               const a = animators.find(anim => anim.id === aid);
               return a ? `- ${a.lastName} ${a.firstName[0]}.` : '';
-            }).filter(Boolean).join('\n');
+            }).filter(Boolean);
 
-            const reqText = shift.requiredPeopleCount ? ` (Copertura: ${shift.animatorIds.length}/${shift.requiredPeopleCount})` : '';
+            const animListLines: string[] = [];
+            for (let i = 0; i < animNames.length; i += 2) {
+              const col1 = animNames[i];
+              const col2 = animNames[i + 1] || '';
+              animListLines.push(`${col1}||${col2}`);
+            }
 
-            return `SERVIZIO: ${shift.activity.toUpperCase()}\nOrario: ${shift.startTime} - ${shift.endTime}${reqText}\nAnimatori:\n${animList || 'Nessun assegnato'}`;
+            const animList = animListLines.join('\n');
+
+            return `SERVIZIO: ${shift.activity.toUpperCase()}\nAnimatori:\n${animList || 'Nessun assegnato'}`;
           });
           rows.push(rowData);
         }
@@ -2023,13 +2043,13 @@ const OratorioFeriale: React.FC = () => {
       }
 
       autoTable(doc, {
-        startY: 46,
+        startY: 40,
         head: [colHeaders],
         body: rows,
         theme: 'grid',
         styles: { 
-          fontSize: 7.5, 
-          cellPadding: 4, 
+          fontSize: 9.5, 
+          cellPadding: 1.5, 
           font: 'helvetica', 
           valign: 'top', 
           halign: 'left',
@@ -2050,6 +2070,8 @@ const OratorioFeriale: React.FC = () => {
         }, {} as any),
         willDrawCell: (data) => {
           if (data.section === 'body' && data.cell.raw) {
+            // Setting data.cell.text to an empty array ensures that the default jspdf-autotable text printing is completely disabled.
+            // This prevents duplicate and overlapping texts while keeping the row height fully calculated according to its original multiline text.
             data.cell.text = [];
           }
         },
@@ -2061,56 +2083,68 @@ const OratorioFeriale: React.FC = () => {
               doc.setFont('helvetica', 'italic');
               doc.setFontSize(7.5);
               doc.setTextColor(148, 163, 184);
-              const padding = data.cell.styles.cellPadding as number || 4;
-              doc.text(rawText || 'Nessun turno', data.cell.x + padding, data.cell.y + padding + 3);
+              const padding = data.cell.styles.cellPadding as number || 1.5;
+              doc.text(rawText || 'Nessun turno', data.cell.x + padding, data.cell.y + padding + 3.0);
               return;
             }
 
             const doc = data.doc;
-            const padding = data.cell.styles.cellPadding as number || 4;
+            const padding = data.cell.styles.cellPadding as number || 1.5;
             const cellWidth = data.cell.width - (padding * 2);
             const startX = data.cell.x + padding;
-            let startY = data.cell.y + padding + 3;
+            
+            // Set up clean starting vertical position
+            let startY = data.cell.y + padding;
 
             const paragraphs = rawText.split('\n');
 
             paragraphs.forEach(p => {
               if (p.startsWith('SERVIZIO:')) {
                 doc.setFont('helvetica', 'bold');
-                doc.setFontSize(8.5);
+                doc.setFontSize(7.5);
                 
                 const serviceName = p.replace('SERVIZIO:', '').trim();
                 
                 // Draw a beautiful subtle background strip for the service header
-                doc.setFillColor(239, 246, 255); // soft blue-50 instead of grey
-                doc.rect(data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, 8, 'F');
+                doc.setFillColor(239, 246, 255); // soft blue-50
+                doc.rect(data.cell.x + 0.4, data.cell.y + 0.4, data.cell.width - 0.8, 5.5, 'F');
                 
                 doc.setDrawColor(191, 219, 254); // blue-200 border for separation
-                doc.rect(data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, 8, 'S');
+                doc.rect(data.cell.x + 0.4, data.cell.y + 0.4, data.cell.width - 0.8, 5.5, 'S');
 
                 doc.setTextColor(29, 78, 216); // blue-700
-                doc.text(serviceName, startX, data.cell.y + 6.2, { maxWidth: cellWidth });
+                doc.text(serviceName, startX, data.cell.y + 4.1, { maxWidth: cellWidth });
                 
-                startY = data.cell.y + 13;
-              } else if (p.startsWith('Orario:')) {
-                doc.setFont('helvetica', 'normal');
-                doc.setFontSize(7.5);
-                doc.setTextColor(71, 85, 105);
-                doc.text(p, startX, startY, { maxWidth: cellWidth });
-                startY += 4.5;
+                // Initialize startY safely below the header strip
+                startY = data.cell.y + 8.2;
               } else if (p.startsWith('Animatori:')) {
-                startY += 1;
                 doc.setFont('helvetica', 'bold');
-                doc.setFontSize(7);
+                doc.setFontSize(6.5);
                 doc.setTextColor(100, 116, 139);
                 doc.text(p.toUpperCase(), startX, startY, { maxWidth: cellWidth });
-                startY += 3.5;
+                startY += 3.2;
               } else if (p.trim().length > 0) {
                 doc.setFont('helvetica', 'normal');
-                doc.setFontSize(7.5);
+                doc.setFontSize(6.5);
                 doc.setTextColor(15, 23, 42);
-                doc.text(p, startX, startY, { maxWidth: cellWidth });
-                startY += 3.5;
+
+                if (p.includes('||')) {
+                  const parts = p.split('||');
+                  const col1Text = parts[0].trim();
+                  const col2Text = parts[1].trim();
+                  
+                  // Draw left column
+                  if (col1Text) {
+                    doc.text(col1Text, startX, startY, { maxWidth: (cellWidth / 2) - 1.0 });
+                  }
+                  // Draw right column
+                  if (col2Text) {
+                    doc.text(col2Text, startX + (cellWidth / 2) + 1.2, startY, { maxWidth: (cellWidth / 2) - 1.0 });
+                  }
+                } else {
+                  doc.text(p, startX, startY, { maxWidth: cellWidth });
+                }
+                startY += 3.0;
               }
             });
           }
@@ -3416,6 +3450,9 @@ const OratorioFeriale: React.FC = () => {
                             .filter(s => s.date === dayStr)
                             .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
+                          const dayTeamConfig = dailyTeams.find(dt => dt.date === dayStr);
+                          const dayTeam = dayTeamConfig ? filteredTeams.find(t => t.id === dayTeamConfig.teamId) : null;
+
                           return (
                             <div 
                               key={dayStr} 
@@ -3520,6 +3557,41 @@ const OratorioFeriale: React.FC = () => {
                                 </div>
                               </div>
 
+                              {/* Squadra di Turno Selection */}
+                              <div className="mb-4 px-3.5 py-2.5 bg-indigo-50/50 border border-indigo-100 rounded-2xl flex items-center justify-between gap-2 shadow-xs shrink-0">
+                                <span className="text-[9px] font-black text-indigo-750 uppercase tracking-wider shrink-0 flex items-center gap-1">
+                                  🛡️ Squadra:
+                                </span>
+                                <select
+                                  className="flex-1 text-[10px] font-bold text-slate-800 bg-white border border-indigo-205 rounded-xl py-1.5 px-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer transition-all"
+                                  value={dayTeamConfig?.teamId || ""}
+                                  onChange={async (e) => {
+                                    const val = e.target.value;
+                                    if (dayTeamConfig) {
+                                      if (val) {
+                                        await updateDoc(doc(dailyTeamsColl, dayTeamConfig.id), { teamId: val });
+                                      } else {
+                                        await deleteDoc(doc(dailyTeamsColl, dayTeamConfig.id));
+                                      }
+                                    } else if (val) {
+                                      await addDoc(dailyTeamsColl, {
+                                        date: dayStr,
+                                        teamId: val,
+                                        season: activeSeason,
+                                        createdAt: new Date().toISOString()
+                                      });
+                                    }
+                                  }}
+                                >
+                                  <option value="">Nessuna squadra</option>
+                                  {filteredTeams.map(t => (
+                                    <option key={t.id} value={t.id}>
+                                      {t.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
                               {/* Shifts list for this day */}
                               <div className="space-y-4 flex-1">
                                 {dayShifts.map((s, sIdx) => {
@@ -3614,9 +3686,9 @@ const OratorioFeriale: React.FC = () => {
                                       </div>
 
                                       {/* Dropdown to add an animator */}
-                                      <div className="pt-2 border-t border-slate-200/50">
+                                      <div className="pt-2 border-t border-slate-200/50 space-y-2">
                                         <select 
-                                          className="w-full text-[9px] font-black uppercase tracking-wider p-2 bg-white border border-slate-200 hover:border-slate-350 rounded-xl text-slate-605 text-slate-600 focus:ring-2 focus:ring-blue-500 cursor-pointer transition-all appearance-none outline-none"
+                                          className="w-full text-[9px] font-black uppercase tracking-wider p-2 bg-white border border-slate-200 hover:border-slate-350 rounded-xl text-slate-600 focus:ring-2 focus:ring-blue-500 cursor-pointer transition-all appearance-none outline-none"
                                           value=""
                                           onChange={async (e) => {
                                             const val = e.target.value;
@@ -3628,7 +3700,7 @@ const OratorioFeriale: React.FC = () => {
                                             setTimeout(() => setSuccessStatus(null), 1200);
                                           }}
                                         >
-                                          <option value="">+ Assegna...</option>
+                                          <option value="">+ Assegna Singolo...</option>
                                           <optgroup label="Presenti questa settimana">
                                             {activeSeasonAnimatorsList
                                               .filter(a => isAnimatorPresentInWeek(a, activeSeason, currentWeeklyWeek.id) && !s.animatorIds.includes(a.id))
@@ -3654,6 +3726,71 @@ const OratorioFeriale: React.FC = () => {
                                             }
                                           </optgroup>
                                         </select>
+
+                                        {/* Quick bulk assignment for daily assigned team */}
+                                        {dayTeam && (
+                                          <button
+                                            type="button"
+                                            onClick={async () => {
+                                              const teamAnimators = animators.filter(a => dayTeam.animatorIds.includes(a.id));
+                                              const presentAnimators = teamAnimators.filter(a => 
+                                                isAnimatorPresentInWeek(a, activeSeason, currentWeeklyWeek.id) &&
+                                                !getAbsenceForAnimatorOnDay(a.id, dayStr)
+                                              );
+                                              if (presentAnimators.length === 0) {
+                                                setErrorStatus(`Nessun animatore della squadra "${dayTeam.name}" presente oggi!`);
+                                                setTimeout(() => setErrorStatus(null), 2500);
+                                                return;
+                                              }
+                                              const presentIds = presentAnimators.map(a => a.id);
+                                              const mergedIds = Array.from(new Set([...s.animatorIds, ...presentIds]));
+                                              await updateDoc(doc(shiftsColl, s.id), { animatorIds: mergedIds });
+                                              setSuccessStatus(`Assegnati ${presentAnimators.length} animatori di "${dayTeam.name}"!`);
+                                              setTimeout(() => setSuccessStatus(null), 2000);
+                                            }}
+                                            className="w-full text-[9px] font-black uppercase tracking-wider py-1.5 px-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-xl transition-all shadow-xs flex items-center justify-center gap-1.5"
+                                            title={`Assegna tutti i presenti della squadra ${dayTeam.name}`}
+                                          >
+                                            ⚡ Assegna Squadra di Turno ({dayTeam.name})
+                                          </button>
+                                        )}
+
+                                        {/* Dropdown to bulk assign present members from ANY team */}
+                                        {filteredTeams.length > 0 && (
+                                          <select
+                                            className="w-full text-[9px] font-black uppercase tracking-wider p-2 bg-emerald-50 border border-emerald-200 hover:border-emerald-350 rounded-xl text-emerald-800 focus:ring-2 focus:ring-emerald-500 cursor-pointer transition-all appearance-none outline-none text-center font-bold"
+                                            value=""
+                                            onChange={async (e) => {
+                                              const bulkTeamId = e.target.value;
+                                              if (!bulkTeamId) return;
+                                              const targetT = filteredTeams.find(t => t.id === bulkTeamId);
+                                              if (!targetT) return;
+                                              
+                                              const teamAnimators = animators.filter(a => targetT.animatorIds.includes(a.id));
+                                              const presentAnimators = teamAnimators.filter(a => 
+                                                isAnimatorPresentInWeek(a, activeSeason, currentWeeklyWeek.id) &&
+                                                !getAbsenceForAnimatorOnDay(a.id, dayStr)
+                                              );
+                                              if (presentAnimators.length === 0) {
+                                                setErrorStatus(`Nessun animatore della squadra "${targetT.name}" presente oggi!`);
+                                                setTimeout(() => setErrorStatus(null), 2500);
+                                                return;
+                                              }
+                                              const presentIds = presentAnimators.map(a => a.id);
+                                              const mergedIds = Array.from(new Set([...s.animatorIds, ...presentIds]));
+                                              await updateDoc(doc(shiftsColl, s.id), { animatorIds: mergedIds });
+                                              setSuccessStatus(`Assegnati ${presentAnimators.length} animatori di "${targetT.name}"!`);
+                                              setTimeout(() => setSuccessStatus(null), 2000);
+                                            }}
+                                          >
+                                            <option value="">⚡ Assegna tutti i presenti di...</option>
+                                            {filteredTeams.map(t => (
+                                              <option key={`bulk-opt-${s.id}-${t.id}`} value={t.id}>
+                                                🛡️ Team: {t.name}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        )}
                                       </div>
                                     </div>
                                   );
@@ -4196,6 +4333,47 @@ const OratorioFeriale: React.FC = () => {
         {activeTab === 'absences' && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             
+            {/* Mobile Self-service feature information for animators */}
+            <div className="bg-indigo-50/70 border border-indigo-100 rounded-[2.5rem] p-6 sm:p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-xs">
+              <div className="space-y-2 max-w-2xl">
+                <div className="flex items-center gap-2 text-indigo-850">
+                  <span className="text-xl">📱</span>
+                  <h4 className="text-xs font-black uppercase tracking-wider text-indigo-900">
+                    Segnalazione Assenze da Smartphone per Animatori
+                  </h4>
+                </div>
+                <p className="text-slate-600 text-xs font-medium leading-relaxed">
+                  Gli animatori possono ora segnalare le proprie assenze autonomamente dal proprio telefono, senza bisogno di account o credenziali complesse. Dovranno solo selezionare la parrocchia, cercare il loro nome sul modulo ed inviare. Le segnalazioni appariranno istantaneamente qui sotto!
+                </p>
+                <div className="pt-1 flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Link pubblico da condividere:</span>
+                  <code className="bg-white/95 px-3 py-1 rounded-lg border border-indigo-100/50 text-[11px] font-mono font-bold text-indigo-750 select-all">
+                    {window.location.origin}/segnala-assenza
+                  </code>
+                </div>
+              </div>
+              
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(`${window.location.origin}/segnala-assenza`);
+                  setCopiedLink(true);
+                  setTimeout(() => setCopiedLink(false), 2000);
+                }}
+                className={`w-full md:w-auto py-3.5 px-6 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all shadow-sm shrink-0 flex items-center justify-center gap-2 ${
+                  copiedLink 
+                    ? 'bg-emerald-600 text-white shadow-emerald-100' 
+                    : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-100 hover:scale-[1.02] active:scale-[0.98]'
+                }`}
+              >
+                {copiedLink ? (
+                  <>✓ Copiato!</>
+                ) : (
+                  <>📋 Copia Link WhatsApp</>
+                )}
+              </button>
+            </div>
+
             {/* Matrix of Attendance (Tanti Quadratini) */}
             <div className="bg-white rounded-[3rem] border border-slate-200/90 shadow-sm overflow-hidden">
               <div className="p-8 border-b border-slate-200 bg-slate-50 flex flex-col lg:flex-row justify-between lg:items-center gap-4">

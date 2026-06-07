@@ -19,6 +19,7 @@ import OratorioFeriale from './pages/OratorioFeriale';
 import MasterDashboard from './pages/MasterDashboard';
 import Users from './pages/Users';
 import Login from './pages/Login';
+import SegnalaAssenza from './pages/SegnalaAssenza';
 import { useAuth } from './components/AuthContext';
 import { Navigate } from 'react-router-dom';
 
@@ -28,12 +29,25 @@ const AppRoutes = () => {
 
   if (parishLoading || authLoading) return null;
 
-  // Redirect to login if not authenticated and not already on login page
-  if (!user && !portalUser && window.location.pathname !== '/login') {
+  const isPublicPath = window.location.pathname === '/login' || window.location.pathname === '/segnala-assenza';
+
+  // Redirect to login if not authenticated and not on a public path
+  if (!user && !portalUser && !isPublicPath) {
     return (
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/segnala-assenza" element={<SegnalaAssenza />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    );
+  }
+
+  // Handle case where user is not logged in but accesses a public path
+  if (!user && !portalUser && isPublicPath) {
+    return (
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/segnala-assenza" element={<SegnalaAssenza />} />
       </Routes>
     );
   }
@@ -48,6 +62,7 @@ const AppRoutes = () => {
       <Routes>
         <Route path="/utenti" element={<Users />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/segnala-assenza" element={<SegnalaAssenza />} />
         <Route path="*" element={<MasterDashboard />} />
       </Routes>
     );
@@ -56,6 +71,7 @@ const AppRoutes = () => {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/segnala-assenza" element={<SegnalaAssenza />} />
       <Route element={<AuthGuard><Layout /></AuthGuard>}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/impostazioni" element={<Settings />} />

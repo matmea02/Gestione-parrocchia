@@ -140,6 +140,16 @@ const Login: React.FC = () => {
           </form>
         )}
 
+        <div className="pt-2 border-t border-slate-50">
+          <button
+            type="button"
+            onClick={() => navigate('/segnala-assenza')}
+            className="w-full py-5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-100/70 rounded-[2rem] text-[10px] font-extrabold uppercase tracking-widest transition-all shadow-xs flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99]"
+          >
+            📱 Segnala Assenza Animatore
+          </button>
+        </div>
+
         <div className="pt-4 flex flex-col items-center gap-4">
            <div className="h-px w-12 bg-slate-100" />
            <p className="text-[9px] text-center font-black uppercase text-slate-300 tracking-[0.4em]">
