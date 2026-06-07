@@ -42,16 +42,30 @@ const SegnalaAssenza: React.FC = () => {
   // Step state: 'parish' | 'form' | 'success'
   const [step, setStep] = useState<'parish' | 'form' | 'success'>('parish');
 
+  // URL Locking State
+  const [isLockedByUrl, setIsLockedByUrl] = useState<boolean>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return !!(params.get('p') && params.get('a'));
+  });
+
   // Firestore collections & states
   const [parishes, setParishes] = useState<Parish[]>([]);
-  const [selectedParishId, setSelectedParishId] = useState<string>(() => localStorage.getItem('self_service_parish_id') || '');
+  const [selectedParishId, setSelectedParishId] = useState<string>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const pParam = params.get('p');
+    if (pParam) return pParam;
+    return localStorage.getItem('self_service_parish_id') || '';
+  });
   const [selectedParish, setSelectedParish] = useState<Parish | null>(null);
 
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [selectedSeason, setSelectedSeason] = useState<string>('');
 
   const [animators, setAnimators] = useState<Animator[]>([]);
-  const [selectedAnimatorId, setSelectedAnimatorId] = useState<string>('');
+  const [selectedAnimatorId, setSelectedAnimatorId] = useState<string>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('a') || '';
+  });
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isAnimatorDropdownOpen, setIsAnimatorDropdownOpen] = useState(false);
 
@@ -288,12 +302,18 @@ const SegnalaAssenza: React.FC = () => {
                   <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Stagione Attiva: {selectedSeason}</p>
                 </div>
               </div>
-              <button
-                onClick={handleResetParish}
-                className="text-[9px] font-black uppercase text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-xl transition-all"
-              >
-                Cambia
-              </button>
+              {!isLockedByUrl ? (
+                <button
+                  onClick={handleResetParish}
+                  className="text-[9px] font-black uppercase text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-xl transition-all"
+                >
+                  Cambia
+                </button>
+              ) : (
+                <span className="text-[9px] font-black bg-emerald-50 text-emerald-700 px-3 py-1.5 border border-emerald-100 rounded-xl flex items-center gap-1 uppercase select-none">
+                  🔒 Protetto
+                </span>
+              )}
             </div>
 
             {/* Main Form */}
@@ -320,68 +340,98 @@ const SegnalaAssenza: React.FC = () => {
               )}
 
               {/* Animator Search & Selection */}
-              <div className="space-y-1.5 relative">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1 flex items-center gap-1">
-                  <User size={12} /> Nome e Cognome Animatore
-                </label>
-                
-                {/* Custom autocomplete input */}
-                <div className="relative">
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                    <Search size={16} />
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="Digita per cercare il tuo nome..."
-                    value={searchQuery}
-                    onFocus={() => setIsAnimatorDropdownOpen(true)}
-                    onChange={(e) => {
-                      setSearchQuery(e.target.value);
-                      setIsAnimatorDropdownOpen(true);
-                    }}
-                    className="w-full pl-11 pr-11 py-4 text-xs font-bold bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                  />
-                  {selectedAnimatorId && (
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-emerald-600 text-xs font-black">
-                      ✓
-                    </span>
+              {isLockedByUrl ? (
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1 flex items-center gap-1">
+                    <User size={12} /> Profilo Animatore
+                  </label>
+                  {selectedAnimator ? (
+                    <div className="p-5 bg-indigo-50/50 border border-indigo-100/85 rounded-2xl flex items-center justify-between shadow-xs select-none">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl">👤</span>
+                        <div>
+                          <p className="text-[11px] font-black uppercase text-indigo-900 tracking-wider">
+                            {selectedAnimator.lastName} {selectedAnimator.firstName}
+                          </p>
+                          <p className="text-[9px] font-extrabold text-slate-400 uppercase tracking-tight">
+                            Collegamento personalizzato sicuro
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-emerald-700 text-[9px] font-black bg-emerald-50 px-2 py-1.5 border border-emerald-150 rounded-xl select-none">
+                        ✓ VERIFICATO
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-indigo-50 text-indigo-700 rounded-2xl text-[10px] font-bold uppercase border border-indigo-100 flex items-center gap-2">
+                      <Loader2 className="animate-spin text-indigo-600" size={14} /> Caricamento dati profilo animatore...
+                    </div>
                   )}
                 </div>
-
-                {isAnimatorDropdownOpen && (
-                  <div className="absolute z-50 left-0 right-0 mt-2 bg-white border border-slate-100 rounded-2xl shadow-2xl max-h-56 overflow-y-auto divide-y divide-slate-50">
-                    {filteredAnimators.length === 0 ? (
-                      <div className="p-4 text-slate-400 text-xs font-medium text-center italic">
-                        Nessun animatore trovato
-                      </div>
-                    ) : (
-                      filteredAnimators.map(a => (
-                        <button
-                          key={a.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedAnimatorId(a.id);
-                            setSearchQuery(`${a.lastName} ${a.firstName}`);
-                            setIsAnimatorDropdownOpen(false);
-                          }}
-                          className={`w-full text-left px-5 py-3 text-xs font-bold transition-all flex items-center justify-between ${
-                            selectedAnimatorId === a.id ? 'bg-blue-50 text-blue-600' : 'hover:bg-slate-50 text-slate-700'
-                          }`}
-                        >
-                          <span>{a.lastName} {a.firstName}</span>
-                          {selectedAnimatorId === a.id && <span className="text-blue-600 font-bold">✓</span>}
-                        </button>
-                      ))
+              ) : (
+                <div className="space-y-1.5 relative">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1 flex items-center gap-1">
+                    <User size={12} /> Nome e Cognome Animatore
+                  </label>
+                  
+                  {/* Custom autocomplete input */}
+                  <div className="relative">
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                      <Search size={16} />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Digita per cercare il tuo nome..."
+                      value={searchQuery}
+                      onFocus={() => setIsAnimatorDropdownOpen(true)}
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value);
+                        setIsAnimatorDropdownOpen(true);
+                      }}
+                      className="w-full pl-11 pr-11 py-4 text-xs font-bold bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                    />
+                    {selectedAnimatorId && (
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-emerald-600 text-xs font-black">
+                        ✓
+                      </span>
                     )}
                   </div>
-                )}
 
-                {selectedAnimator && (
-                  <p className="text-[10px] text-slate-500 font-bold mt-1 ml-1">
-                    Hai selezionato: <span className="text-slate-800 font-black uppercase text-[11px]">{selectedAnimator.lastName} {selectedAnimator.firstName}</span>
-                  </p>
-                )}
-              </div>
+                  {isAnimatorDropdownOpen && (
+                    <div className="absolute z-50 left-0 right-0 mt-2 bg-white border border-slate-100 rounded-2xl shadow-2xl max-h-56 overflow-y-auto divide-y divide-slate-50">
+                      {filteredAnimators.length === 0 ? (
+                        <div className="p-4 text-slate-400 text-xs font-medium text-center italic">
+                          Nessun animatore trovato
+                        </div>
+                      ) : (
+                        filteredAnimators.map(a => (
+                          <button
+                            key={a.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedAnimatorId(a.id);
+                              setSearchQuery(`${a.lastName} ${a.firstName}`);
+                              setIsAnimatorDropdownOpen(false);
+                            }}
+                            className={`w-full text-left px-5 py-3 text-xs font-bold transition-all flex items-center justify-between ${
+                              selectedAnimatorId === a.id ? 'bg-blue-50 text-blue-600' : 'hover:bg-slate-50 text-slate-700'
+                            }`}
+                          >
+                            <span>{a.lastName} {a.firstName}</span>
+                            {selectedAnimatorId === a.id && <span className="text-blue-600 font-bold">✓</span>}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {selectedAnimator && (
+                    <p className="text-[10px] text-slate-500 font-bold mt-1 ml-1">
+                      Hai selezionato: <span className="text-slate-800 font-black uppercase text-[11px]">{selectedAnimator.lastName} {selectedAnimator.firstName}</span>
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Absence Date */}
               <div className="space-y-1.5">
@@ -565,12 +615,14 @@ const SegnalaAssenza: React.FC = () => {
                 Segnala un'altra assenza
               </button>
               
-              <button
-                onClick={handleResetParish}
-                className="w-full py-4.5 bg-slate-50 hover:bg-slate-100 text-slate-500 rounded-[1.5rem] font-black uppercase text-[10px] tracking-wider transition-all border border-slate-100"
-              >
-                Torna alle parrocchie
-              </button>
+              {!isLockedByUrl && (
+                <button
+                  onClick={handleResetParish}
+                  className="w-full py-4.5 bg-slate-50 hover:bg-slate-100 text-slate-500 rounded-[1.5rem] font-black uppercase text-[10px] tracking-wider transition-all border border-slate-100"
+                >
+                  Torna alle parrocchie
+                </button>
+              )}
             </div>
           </motion.div>
         )}

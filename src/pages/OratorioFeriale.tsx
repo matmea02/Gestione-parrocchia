@@ -213,6 +213,7 @@ const OratorioFeriale: React.FC = () => {
   const [successStatus, setSuccessStatus] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedAnimatorId, setCopiedAnimatorId] = useState<string | null>(null);
 
   const allowedTabs = portalUser?.isAdmin 
     ? ['animators', 'shifts', 'teams', 'absences', 'workshops', 'events']
@@ -3209,6 +3210,22 @@ const OratorioFeriale: React.FC = () => {
                               </td>
                               <td className="px-8 py-4 text-right whitespace-nowrap">
                                 <div className="flex items-center justify-end gap-1.5">
+                                  <button 
+                                    onClick={() => {
+                                      const magicLink = `${window.location.origin}/segnala-assenza?p=${currentParish?.id || ''}&a=${a.id}`;
+                                      navigator.clipboard.writeText(magicLink);
+                                      setCopiedAnimatorId(a.id);
+                                      setTimeout(() => setCopiedAnimatorId(null), 2000);
+                                    }}
+                                    className={`p-2 rounded-lg transition-all ${
+                                      copiedAnimatorId === a.id 
+                                        ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' 
+                                        : 'text-indigo-600 hover:bg-indigo-50 border border-transparent'
+                                    }`}
+                                    title="Copia Link Magico Personale per segnalazione assenza (WhatsApp)"
+                                  >
+                                    {copiedAnimatorId === a.id ? <Check size={14} /> : <span className="flex items-center gap-1 font-mono text-[9px] font-black uppercase">📱 LINK</span>}
+                                  </button>
                                   <button 
                                     onClick={() => handleOpenModal('animators', a)}
                                     className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" 
