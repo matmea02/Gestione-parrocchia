@@ -29,7 +29,8 @@ const AppRoutes = () => {
 
   if (parishLoading || authLoading) return null;
 
-  const isPublicPath = window.location.pathname === '/login' || window.location.pathname === '/segnala-assenza';
+  const normalizedPath = window.location.pathname.replace(/\/$/, '').toLowerCase();
+  const isPublicPath = normalizedPath === '/login' || normalizedPath === '/segnala-assenza';
 
   // Redirect to login if not authenticated and not on a public path
   if (!user && !portalUser && !isPublicPath) {
@@ -37,6 +38,7 @@ const AppRoutes = () => {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/segnala-assenza" element={<SegnalaAssenza />} />
+        <Route path="/segnala-assenza/" element={<SegnalaAssenza />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );
@@ -48,12 +50,13 @@ const AppRoutes = () => {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/segnala-assenza" element={<SegnalaAssenza />} />
+        <Route path="/segnala-assenza/" element={<SegnalaAssenza />} />
       </Routes>
     );
   }
 
   // If on login page but already authenticated, redirect to home
-  if ((user || portalUser) && window.location.pathname === '/login') {
+  if ((user || portalUser) && normalizedPath === '/login') {
     return <Navigate to="/" replace />;
   }
 
@@ -63,6 +66,7 @@ const AppRoutes = () => {
         <Route path="/utenti" element={<Users />} />
         <Route path="/login" element={<Login />} />
         <Route path="/segnala-assenza" element={<SegnalaAssenza />} />
+        <Route path="/segnala-assenza/" element={<SegnalaAssenza />} />
         <Route path="*" element={<MasterDashboard />} />
       </Routes>
     );
@@ -72,6 +76,7 @@ const AppRoutes = () => {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/segnala-assenza" element={<SegnalaAssenza />} />
+      <Route path="/segnala-assenza/" element={<SegnalaAssenza />} />
       <Route element={<AuthGuard><Layout /></AuthGuard>}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/impostazioni" element={<Settings />} />
