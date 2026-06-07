@@ -411,6 +411,38 @@
       },
       "required": ["name", "maxSubscribers", "referentId"]
     },
+    "OratorioEvent": {
+      "title": "Oratorio Event",
+      "description": "Extra events for Oratorio Feriale manage custom animator attendance, meals, costs, and payment tracking.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "date": { "type": "string" },
+        "location": { "type": "string" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "cost": { "type": "number" },
+        "mealEnabled": { "type": "boolean" },
+        "season": { "type": "string" },
+        "attendance": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "present": { "type": "boolean" },
+              "customTime": { "type": "string" },
+              "meal": { "type": "boolean" },
+              "paid": { "type": "boolean" },
+              "note": { "type": "string" }
+            },
+            "required": ["present"]
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "date", "location"]
+    },
     "Parish": {
       "title": "Parish",
       "description": "A parish or service unit managed by the portal.",
@@ -451,6 +483,7 @@
     "/parishes/{parishId}/oratorio_shifts": { "schema": "OratorioShift", "description": "Shifts for Oratorio Feriale" },
     "/parishes/{parishId}/oratorio_teams": { "schema": "OratorioTeam", "description": "Teams for Oratorio Feriale" },
     "/parishes/{parishId}/oratorio_absences": { "schema": "OratorioAbsence", "description": "Absences for Oratorio Feriale animators" },
-    "/parishes/{parishId}/oratorio_workshops": { "schema": "OratorioWorkshop", "description": "Workshops for Oratorio Feriale" }
+    "/parishes/{parishId}/oratorio_workshops": { "schema": "OratorioWorkshop", "description": "Workshops for Oratorio Feriale" },
+    "/parishes/{parishId}/oratorio_events": { "schema": "OratorioEvent", "description": "Extra events with animator attendance and meal tracking for Oratorio Feriale" }
   }
 }

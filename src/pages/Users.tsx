@@ -43,6 +43,7 @@ const ORATORIO_TABS = [
   { id: 'teams', label: 'Squadre' },
   { id: 'absences', label: 'Assenze' },
   { id: 'workshops', label: 'Laboratori' },
+  { id: 'events', label: 'Eventi Extra' },
 ];
 
 const Users: React.FC = () => {
@@ -154,7 +155,7 @@ const Users: React.FC = () => {
     const parishPerms = currentPermissions[parishId] || { enabled: false, modules: [], oratorioTabs: [] };
     
     // Default to all tabs if it's not set
-    let currentTabs = parishPerms.oratorioTabs || ['animators', 'shifts', 'teams', 'absences', 'workshops'];
+    let currentTabs = parishPerms.oratorioTabs || ['animators', 'shifts', 'teams', 'absences', 'workshops', 'events'];
     let newTabs = [...currentTabs];
     
     if (checked) {
@@ -429,7 +430,7 @@ const Users: React.FC = () => {
                                  </div>
                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                    {ORATORIO_TABS.map(tab => {
-                                     const oratorioTabs = parishPerms.oratorioTabs || ['animators', 'shifts', 'teams', 'absences', 'workshops'];
+                                     const oratorioTabs = parishPerms.oratorioTabs || ['animators', 'shifts', 'teams', 'absences', 'workshops', 'events'];
                                      const isTabChecked = oratorioTabs.includes(tab.id);
                                      return (
                                        <button

@@ -40,7 +40,12 @@ import {
   Copy,
   Square,
   CheckSquare,
-  BookOpen
+  BookOpen,
+  MapPin,
+  Euro,
+  Utensils,
+  Sparkles,
+  Settings
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -111,6 +116,29 @@ interface Workshop {
   createdAt: string;
 }
 
+interface EventAttendance {
+  present: boolean;
+  customTime?: string;
+  meal: boolean;
+  paid: boolean;
+  note?: string;
+}
+
+interface OratorioEvent {
+  id: string;
+  name: string;
+  description?: string;
+  date: string;
+  location: string;
+  startTime?: string;
+  endTime?: string;
+  cost?: number;
+  mealEnabled?: boolean;
+  season: string;
+  attendance: { [animatorId: string]: EventAttendance };
+  createdAt: string;
+}
+
 const OratorioFeriale: React.FC = () => {
   const { currentParish } = useParish();
   const { portalUser } = useAuth();
@@ -120,6 +148,7 @@ const OratorioFeriale: React.FC = () => {
   const absencesColl = useParishCollection('oratorio_absences');
   const seasonsColl = useParishCollection('oratorio_seasons');
   const workshopsColl = useParishCollection('oratorio_workshops');
+  const eventsColl = useParishCollection('oratorio_events');
   const parishSettingsDoc = useParishDoc('settings', 'parish');
 
   const [parishInfo, setParishInfo] = useState<any>({
@@ -163,12 +192,13 @@ const OratorioFeriale: React.FC = () => {
     }
   };
 
-  const [activeTab, setActiveTab] = useState<'animators' | 'shifts' | 'teams' | 'absences' | 'workshops'>('animators');
+  const [activeTab, setActiveTab] = useState<'animators' | 'shifts' | 'teams' | 'absences' | 'workshops' | 'events'>('animators');
   const [animators, setAnimators] = useState<Animator[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [absences, setAbsences] = useState<Absence[]>([]);
   const [workshops, setWorkshops] = useState<Workshop[]>([]);
+  const [events, setEvents] = useState<OratorioEvent[]>([]);
   const [seasonsData, setSeasonsData] = useState<{ [seasonId: string]: string[] }>({});
   const [loading, setLoading] = useState(true);
 
@@ -182,14 +212,14 @@ const OratorioFeriale: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
 
   const allowedTabs = portalUser?.isAdmin 
-    ? ['animators', 'shifts', 'teams', 'absences', 'workshops']
+    ? ['animators', 'shifts', 'teams', 'absences', 'workshops', 'events']
     : portalUser 
-      ? (portalUser.permissions?.[currentParish?.id || '']?.oratorioTabs || ['animators', 'shifts', 'teams', 'absences', 'workshops'])
-      : ['animators', 'shifts', 'teams', 'absences', 'workshops'];
+      ? (portalUser.permissions?.[currentParish?.id || '']?.oratorioTabs || ['animators', 'shifts', 'teams', 'absences', 'workshops', 'events'])
+      : ['animators', 'shifts', 'teams', 'absences', 'workshops', 'events'];
 
   useEffect(() => {
     if (allowedTabs && allowedTabs.length > 0 && !allowedTabs.includes(activeTab)) {
-      setActiveTab(allowedTabs[0] as 'animators' | 'shifts' | 'teams' | 'absences' | 'workshops');
+      setActiveTab(allowedTabs[0] as 'animators' | 'shifts' | 'teams' | 'absences' | 'workshops' | 'events');
     }
   }, [allowedTabs, activeTab]);
 
@@ -318,6 +348,89 @@ const OratorioFeriale: React.FC = () => {
     weeks: [] as string[]
   });
 
+  const [eventForm, setEventForm] = useState({
+    name: '',
+    description: '',
+    date: format(new Date(), 'yyyy-MM-dd'),
+    location: '',
+    startTime: '',
+    endTime: '',
+    cost: '' as number | '',
+    mealEnabled: false,
+    attendance: {} as { [animatorId: string]: EventAttendance }
+  });
+
+  const [expandedEvents, setExpandedEvents] = useState<{[eventId: string]: boolean}>({});
+  const [eventSummaryTabs, setEventSummaryTabs] = useState<{[eventId: string]: 'custom' | 'absent' | 'notes'}>({});
+  const [eventManageMode, setEventManageMode] = useState<{[eventId: string]: boolean}>({});
+
+  const eventsKey = events.map(e => e.id).join(',');
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setEventSummaryTabs(prev => {
+        const next: {[eventId: string]: 'custom' | 'absent' | 'notes'} = {};
+        events.forEach(ev => {
+          const current = prev[ev.id] || 'custom';
+          if (current === 'custom') {
+            next[ev.id] = 'absent';
+          } else if (current === 'absent') {
+            next[ev.id] = 'notes';
+          } else {
+            next[ev.id] = 'custom';
+          }
+        });
+        return next;
+      });
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [eventsKey]);
+
+  const toggleEventExpand = (eventId: string) => {
+    setExpandedEvents(prev => ({
+      ...prev,
+      [eventId]: !prev[eventId]
+    }));
+  };
+
+  const updateEventAttendanceInline = async (eventId: string, animatorId: string, updatedAttendance: EventAttendance) => {
+    try {
+      const ev = events.find(e => e.id === eventId);
+      if (!ev) return;
+      const docRef = doc(eventsColl, eventId);
+      const newAttendance = {
+        ...(ev.attendance || {}),
+        [animatorId]: updatedAttendance
+      };
+      await updateDoc(docRef, { attendance: newAttendance });
+    } catch (err) {
+      console.error("Errore aggiornamento presenza:", err);
+      setErrorStatus("Impossibile salvare la presenza. Riprovare.");
+    }
+  };
+
+  const setAllEventAttendanceInline = async (eventId: string, presentFlag: boolean) => {
+    try {
+      const ev = events.find(e => e.id === eventId);
+      if (!ev) return;
+      
+      const actionText = presentFlag ? "presenti" : "assenti";
+      const confirmed = window.confirm(`Sei sicuro di voler segnare TUTTI gli animatori come ${actionText}?`);
+      if (!confirmed) return;
+
+      const docRef = doc(eventsColl, eventId);
+      const updated: { [id: string]: EventAttendance } = { ...(ev.attendance || {}) };
+      activeSeasonAnimatorsList.forEach(a => {
+        const existing = updated[a.id] || { present: false, meal: false, paid: false, customTime: "", note: "" };
+        updated[a.id] = { ...existing, present: presentFlag };
+      });
+      await updateDoc(docRef, { attendance: updated });
+    } catch (err) {
+      console.error("Errore presenze di gruppo:", err);
+      setErrorStatus("Impossibile salvare le presenze.");
+    }
+  };
+
   // Helper helper to generate weedkays in a range
   const getDatesInRange = (startDateStr: string, endDateStr: string) => {
     const dates = [];
@@ -357,6 +470,7 @@ const OratorioFeriale: React.FC = () => {
   const filteredTeams = teams.filter(t => t.season === activeSeason || (!t.season && (activeSeason === '2026' || activeSeason === '26')));
   const filteredAbsences = absences.filter(ab => ab.season === activeSeason || (!ab.season && (activeSeason === '2026' || activeSeason === '26')));
   const filteredWorkshops = workshops.filter(w => w.season === activeSeason);
+  const filteredEvents = events.filter(ev => ev.season === activeSeason);
 
   const activeSeasonDays = seasonsData[activeSeason] || [];
 
@@ -503,6 +617,10 @@ const OratorioFeriale: React.FC = () => {
       setWorkshops(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Workshop)));
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'oratorio_workshops'));
 
+    const unsubEvents = onSnapshot(query(eventsColl, orderBy('createdAt', 'desc')), (snap) => {
+      setEvents(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as OratorioEvent)));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'oratorio_events'));
+
     const unsubSeasons = onSnapshot(seasonsColl, (snap) => {
       const result: { [seasonId: string]: string[] } = {};
       snap.docs.forEach(docSnap => {
@@ -532,6 +650,7 @@ const OratorioFeriale: React.FC = () => {
       unsubTeams();
       unsubAbsences();
       unsubWorkshops();
+      unsubEvents();
       unsubSeasons();
       unsubParish();
     };
@@ -593,6 +712,17 @@ const OratorioFeriale: React.FC = () => {
     setTeamForm({ name: '', color: '#3B82F6', animatorIds: [], kids: [], referentIds: [], assignments: {} });
     setAbsenceForm({ animatorId: '', date: format(new Date(), 'yyyy-MM-dd'), startTime: '', endTime: '', reason: '' });
     setWorkshopForm({ name: '', maxSubscribers: '', animatorIds: [], referentId: '', weeks: [] });
+    setEventForm({
+      name: '',
+      description: '',
+      date: format(new Date(), 'yyyy-MM-dd'),
+      location: '',
+      startTime: '',
+      endTime: '',
+      cost: '',
+      mealEnabled: false,
+      attendance: {}
+    });
     setNewKid({ firstName: '', lastName: '', note: '' });
     setEditingId(null);
     setErrorStatus(null);
@@ -629,6 +759,19 @@ const OratorioFeriale: React.FC = () => {
           weeks: data.weeks || []
         });
       }
+      if (type === 'events') {
+        setEventForm({
+          name: data.name || '',
+          description: data.description || '',
+          date: data.date || format(new Date(), 'yyyy-MM-dd'),
+          location: data.location || '',
+          startTime: data.startTime || '',
+          endTime: data.endTime || '',
+          cost: data.cost !== undefined && data.cost !== null ? data.cost : '',
+          mealEnabled: data.mealEnabled !== undefined ? data.mealEnabled : false,
+          attendance: data.attendance || {}
+        });
+      }
     } else if (presetData) {
       if (type === 'shifts') {
         setShiftForm(prev => ({ ...prev, ...presetData }));
@@ -649,6 +792,19 @@ const OratorioFeriale: React.FC = () => {
           animatorIds: [],
           referentId: '',
           weeks: currentWeeks.map(w => w.id)
+        });
+      }
+      if (type === 'events') {
+        setEventForm({
+          name: '',
+          description: '',
+          date: format(new Date(), 'yyyy-MM-dd'),
+          location: '',
+          startTime: '',
+          endTime: '',
+          cost: '',
+          mealEnabled: false,
+          attendance: {}
         });
       }
     }
@@ -2208,6 +2364,180 @@ const OratorioFeriale: React.FC = () => {
     }
   };
 
+  const generateWorkshopPDF = (workshop: Workshop) => {
+    try {
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 14;
+
+      const ferialeName = `${parishInfo.oratorioName || parishInfo.name || 'Oratorio Feriale'} - ${activeSeason}`;
+      const seasonText = `Stagione Feriale ${activeSeason}`;
+
+      const r_accent = 37;
+      const g_accent = 99;
+      const b_accent = 235;
+
+      // 1. Accent line at top
+      doc.setFillColor(r_accent, g_accent, b_accent);
+      doc.rect(0, 0, pageWidth, 5, 'F');
+
+      let headerY = 13;
+
+      // 2. Parish Logo on top-left if it exists
+      let textStartX = margin;
+      const chosenLogoUrl = parishInfo.oratorioLogoUrl || parishInfo.logoUrl;
+      if (chosenLogoUrl) {
+        try {
+          doc.addImage(chosenLogoUrl, 'PNG', margin, headerY - 4, 18, 18);
+          textStartX += 22;
+        } catch (e) {
+          // Fallback if image load fails
+        }
+      }
+
+      // 4. Right Side: Reference card
+      const cardWidth = 72;
+      const cardHeight = 18;
+      const cardX = pageWidth - margin - cardWidth;
+      const cardY = headerY - 4;
+
+      // Auto-fit function to prevent overlap
+      const maxWidth = cardX - textStartX - 5;
+      const drawTextFit = (text: string, x: number, y: number, bSize: number, fontStyle: string = 'normal') => {
+        doc.setFont('helvetica', fontStyle);
+        doc.setFontSize(bSize);
+        let currentSize = bSize;
+        while (doc.getTextWidth(text) > maxWidth && currentSize > 6) {
+          currentSize -= 0.5;
+          doc.setFontSize(currentSize);
+        }
+        doc.text(text, x, y);
+      };
+
+      // 3. Left Side Title details
+      doc.setTextColor(148, 163, 184); // Slate-400
+      drawTextFit(ferialeName.toUpperCase(), textStartX, headerY, 8.5, 'bold');
+
+      doc.setTextColor(30, 41, 59); // Slate-800
+      drawTextFit("FOGLIO FIRME LABORATORIO", textStartX, headerY + 8, 14, 'bold');
+
+      doc.setFillColor(248, 250, 252); // Slate-50 background
+      doc.setDrawColor(226, 232, 240); // Slate-200 border
+      doc.setLineWidth(0.3);
+      doc.roundedRect(cardX, cardY, cardWidth, cardHeight, 1.5, 1.5, 'FD');
+
+      // Card Content
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(148, 163, 184); // Slate-400
+      doc.text('POSTI DISPONIBILI', cardX + 4, cardY + 5);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(r_accent, g_accent, b_accent); // Brand accent
+      doc.text(`${workshop.maxSubscribers} PARTECIPANTI MAX`, cardX + 4, cardY + 10);
+
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(7);
+      doc.setTextColor(100, 116, 139); // Slate-500
+      doc.text(`${seasonText} • Generato: ${format(new Date(), 'dd/MM/yyyy HH:mm', { locale: it })}`, cardX + 4, cardY + 14.5);
+
+      // Clean horizontal divider line under header
+      doc.setDrawColor(241, 245, 249);
+      doc.setLineWidth(0.4);
+      doc.line(margin, headerY + 18, pageWidth - margin, headerY + 18);
+
+      let currentY = headerY + 26;
+
+      // WORKSHOP DETAIL TITLE
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(20);
+      doc.setTextColor(37, 99, 235); // Blue-600
+      doc.text(workshop.name.toUpperCase(), margin, currentY);
+      currentY += 8;
+
+      const referent = animators.find(a => a.id === workshop.referentId);
+      const referentText = referent ? `${referent.lastName.toUpperCase()} ${referent.firstName}` : 'NON ASSEGNATO';
+
+      // Draw subtle details box
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(241, 245, 249);
+      doc.roundedRect(margin, currentY, pageWidth - margin * 2, 10, 1, 1, 'FD');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(71, 85, 105);
+      doc.text(`REFERENTE: ${referentText}`, margin + 4, currentY + 6.5);
+
+      // Weeks listed
+      const weeksActive = (workshop.weeks || []).map(weekId => {
+        const weekObj = weeks.find(wk => wk.id === weekId);
+        const idx = weeks.findIndex(wk => wk.id === weekId);
+        return weekObj ? `Sett. ${idx + 1}` : null;
+      }).filter(Boolean).join(', ');
+
+      doc.text(`SETTIMANE DI ATTIVITÀ: ${weeksActive || 'Nessuna'}`, pageWidth / 2 + 10, currentY + 6.5);
+
+      currentY += 16;
+
+      // Table preparation
+      const rows = [];
+      const limit = workshop.maxSubscribers || 20;
+      for (let i = 1; i <= limit; i++) {
+        rows.push([i, '', '', '', '']);
+      }
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [['N.', 'COGNOME', 'NOME', 'ANNO DI NASCITA', 'FIRMA']],
+        body: rows,
+        theme: 'grid',
+        styles: {
+          font: 'helvetica',
+          fontSize: 9,
+          cellPadding: 3,
+          minCellHeight: 9, // Room for hand-written text
+          valign: 'middle'
+        },
+        headStyles: {
+          fillColor: [37, 99, 235], // Blue-600
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          halign: 'center'
+        },
+        columnStyles: {
+          0: { cellWidth: 12, halign: 'center', fontStyle: 'bold' },
+          1: { cellWidth: 48 },
+          2: { cellWidth: 48 },
+          3: { cellWidth: 32, halign: 'center' },
+          4: { cellWidth: 'auto' }
+        },
+        didDrawPage: (data) => {
+          // Bottom footer with instruction
+          doc.setFont('helvetica', 'italic');
+          doc.setFontSize(8);
+          doc.setTextColor(148, 163, 184);
+          doc.text("Si prega di completare in stampatello leggibile. Firma obbligatoria per la validità dell'iscrizione.", margin, pageHeight - 10);
+        }
+      });
+
+      setSuccessStatus(`Foglio firme per ${workshop.name} scaricato!`);
+      setTimeout(() => setSuccessStatus(null), 2000);
+
+      const fName = `Foglio_Firme_${workshop.name.replace(/\s+/g, '_')}_${activeSeason}.pdf`;
+      doc.save(fName);
+    } catch (err) {
+      console.error('Workshop PDF Generation Error:', err);
+      setErrorStatus('Impossibile scaricare la scheda di iscrizione del laboratorio.');
+    }
+  };
+
   const getAbsenceMeta = (ab?: Absence) => {
     if (!ab) return null;
     const s = ab.startTime || '';
@@ -2349,10 +2679,14 @@ const OratorioFeriale: React.FC = () => {
       } else if (activeTab === 'absences') {
         coll = absencesColl;
         payload = { ...absenceForm, season: activeSeason };
-      } else {
+      } else if (activeTab === 'workshops') {
         coll = workshopsColl;
         const maxSub = workshopForm.maxSubscribers === '' ? 0 : Number(workshopForm.maxSubscribers);
         payload = { ...workshopForm, maxSubscribers: maxSub, season: activeSeason };
+      } else {
+        coll = eventsColl;
+        const costVal = eventForm.cost === '' ? 0 : Number(eventForm.cost);
+        payload = { ...eventForm, cost: costVal, season: activeSeason };
       }
 
       if (activeTab === 'shifts' && !editingId && isMultiDayShift) {
@@ -2386,6 +2720,8 @@ const OratorioFeriale: React.FC = () => {
             exists = absences.some(ab => ab.id === editingId);
           } else if (activeTab === 'workshops') {
             exists = workshops.some(w => w.id === editingId);
+          } else if (activeTab === 'events') {
+            exists = events.some(ev => ev.id === editingId);
           }
 
           if (!exists) {
@@ -2568,7 +2904,7 @@ const OratorioFeriale: React.FC = () => {
             className="flex items-center justify-center gap-2 bg-blue-600 text-white px-8 py-4 rounded-full font-black uppercase italic tracking-wider hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 active:scale-95 text-[11px] self-start md:self-auto"
           >
             <Plus size={20} />
-            Aggiungi {activeTab === 'shifts' ? 'Turno' : activeTab === 'teams' ? 'Squadra' : activeTab === 'absences' ? 'Assenza' : 'Laboratorio'}
+            Aggiungi {activeTab === 'shifts' ? 'Turno' : activeTab === 'teams' ? 'Squadra' : activeTab === 'absences' ? 'Assenza' : activeTab === 'workshops' ? 'Laboratorio' : activeTab === 'events' ? 'Evento Extra' : 'Animatore'}
           </button>
         )}
       </div>
@@ -2579,6 +2915,7 @@ const OratorioFeriale: React.FC = () => {
         {allowedTabs.includes('teams') && <TabItem id="teams" label="Squadre" icon={Trophy} />}
         {allowedTabs.includes('absences') && <TabItem id="absences" label="Assenze" icon={UserX} />}
         {allowedTabs.includes('workshops') && <TabItem id="workshops" label="Laboratori" icon={BookOpen} />}
+        {allowedTabs.includes('events') && <TabItem id="events" label="Eventi Extra" icon={Sparkles} />}
       </div>
 
       <div className="grid grid-cols-1 gap-6">
@@ -4535,6 +4872,13 @@ const OratorioFeriale: React.FC = () => {
                                 </div>
                                 <div className="flex items-center gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-all shrink-0">
                                   <button
+                                    onClick={() => generateWorkshopPDF(w)}
+                                    className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                                    title="Scarica Foglio Firme (PDF)"
+                                  >
+                                    <Download size={15} />
+                                  </button>
+                                  <button
                                     onClick={() => handleOpenModal('workshops', w)}
                                     className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
                                     title="Modifica"
@@ -4639,6 +4983,632 @@ const OratorioFeriale: React.FC = () => {
             </div>
           </div>
         )}
+
+        {activeTab === 'events' && (
+          <div className="space-y-6">
+            {/* Stats Display */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center gap-4">
+                <div className="w-12 h-12 bg-pink-50 text-pink-600 rounded-2xl flex items-center justify-center shrink-0">
+                  <Sparkles size={24} />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Eventi Extra</span>
+                  <span className="text-2xl font-black italic text-slate-900">{filteredEvents.length}</span>
+                </div>
+              </div>
+              <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center gap-4">
+                <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0">
+                  <UserCheck size={24} />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Presenze Totali</span>
+                  <span className="text-2xl font-black italic text-slate-900">
+                    {filteredEvents.reduce((acc, ev) => acc + (Object.values(ev.attendance || {}) as EventAttendance[]).filter(a => a.present).length, 0)}
+                  </span>
+                </div>
+              </div>
+              <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center gap-4">
+                <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center shrink-0">
+                  <Utensils size={24} />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Pasti Prenotati</span>
+                  <span className="text-2xl font-black italic text-slate-900">
+                    {filteredEvents.reduce((acc, ev) => acc + (Object.values(ev.attendance || {}) as EventAttendance[]).filter(a => a.present && a.meal).length, 0)}
+                  </span>
+                </div>
+              </div>
+              <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center gap-4">
+                <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center shrink-0">
+                  <Euro size={24} />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Entrate Eventi (€)</span>
+                  <span className="text-2xl font-black italic text-slate-900">
+                    {filteredEvents.reduce((acc, ev) => {
+                      const cost = ev.cost || 0;
+                      const paidCount = (Object.values(ev.attendance || {}) as EventAttendance[]).filter(a => a.present && a.paid).length;
+                      return acc + (cost * paidCount);
+                    }, 0)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Events view / List */}
+            <div className="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <h3 className="text-sm font-black text-slate-900 uppercase italic tracking-widest flex items-center gap-3 mb-6">
+                <Sparkles size={18} className="text-pink-600" />
+                Elenco Eventi Extra Organizzati
+              </h3>
+
+              {filteredEvents.length > 0 ? (
+                <div className="grid grid-cols-1 gap-6">
+                  {filteredEvents.map(ev => {
+                    const eventDate = new Date(ev.date);
+                    const formattedDate = format(eventDate, "EEEE d MMMM yyyy", { locale: it });
+                    const attList = (Object.entries(ev.attendance || {}) as [string, EventAttendance][]).filter(([_, a]) => a.present);
+                    const presentCount = attList.length;
+                    const mealCount = attList.filter(([_, a]) => a.meal).length;
+                    const paidCount = attList.filter(([_, a]) => a.paid).length;
+                    const eventCost = ev.cost || 0;
+
+                    // Calculate absent counts based on activeSeasonAnimatorsList
+                    const absentCount = activeSeasonAnimatorsList.filter(a => !ev.attendance?.[a.id]?.present).length;
+
+                    // Filter custom time list and map to animators
+                    const customAnimators = attList
+                      .filter(([_, a]) => a.customTime && a.customTime.trim() !== "")
+                      .map(([id, a]) => {
+                        const anim = animators.find(x => x.id === id);
+                        return { anim, customTime: a.customTime };
+                      })
+                      .filter((item): item is { anim: Animator, customTime: string } => item.anim !== undefined);
+                    const customCount = customAnimators.length;
+
+                    // Filter animators who have notes
+                    const notedAnimators = (Object.entries(ev.attendance || {}) as [string, EventAttendance][])
+                      .filter(([_, a]) => a.note && a.note.trim() !== "")
+                      .map(([id, a]) => {
+                        const anim = animators.find(x => x.id === id);
+                        return { anim, note: a.note };
+                      })
+                      .filter((item): item is { anim: Animator, note: string } => item.anim !== undefined);
+                    const notedCount = notedAnimators.length;
+
+                    return (
+                      <div
+                        key={ev.id}
+                        className="bg-white p-6 rounded-[2.5rem] border border-slate-150 hover:border-slate-250 hover:shadow-lg transition-all relative overflow-hidden flex flex-col justify-between animate-in fade-in slide-in-from-bottom-2 duration-300"
+                      >
+                        {/* Absolute top-right Edit and Delete action controls */}
+                        <div className="absolute top-6 right-6 flex items-center gap-1.5 z-10">
+                          <button
+                            onClick={() => handleOpenModal('events', ev)}
+                            className="p-2.5 bg-slate-50 hover:bg-slate-100 text-blue-600 border border-slate-150 rounded-xl transition-all shadow-sm flex items-center justify-center cursor-pointer"
+                            title="Modifica"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(ev.id, eventsColl)}
+                            className="p-2.5 bg-slate-50 hover:bg-rose-50 text-red-650 border border-slate-150 rounded-xl transition-all shadow-sm flex items-center justify-center cursor-pointer"
+                            title="Elimina"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+
+                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 pr-16 md:pr-24">
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-[10px] font-black uppercase bg-pink-50 text-pink-600 px-3 py-1 rounded-full border border-pink-100 flex items-center gap-1.5 font-sans">
+                                <Sparkles size={10} />
+                                Evento Extra
+                              </span>
+                              {eventCost > 0 && (
+                                <span className="text-[10px] font-black uppercase bg-emerald-50 text-emerald-600 px-3 py-1 rounded-full border border-emerald-100 flex items-center gap-1 font-sans">
+                                  {eventCost} € / Persona
+                                </span>
+                              )}
+                            </div>
+
+                            <div>
+                              <h4 className="text-xl font-black text-slate-900 italic uppercase tracking-tight">
+                                {ev.name}
+                              </h4>
+                              {ev.description && (
+                                <p className="text-xs text-slate-600 bg-slate-50 border-l-4 border-l-pink-505 border border-slate-100 p-3.5 rounded-2xl mt-2 mb-1 pl-4 font-sans leading-relaxed">
+                                  {ev.description}
+                                </p>
+                              )}
+                              <p className="text-xs text-slate-505 font-medium capitalize mt-1">
+                                📅 {formattedDate}
+                              </p>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-y-2 gap-x-4 text-xs text-slate-505 font-bold">
+                              <div className="flex items-center gap-1.5">
+                                <MapPin size={14} className="text-slate-400" />
+                                <span className="text-slate-655">{ev.location}</span>
+                              </div>
+                              {(ev.startTime || ev.endTime) && (
+                                <div className="flex items-center gap-1.5">
+                                  <Clock size={14} className="text-slate-400" />
+                                  <span className="text-slate-655 font-sans font-black">
+                                    {ev.startTime && `${ev.startTime}`}
+                                    {ev.startTime && ev.endTime && " - "}
+                                    {ev.endTime && `${ev.endTime}`}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Quick Stats Grid - beautifully responsive and full featured */}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 my-5 p-4 bg-slate-50/70 border border-slate-100 rounded-3xl">
+                          <div className="text-center text-slate-600 p-1">
+                            <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Presenti</span>
+                            <span className="text-lg font-black text-slate-800 text-blue-600">{presentCount}</span>
+                          </div>
+                          <div className="text-center text-slate-600 border-l border-slate-200/60 p-1">
+                            <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Assenti</span>
+                            <span className="text-lg font-black text-rose-600">{absentCount}</span>
+                          </div>
+                          <div className="text-center text-slate-600 border-l border-slate-200/60 p-1">
+                            <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Ora Pers.</span>
+                            <span className="text-lg font-black text-indigo-600">{customCount}</span>
+                          </div>
+                          {ev.mealEnabled ? (
+                            <div className="text-center text-slate-600 border-l border-slate-200/60 p-1">
+                              <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Pasto Si</span>
+                              <span className="text-lg font-black text-amber-600">{mealCount}</span>
+                            </div>
+                          ) : (
+                            <div className="text-center text-slate-400 border-l border-slate-200/60 p-1 opacity-60">
+                              <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Pasto</span>
+                              <span className="text-xs font-extrabold text-slate-500 block mt-1.5 uppercase tracking-wide">No</span>
+                            </div>
+                          )}
+                          {eventCost > 0 ? (
+                            <div className="text-center text-slate-600 border-l border-slate-200/60 p-1">
+                              <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Pagato</span>
+                              <span className="text-lg font-black text-emerald-600">
+                                {paidCount} <span className="text-[10px] font-bold text-slate-500">({paidCount * eventCost}€)</span>
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="text-center text-slate-400 border-l border-slate-200/60 p-1 opacity-60">
+                              <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Costo</span>
+                              <span className="text-xs font-extrabold text-slate-500 block mt-1.5 uppercase tracking-wide font-sans">0 €</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Alternating Summaries Box (Custom Hours vs Absent Animators) */}
+                        {(() => {
+                          const activeSummaryTab = eventSummaryTabs[ev.id] || 'custom';
+                          return (
+                            <div className="mb-5 p-4 rounded-3xl bg-slate-50/70 border border-slate-100">
+                              <div className="flex gap-2 mb-3 px-1 border-b border-slate-150 pb-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setEventSummaryTabs(prev => ({ ...prev, [ev.id]: 'custom' }))}
+                                  className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-250 ${
+                                    activeSummaryTab === 'custom'
+                                      ? 'bg-indigo-600 text-white shadow-sm'
+                                      : 'text-slate-500 hover:bg-slate-200/60'
+                                  }`}
+                                >
+                                  ⏱️ Orari Personalizzati ({customCount})
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEventSummaryTabs(prev => ({ ...prev, [ev.id]: 'absent' }))}
+                                  className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-250 ${
+                                    activeSummaryTab === 'absent'
+                                      ? 'bg-rose-600 text-white shadow-sm'
+                                      : 'text-slate-500 hover:bg-slate-200/60'
+                                  }`}
+                                >
+                                  ❌ Assenti ({absentCount})
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEventSummaryTabs(prev => ({ ...prev, [ev.id]: 'notes' }))}
+                                  className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-250 ${
+                                    activeSummaryTab === 'notes'
+                                      ? 'bg-amber-600 text-white shadow-sm'
+                                      : 'text-slate-500 hover:bg-slate-200/60'
+                                  }`}
+                                >
+                                  📝 Note ({notedCount})
+                                </button>
+                              </div>
+
+                              {activeSummaryTab === 'custom' ? (
+                                <div className="animate-in fade-in duration-200">
+                                  {customCount > 0 ? (
+                                    <div className="flex flex-wrap gap-2">
+                                      {customAnimators.map(({ anim, customTime }) => (
+                                        <div 
+                                          key={`custom-time-summary-${ev.id}-${anim.id}`}
+                                          className="bg-white border border-indigo-100 px-3 py-2 rounded-2xl flex items-center gap-2 shadow-sm text-xs"
+                                        >
+                                          <span className="font-extrabold text-slate-850">
+                                            {anim.lastName} {anim.firstName}
+                                          </span>
+                                          <span className="px-2 py-0.5 font-black text-[10px] bg-indigo-50 text-indigo-700/90 rounded-lg">
+                                            {customTime}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="text-[10px] font-black uppercase text-slate-400 italic px-1 py-1">
+                                      Nessun orario personalizzato inserito per questo evento.
+                                    </p>
+                                  )}
+                                </div>
+                              ) : activeSummaryTab === 'absent' ? (
+                                <div className="animate-in fade-in duration-200">
+                                  {absentCount > 0 ? (
+                                    <div className="flex flex-wrap gap-2">
+                                      {activeSeasonAnimatorsList
+                                        .filter(a => !ev.attendance?.[a.id]?.present)
+                                        .map(a => (
+                                          <div 
+                                            key={`absent-summary-${ev.id}-${a.id}`}
+                                            className="bg-white border border-rose-100 px-3 py-2 rounded-2xl flex items-center gap-1.5 shadow-sm text-xs"
+                                          >
+                                            <span className="font-extrabold text-slate-750">
+                                              {a.lastName} {a.firstName}
+                                            </span>
+                                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                                          </div>
+                                        ))}
+                                    </div>
+                                  ) : (
+                                    <p className="text-[10px] font-black uppercase text-slate-400 italic px-1 py-1">
+                                      Tutti gli animatori sono segnati come presenti!
+                                    </p>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="animate-in fade-in duration-200">
+                                  {notedCount > 0 ? (
+                                    <div className="flex flex-wrap gap-2.5">
+                                      {notedAnimators.map(({ anim, note }) => (
+                                        <div 
+                                          key={`note-summary-${ev.id}-${anim.id}`}
+                                          className="bg-white border border-amber-100 px-3.5 py-2 rounded-2xl flex flex-col gap-1 shadow-sm text-xs max-w-[280px]"
+                                        >
+                                          <span className="font-extrabold text-slate-800">
+                                            {anim.lastName} {anim.firstName}
+                                          </span>
+                                          <p className="text-[11px] text-slate-600 bg-amber-50/20 border border-amber-100/50 px-2 py-1.5 rounded-xl italic">
+                                            "{note}"
+                                          </p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="text-[10px] font-black uppercase text-slate-400 italic px-1 py-1">
+                                      Nessuna nota inserita per questo evento.
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+
+                        {/* Collapsible area for registering attendance, notes and other settings */}
+                        <div className="mt-2 border-t border-slate-100 pt-4">
+                          <button
+                            type="button"
+                            onClick={() => toggleEventExpand(ev.id)}
+                            className="w-full flex items-center justify-between text-left py-2.5 px-4 bg-slate-50 hover:bg-slate-100 rounded-2xl transition-all border border-slate-150/80 hover:border-slate-200 text-slate-705 font-sans"
+                          >
+                            <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-2 font-sans">
+                              <Users size={14} className="text-slate-400" />
+                              Presenze & Note Animatori ({presentCount} / {activeSeasonAnimatorsList.length} Presenti)
+                            </span>
+                            <ChevronDown 
+                              size={16} 
+                              className={`text-slate-400 transition-transform duration-300 ${
+                                expandedEvents[ev.id] ? "rotate-180 text-blue-650" : ""
+                              }`} 
+                            />
+                          </button>
+
+                          {expandedEvents[ev.id] && (
+                            <div className="mt-4 pl-1 animate-in fade-in slide-in-from-top-2 duration-300 space-y-4">
+                              {/* Modalità View Mode Switching Segmented Bar */}
+                              <div className="flex flex-wrap items-center justify-between gap-4 p-3 bg-slate-50/50 rounded-2xl border border-slate-100">
+                                <span className="text-[9.5px] font-black uppercase text-slate-400 tracking-wider font-sans">
+                                  Opzioni Visualizzazione:
+                                </span>
+                                <div className="flex bg-slate-150/60 p-1 rounded-xl">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEventManageMode(prev => ({ ...prev, [ev.id]: false }))}
+                                    className={`px-3 py-1.5 rounded-lg text-[9.5px] font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-1.5 cursor-pointer ${
+                                      !eventManageMode[ev.id]
+                                        ? 'bg-blue-600 text-white shadow-sm'
+                                        : 'text-slate-500 hover:text-slate-800'
+                                    }`}
+                                  >
+                                    <Users size={11} />
+                                    Animatori Presenti ({presentCount})
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEventManageMode(prev => ({ ...prev, [ev.id]: true }))}
+                                    className={`px-3 py-1.5 rounded-lg text-[9.5px] font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-1.5 cursor-pointer ${
+                                      eventManageMode[ev.id]
+                                        ? 'bg-blue-600 text-white shadow-sm'
+                                        : 'text-slate-500 hover:text-slate-800'
+                                    }`}
+                                  >
+                                    <Settings size={11} />
+                                    Gestisci Presenze
+                                  </button>
+                                </div>
+                              </div>
+
+                              {!eventManageMode[ev.id] ? (
+                                /* DEFAULT READ-ONLY / SUMMARY VIEW: Bento columns displaying present animators as cards, like before */
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                  {attList.map(([id, att]) => {
+                                    const anim = animators.find(a => a.id === id);
+                                    if (!anim) return null;
+                                    return (
+                                      <div
+                                        key={`badge-${ev.id}-${id}`}
+                                        className="bg-white border border-slate-150 rounded-[2rem] p-4.5 flex flex-col justify-between gap-3 text-[11px] text-slate-705 shadow-sm min-w-[170px]"
+                                      >
+                                        <div>
+                                          <div className="font-extrabold text-slate-900 border-b border-slate-50 pb-1.5 flex justify-between items-center">
+                                            <span>{anim.lastName} {anim.firstName}</span>
+                                          </div>
+                                          {att.customTime ? (
+                                            <div className="text-[9.5px] font-black text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-lg px-2 py-0.5 mt-2 self-start inline-flex items-center gap-1">
+                                              ⏱️ {att.customTime}
+                                            </div>
+                                          ) : (
+                                            <div className="text-[9.5px] font-bold text-slate-400 italic mt-2">
+                                              Orario standard
+                                            </div>
+                                          )}
+                                          {att.note && (
+                                            <div className="text-[10px] bg-slate-50 text-slate-600 border border-slate-100 px-3 py-2 rounded-xl mt-2 italic font-sans max-w-full break-words">
+                                              <span className="font-bold text-indigo-500 not-italic block text-[8px] uppercase tracking-wider mb-0.5 animate-pulse">Nota:</span>
+                                              "{att.note}"
+                                            </div>
+                                          )}
+                                        </div>
+                                        {(ev.mealEnabled || eventCost > 0) && (
+                                          <div className="flex items-center gap-2 mt-1.5 pt-2 border-t border-slate-100">
+                                            {ev.mealEnabled && (
+                                              <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase flex items-center gap-1 ${att.meal ? "bg-amber-100 text-amber-800 border border-amber-200" : "bg-slate-50 text-slate-400"}`}>
+                                                🥗 pasto
+                                              </span>
+                                            )}
+                                            {eventCost > 0 && (
+                                              <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase flex items-center gap-1 ${att.paid ? "bg-emerald-100 text-emerald-800 border border-emerald-200" : "bg-slate-50 text-slate-400"}`}>
+                                                💳 pagato
+                                              </span>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                  {presentCount === 0 && (
+                                    <div className="col-span-full py-10 text-center bg-slate-50 border border-dashed border-slate-200 rounded-[2rem] flex flex-col items-center justify-center gap-3">
+                                      <p className="text-xs font-bold text-slate-400 italic">
+                                        Nessun animatore segnato come presente a questo incontro.
+                                      </p>
+                                      <button
+                                        type="button"
+                                        onClick={() => setEventManageMode(prev => ({ ...prev, [ev.id]: true }))}
+                                        className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-black shadow-sm hover:bg-blue-700 transition cursor-pointer"
+                                      >
+                                        🟢 Registra Ora Presenze
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                /* MANAGE MODE: Form checklists, inputs, quick bulk actions */
+                                <div className="space-y-4">
+                                  {/* Bulk Quick Actions strip */}
+                                  <div className="flex flex-wrap items-center justify-between gap-4 p-3.5 bg-slate-50/80 rounded-2xl border border-slate-100/80">
+                                    <span className="text-[9.5px] font-black uppercase text-slate-400 tracking-wider font-sans">
+                                      Azioni Rapide Gruppo:
+                                    </span>
+                                    <div className="flex gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => setAllEventAttendanceInline(ev.id, true)}
+                                        className="px-3 py-1.5 rounded-xl text-[9px] font-black uppercase bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100 transition shadow-sm cursor-pointer"
+                                      >
+                                        Segna Tutti Presenti 🟢
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setAllEventAttendanceInline(ev.id, false)}
+                                        className="px-3 py-1.5 rounded-xl text-[9px] font-black uppercase bg-rose-50 text-rose-700 border border-rose-100 hover:bg-rose-100 transition shadow-sm cursor-pointer"
+                                      >
+                                        Segna Tutti Assenti 🔴
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Matrix list of animators checkins */}
+                                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                                    {activeSeasonAnimatorsList.map(a => {
+                                      const att = ev.attendance?.[a.id] || { present: false, customTime: '', meal: false, paid: false, note: '' };
+                                      
+                                      const togglePresence = async () => {
+                                        const updated = { ...att, present: !att.present };
+                                        await updateEventAttendanceInline(ev.id, a.id, updated);
+                                      };
+
+                                      const toggleMeal = async () => {
+                                        const updated = { ...att, meal: !att.meal };
+                                        await updateEventAttendanceInline(ev.id, a.id, updated);
+                                      };
+
+                                      const togglePaid = async () => {
+                                        const updated = { ...att, paid: !att.paid };
+                                        await updateEventAttendanceInline(ev.id, a.id, updated);
+                                      };
+
+                                      return (
+                                        <div
+                                          key={`reg-${ev.id}-${a.id}`}
+                                          className={`p-4 rounded-3xl border transition-all flex flex-col justify-between gap-3 ${
+                                            att.present
+                                              ? 'bg-white border-blue-150 shadow-sm'
+                                              : 'bg-slate-50/50 border-slate-100 text-slate-400 opacity-70'
+                                          }`}
+                                        >
+                                          <div className="flex items-start justify-between gap-2 border-b border-slate-50 pb-2">
+                                            <div>
+                                              <span className={`text-xs font-black block leading-tight ${att.present ? 'text-slate-800' : 'text-slate-405 line-through'}`}>
+                                                {a.lastName} {a.firstName}
+                                              </span>
+                                            </div>
+                                            <button
+                                              type="button"
+                                              onClick={togglePresence}
+                                              className={`w-6 h-6 rounded-lg border flex items-center shrink-0 justify-center transition-all cursor-pointer ${
+                                                att.present 
+                                                  ? 'bg-blue-600 border-blue-600 text-white' 
+                                                  : 'bg-white border-slate-300 hover:border-slate-400 text-transparent'
+                                              }`}
+                                            >
+                                              {att.present && <Check size={14} />}
+                                            </button>
+                                          </div>
+
+                                          {att.present ? (
+                                            <div className="space-y-2.5">
+                                              {(ev.mealEnabled || eventCost > 0) && (
+                                                <div className="flex flex-wrap items-center gap-1.5">
+                                                  {ev.mealEnabled && (
+                                                    <button
+                                                      type="button"
+                                                      onClick={toggleMeal}
+                                                      className={`px-2.5 py-1 rounded-xl text-[9px] font-black uppercase flex items-center gap-1.5 border transition-all cursor-pointer ${
+                                                        att.meal
+                                                          ? 'bg-amber-100 border-amber-250 text-amber-805 shadow-sm'
+                                                          : 'bg-slate-50 text-slate-400 border-slate-200'
+                                                      }`}
+                                                    >
+                                                      🥗 pasto {att.meal ? "si" : "no"}
+                                                    </button>
+                                                  )}
+                                                  {eventCost > 0 && (
+                                                    <button
+                                                      type="button"
+                                                      onClick={togglePaid}
+                                                      className={`px-2.5 py-1 rounded-xl text-[9px] font-black uppercase flex items-center gap-1.5 border transition-all cursor-pointer ${
+                                                        att.paid
+                                                          ? 'bg-emerald-100 border-emerald-250 text-emerald-805 shadow-sm'
+                                                          : 'bg-slate-50 text-slate-400 border-slate-200'
+                                                      }`}
+                                                    >
+                                                      💳 pagato {att.paid ? "si" : "no"}
+                                                    </button>
+                                                  )}
+                                                </div>
+                                              )}
+
+                                              {/* Custom Time text input field (dynamic save onblur) */}
+                                              <div className="flex items-center gap-2">
+                                                <span className="text-[8.5px] font-black uppercase text-slate-400 tracking-wider w-11 shrink-0">
+                                                  Orario:
+                                                </span>
+                                                <input
+                                                  type="text"
+                                                  placeholder="Standard"
+                                                  defaultValue={att.customTime || ""}
+                                                  onBlur={async e => {
+                                                    const val = e.target.value;
+                                                    if (val !== (att.customTime || "")) {
+                                                      const updated = { ...att, customTime: val };
+                                                      await updateEventAttendanceInline(ev.id, a.id, updated);
+                                                    }
+                                                  }}
+                                                  className="w-full px-2.5 py-1 text-[11px] font-bold rounded-lg bg-slate-50 border border-slate-100 outline-none focus:bg-white focus:ring-1 focus:ring-blue-500 transition-all font-sans"
+                                                />
+                                              </div>
+
+                                              {/* Notes text input field (dynamic save onblur) */}
+                                              <div className="flex items-center gap-2">
+                                                <span className="text-[8.5px] font-black uppercase text-indigo-500 tracking-wider w-11 shrink-0">
+                                                  Note:
+                                                </span>
+                                                <input
+                                                  type="text"
+                                                  placeholder="E.g., allergie, ritardi..."
+                                                  defaultValue={att.note || ""}
+                                                  onBlur={async e => {
+                                                    const val = e.target.value;
+                                                    if (val !== (att.note || "")) {
+                                                      const updated = { ...att, note: val };
+                                                      await updateEventAttendanceInline(ev.id, a.id, updated);
+                                                    }
+                                                  }}
+                                                  className="w-full px-2.5 py-1 text-[11px] font-bold rounded-lg bg-indigo-50/20 border border-indigo-100/50 outline-none focus:bg-white focus:ring-1 focus:ring-indigo-400 transition-all font-sans"
+                                                />
+                                              </div>
+                                            </div>
+                                          ) : (
+                                            <div className="text-[10px] font-bold text-slate-400 italic">
+                                              Segnato come Assente
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                    {activeSeasonAnimatorsList.length === 0 && (
+                                      <p className="col-span-full py-4 text-center text-[10px] font-black text-slate-350 uppercase tracking-widest bg-slate-50 rounded-2xl">
+                                        Nessun animatore iscritto in questa stagione.
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="py-20 text-center bg-slate-50/50 rounded-[2rem] border border-dashed border-slate-205">
+                  <Sparkles size={48} className="mx-auto text-slate-205 mb-4" />
+                  <p className="text-slate-405 font-black uppercase tracking-widest text-[10px]">
+                    Nessun evento extra programmato per la stagione {activeSeason}
+                  </p>
+                  <button
+                    onClick={() => handleOpenModal('events')}
+                    className="mt-4 px-6 py-2.5 bg-blue-600 text-white font-extrabold uppercase italic tracking-wider rounded-full hover:bg-blue-700 transition-all text-[9px] shadow-md shadow-blue-105"
+                  >
+                    Crea Primo Evento Extra
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Creation/Edit dialogue modal */}
@@ -4648,7 +5618,7 @@ const OratorioFeriale: React.FC = () => {
             <div className="p-8 border-b border-slate-50 flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-black text-slate-900 uppercase italic">
-                  {editingId ? 'Modifica' : 'Nuovo'} {activeTab === 'animators' ? 'Animatore' : activeTab === 'shifts' ? 'Turno' : activeTab === 'teams' ? 'Squadra' : activeTab === 'absences' ? 'Assenza' : 'Laboratorio'}
+                  {editingId ? 'Modifica' : 'Nuovo'} {activeTab === 'animators' ? 'Animatore' : activeTab === 'shifts' ? 'Turno' : activeTab === 'teams' ? 'Squadra' : activeTab === 'absences' ? 'Assenza' : activeTab === 'workshops' ? 'Laboratorio' : 'Evento Extra'}
                 </h2>
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Configurazione Oratorio Feriale ({activeSeason})</p>
               </div>
@@ -5308,6 +6278,113 @@ const OratorioFeriale: React.FC = () => {
                           Nessuna settimana feriale avviata. Abilita dei giorni in alto.
                         </p>
                       )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'events' && (
+                <div className="space-y-6">
+                  {/* Event Name */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Nome Evento Extra</span>
+                    <input 
+                      required 
+                      type="text" 
+                      placeholder="Es. Gita all'Acquapark"
+                      value={eventForm.name} 
+                      onChange={e => setEventForm({...eventForm, name: e.target.value})} 
+                      className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-inner"
+                    />
+                  </div>
+
+                  {/* Description */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Descrizione Evento</span>
+                    <textarea 
+                      placeholder="Es. Gita estiva e pranzo al sacco con attrazioni acquatiche..."
+                      rows={2}
+                      value={eventForm.description} 
+                      onChange={e => setEventForm({...eventForm, description: e.target.value})} 
+                      className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold shadow-inner resize-none font-sans"
+                    />
+                  </div>
+
+                  {/* When & Where */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Quando (Data)</span>
+                      <input 
+                        required 
+                        type="date" 
+                        value={eventForm.date} 
+                        onChange={e => setEventForm({...eventForm, date: e.target.value})} 
+                        className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-inner"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Dove (Luogo)</span>
+                      <input 
+                        required 
+                        type="text" 
+                        placeholder="Es. Cavour (TO)"
+                        value={eventForm.location} 
+                        onChange={e => setEventForm({...eventForm, location: e.target.value})} 
+                        className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-inner"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Times (Start & End) */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Ora Inizio</span>
+                      <input 
+                        type="time" 
+                        value={eventForm.startTime} 
+                        onChange={e => setEventForm({...eventForm, startTime: e.target.value})} 
+                        className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-inner"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Ora Fine</span>
+                      <input 
+                        type="time" 
+                        value={eventForm.endTime} 
+                        onChange={e => setEventForm({...eventForm, endTime: e.target.value})} 
+                        className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-inner"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Cost per person & Meal Option */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Costo Individuale (€)</span>
+                      <input 
+                        type="number" 
+                        placeholder="Es. 15 (lascia vuoto se gratuito)"
+                        value={eventForm.cost} 
+                        onChange={e => setEventForm({...eventForm, cost: e.target.value === '' ? '' : Number(e.target.value)})} 
+                        className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-inner"
+                      />
+                    </div>
+                    <div className="flex items-center gap-3 pt-6 pl-1">
+                      <button
+                        type="button"
+                        onClick={() => setEventForm({ ...eventForm, mealEnabled: !eventForm.mealEnabled })}
+                        className={`w-6 h-6 rounded-lg border flex items-center shrink-0 justify-center transition-all ${
+                          eventForm.mealEnabled 
+                            ? 'bg-amber-500 border-amber-500 text-white shadow-md shadow-amber-100' 
+                            : 'bg-white border-slate-300 hover:border-slate-400'
+                        }`}
+                      >
+                        {eventForm.mealEnabled && <Check size={14} />}
+                      </button>
+                      <div className="select-none cursor-pointer" onClick={() => setEventForm({ ...eventForm, mealEnabled: !eventForm.mealEnabled })}>
+                        <span className="text-xs font-extrabold text-slate-700 block uppercase tracking-wide">Prevedi Pranzo / Pasto</span>
+                        <span className="text-[10px] font-medium text-slate-400 block leading-tight">Abilita la prenotazione del pasto per questo evento</span>
+                      </div>
                     </div>
                   </div>
                 </div>
