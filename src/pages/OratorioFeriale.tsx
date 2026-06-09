@@ -53,12 +53,22 @@ import {
   Eye,
   EyeOff,
   ClipboardList,
-  Search
+  Search,
+  Heart
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+
+interface Interview {
+  id: string;
+  number: string;
+  date: string;
+  notes: string;
+  outcome: string;
+  needsReview: boolean;
+}
 
 interface Animator {
   id: string;
@@ -70,6 +80,8 @@ interface Animator {
   seasons?: string[];
   createdAt: string;
   presentWeeks?: { [seasonId: string]: string[] };
+  interviews?: Interview[];
+  needsReview?: boolean;
 }
 
 interface Shift {
@@ -190,6 +202,19 @@ interface OratorioPrayer {
   updatedAt?: string;
 }
 
+interface ConfessionRecord {
+  id: string;
+  personKey: string;
+  personName: string;
+  type: 'kid' | 'animator';
+  teamId: string;
+  season: string;
+  confessed: boolean;
+  confessedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 const getTodayDateStr = () => {
   const d = new Date();
   const year = d.getFullYear();
@@ -270,6 +295,7 @@ const OratorioFeriale: React.FC = () => {
   const dailyNotesColl = useParishCollection('oratorio_daily_notes');
   const meetingsColl = useParishCollection('oratorio_meetings');
   const prayersColl = useParishCollection('oratorio_prayers');
+  const confessionsColl = useParishCollection('oratorio_confessions');
   const parishSettingsDoc = useParishDoc('settings', 'parish');
 
   const [parishInfo, setParishInfo] = useState<any>({
@@ -313,7 +339,7 @@ const OratorioFeriale: React.FC = () => {
     }
   };
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'animators' | 'shifts' | 'teams' | 'absences' | 'workshops' | 'events' | 'meetings' | 'preghiera'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'animators' | 'shifts' | 'teams' | 'absences' | 'workshops' | 'events' | 'meetings' | 'preghiera' | 'confessioni'>('dashboard');
   const [animators, setAnimators] = useState<Animator[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -326,6 +352,14 @@ const OratorioFeriale: React.FC = () => {
   const [seasonsData, setSeasonsData] = useState<{ [seasonId: string]: string[] }>({});
   const [dailyNotesList, setDailyNotesList] = useState<DailyNotes[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // States for Confessions section
+  const [confessions, setConfessions] = useState<ConfessionRecord[]>([]);
+  const [selectedConfessionPeople, setSelectedConfessionPeople] = useState<string[]>([]);
+  const [confessionTeamFilter, setConfessionTeamFilter] = useState<string>('all');
+  const [confessionRoleFilter, setConfessionRoleFilter] = useState<'all' | 'kid' | 'animator'>('all');
+  const [confessionStatusFilter, setConfessionStatusFilter] = useState<'all' | 'not_confessed' | 'confessed'>('all');
+  const [confessionSearch, setConfessionSearch] = useState<string>('');
 
   // States for custom Meeting section
   const [isMeetingModalOpen, setIsMeetingModalOpen] = useState(false);
@@ -361,10 +395,10 @@ const OratorioFeriale: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
 
   const allowedTabs = portalUser?.isAdmin 
-    ? ['dashboard', 'animators', 'absences', 'teams', 'shifts', 'meetings', 'preghiera', 'workshops', 'events']
+    ? ['dashboard', 'animators', 'absences', 'teams', 'shifts', 'meetings', 'preghiera', 'workshops', 'events', 'confessioni']
     : portalUser 
-      ? ['dashboard', ...(portalUser.permissions?.[currentParish?.id || '']?.oratorioTabs || ['animators', 'absences', 'teams', 'shifts', 'meetings', 'preghiera', 'workshops', 'events'])]
-      : ['dashboard', 'animators', 'absences', 'teams', 'shifts', 'meetings', 'preghiera', 'workshops', 'events'];
+      ? ['dashboard', ...(portalUser.permissions?.[currentParish?.id || '']?.oratorioTabs || ['animators', 'absences', 'teams', 'shifts', 'meetings', 'preghiera', 'workshops', 'events', 'confessioni'])]
+      : ['dashboard', 'animators', 'absences', 'teams', 'shifts', 'meetings', 'preghiera', 'workshops', 'events', 'confessioni'];
 
   useEffect(() => {
     if (allowedTabs && allowedTabs.length > 0 && !allowedTabs.includes(activeTab)) {
@@ -449,6 +483,21 @@ const OratorioFeriale: React.FC = () => {
   const [selectedWeeksAnimator, setSelectedWeeksAnimator] = useState<Animator | null>(null);
   const [tempPresentWeeks, setTempPresentWeeks] = useState<string[]>([]);
   const [tempIsEnrollActive, setTempIsEnrollActive] = useState<boolean>(false);
+
+  // States for Animator Interviews (Colloqui)
+  const [isInterviewModalOpen, setIsInterviewModalOpen] = useState(false);
+  const [selectedInterviewAnimatorId, setSelectedInterviewAnimatorId] = useState<string | null>(null);
+  const [editingInterviewId, setEditingInterviewId] = useState<string | null>(null);
+  const [deleteConfirmInterviewId, setDeleteConfirmInterviewId] = useState<string | null>(null);
+  const [interviewForm, setInterviewForm] = useState({
+    number: '',
+    date: getTodayDateStr(),
+    notes: '',
+    outcome: '',
+    needsReview: false
+  });
+
+  const selectedInterviewAnimator = animators.find(a => a.id === selectedInterviewAnimatorId) || null;
 
   // Forms
   const [animatorForm, setAnimatorForm] = useState({
@@ -920,6 +969,10 @@ const OratorioFeriale: React.FC = () => {
       setPrayers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as OratorioPrayer)));
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'oratorio_prayers'));
 
+    const unsubConfessions = onSnapshot(query(confessionsColl), (snap) => {
+      setConfessions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as ConfessionRecord)));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'oratorio_confessions'));
+
     const unsubDailyTeams = onSnapshot(query(dailyTeamsColl), (snap) => {
       setDailyTeams(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)));
     }, (err) => console.error("Could not load daily teams", err));
@@ -961,6 +1014,7 @@ const OratorioFeriale: React.FC = () => {
       unsubEvents();
       unsubMeetings();
       unsubPrayers();
+      unsubConfessions();
       unsubSeasons();
       unsubParish();
       unsubDailyNotes();
@@ -1148,6 +1202,298 @@ const OratorioFeriale: React.FC = () => {
       console.error(err);
       handleFirestoreError(err, OperationType.UPDATE, `oratorio_teams/${targetTeamId}`);
     }
+  };
+
+  const handleMoveKidToAnotherTeam = async (kid: Kid, fromTeamId: string, targetTeamId: string) => {
+    try {
+      const fromTeam = teams.find(t => t.id === fromTeamId);
+      const toTeam = teams.find(t => t.id === targetTeamId);
+
+      if (!fromTeam || !toTeam) {
+        throw new Error("Squadra di origine o destinazione non trovata.");
+      }
+
+      const updatedFromKids = (fromTeam.kids || []).filter(
+        k => !(k.firstName === kid.firstName && k.lastName === kid.lastName && k.birthYear === kid.birthYear)
+      );
+
+      const existsInTarget = (toTeam.kids || []).some(
+        k => k.firstName === kid.firstName && k.lastName === kid.lastName && k.birthYear === kid.birthYear
+      );
+
+      const updatedToKids = existsInTarget ? (toTeam.kids || []) : [...(toTeam.kids || []), kid];
+
+      await updateDoc(doc(teamsColl, fromTeamId), { kids: updatedFromKids });
+      await updateDoc(doc(teamsColl, targetTeamId), { kids: updatedToKids });
+
+      setSuccessStatus(`Ragazzo ${kid.lastName} ${kid.firstName} spostato con successo in ${toTeam.name}!`);
+      setTimeout(() => setSuccessStatus(null), 3000);
+    } catch (err) {
+      console.error(err);
+      handleFirestoreError(err, OperationType.UPDATE, `oratorio_teams/${targetTeamId}`);
+    }
+  };
+
+  const handleSaveInterview = async (animatorId: string, newInterview: Omit<Interview, "id">) => {
+    setIsSaving(true);
+    try {
+      const animator = animators.find(a => a.id === animatorId);
+      if (!animator) {
+        throw new Error("Animatore non trovato.");
+      }
+
+      const originalInterviews = animator.interviews || [];
+      let updatedInterviews: Interview[];
+
+      if (editingInterviewId) {
+        updatedInterviews = originalInterviews.map(i => 
+          i.id === editingInterviewId ? { ...i, ...newInterview } : i
+        );
+      } else {
+        const interviewId = Date.now().toString();
+        updatedInterviews = [...originalInterviews, { id: interviewId, ...newInterview }];
+      }
+
+      const hasAnyInterviewNeedsReview = updatedInterviews.some(i => i.needsReview);
+
+      await updateDoc(doc(animatorsColl, animatorId), {
+        interviews: updatedInterviews,
+        needsReview: hasAnyInterviewNeedsReview
+      });
+
+      setInterviewForm({
+        number: `Colloquio ${updatedInterviews.length + 1}`,
+        date: getTodayDateStr(),
+        notes: '',
+        outcome: '',
+        needsReview: false
+      });
+      setEditingInterviewId(null);
+
+      setSuccessStatus(editingInterviewId ? `Colloquio modificato con successo!` : `Colloquio salvato con successo!`);
+      setTimeout(() => setSuccessStatus(null), 3000);
+    } catch (err) {
+      console.error(err);
+      setErrorStatus("Errore nel salvataggio del colloquio.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteInterview = async (animatorId: string, interviewId: string) => {
+    try {
+      const animator = animators.find(a => a.id === animatorId);
+      if (!animator) {
+        throw new Error("Animatore non trovato.");
+      }
+
+      const updatedInterviews = (animator.interviews || []).filter(i => i.id !== interviewId);
+      const hasAnyInterviewNeedsReview = updatedInterviews.some(i => i.needsReview);
+
+      await updateDoc(doc(animatorsColl, animatorId), {
+        interviews: updatedInterviews,
+        needsReview: hasAnyInterviewNeedsReview
+      });
+
+      setDeleteConfirmInterviewId(null);
+
+      if (editingInterviewId === interviewId) {
+        setEditingInterviewId(null);
+        setInterviewForm({
+          number: `Colloquio ${updatedInterviews.length + 1}`,
+          date: getTodayDateStr(),
+          notes: '',
+          outcome: '',
+          needsReview: false
+        });
+      }
+
+      setSuccessStatus(`Colloquio eliminato con successo!`);
+      setTimeout(() => setSuccessStatus(null), 3000);
+    } catch (err) {
+      console.error(err);
+      setErrorStatus("Errore nell'eliminazione del colloquio.");
+    }
+  };
+
+  const handleToggleNeedsReview = async (animatorId: string, currentVal: boolean) => {
+    try {
+      await updateDoc(doc(animatorsColl, animatorId), {
+        needsReview: !currentVal
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleToggleConfession = async (personKey: string, personName: string, type: 'kid' | 'animator', teamId: string) => {
+    const docId = `${activeSeason}_${personKey}`;
+    const recordRef = doc(confessionsColl, docId);
+    const existing = confessions.find(c => c.personKey === personKey && c.season === activeSeason);
+    
+    try {
+      if (existing) {
+        await updateDoc(recordRef, {
+          confessed: !existing.confessed,
+          confessedAt: !existing.confessed ? new Date().toISOString() : null,
+          updatedAt: new Date().toISOString()
+        });
+      } else {
+        await setDoc(recordRef, {
+          id: docId,
+          personKey,
+          personName,
+          type,
+          teamId,
+          season: activeSeason,
+          confessed: true,
+          confessedAt: new Date().toISOString(),
+          createdAt: new Date().toISOString()
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      handleFirestoreError(err, OperationType.WRITE, `oratorio_confessions/${docId}`);
+    }
+  };
+
+  const handleDownloadConfessionsPDF = () => {
+    try {
+      if (selectedConfessionPeople.length === 0) {
+        setErrorStatus("Seleziona almeno un ragazzo o animatore per stampare la scheda!");
+        return;
+      }
+
+      const activeTeamsForSeason = teams.filter(t => t.season === activeSeason);
+      const itemsToPrint: {
+        teamName: string;
+        fullName: string;
+        role: string;
+        year: string;
+      }[] = [];
+
+      selectedConfessionPeople.forEach(key => {
+        const parts = key.split('_');
+        if (parts.length < 3) return;
+        const teamId = parts[0];
+        const type = parts[1]; // 'kid' or 'anim'
+        const team = activeTeamsForSeason.find(t => t.id === teamId);
+        const teamName = team ? team.name : 'Senza Squadra';
+
+        if (type === 'kid') {
+          const firstName = parts[2];
+          const lastName = parts.slice(3).join('_');
+          const kid = team?.kids?.find(k => k.firstName === firstName && k.lastName === lastName);
+          if (kid) {
+            itemsToPrint.push({
+              teamName,
+              fullName: `${kid.lastName.toUpperCase()} ${kid.firstName}`,
+              role: 'Ragazzo/a',
+              year: kid.birthYear || '-'
+            });
+          }
+        } else if (type === 'anim') {
+          const animId = parts[2];
+          const anim = activeSeasonAnimatorsList.find(a => a.id === animId);
+          if (anim) {
+            itemsToPrint.push({
+              teamName,
+              fullName: `${anim.lastName.toUpperCase()} ${anim.firstName}`,
+              role: 'Animatore',
+              year: 'Animatore'
+            });
+          }
+        }
+      });
+
+      if (itemsToPrint.length === 0) {
+        setErrorStatus("Nessun dato valido trovato per la stampa!");
+        return;
+      }
+
+      itemsToPrint.sort((a, b) => {
+        const teamComp = a.teamName.localeCompare(b.teamName);
+        if (teamComp !== 0) return teamComp;
+
+        if (a.role !== b.role) {
+          return a.role === 'Animatore' ? -1 : 1;
+        }
+
+        if (a.role === 'Ragazzo/a' && b.role === 'Ragazzo/a') {
+          const yearComp = b.year.localeCompare(a.year);
+          if (yearComp !== 0) return yearComp;
+        }
+
+        return a.fullName.localeCompare(b.fullName);
+      });
+
+      const docPdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const pageWidth = docPdf.internal.pageSize.getWidth();
+      const margin = 14;
+
+      const parishName = parishInfo?.oratorioName || parishInfo?.name || 'Oratorio Feriale';
+      
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.setFontSize(16);
+      docPdf.setTextColor(30, 41, 59);
+      docPdf.text("ELENCO RAGAZZI E ANIMATORI - CONFESSIONI", margin, 20);
+      
+      docPdf.setFont('helvetica', 'normal');
+      docPdf.setFontSize(9);
+      docPdf.setTextColor(100, 116, 139);
+      docPdf.text(`${parishName} • Stagione ${activeSeason}`, margin, 26);
+      docPdf.text(`Data di stampa: ${new Date().toLocaleDateString('it-IT')}`, pageWidth - margin - 45, 26);
+
+      docPdf.setDrawColor(226, 232, 240);
+      docPdf.setLineWidth(0.5);
+      docPdf.line(margin, 29, pageWidth - margin, 29);
+
+      const tableRows = itemsToPrint.map((item, idx) => [
+        (idx + 1).toString(),
+        item.teamName,
+        item.fullName,
+        item.role,
+        item.year,
+        ""
+      ]);
+
+      autoTable(docPdf, {
+        startY: 33,
+        head: [['N.', 'SQUADRA', 'COGNOME E NOME', 'RUOLO', 'ANNO', 'CONFESSATO (firma/check)']],
+        body: tableRows,
+        theme: 'grid',
+        styles: { fontSize: 8.5, cellPadding: 3.5, font: 'helvetica' },
+        headStyles: { fillColor: [30, 58, 138], textColor: [255, 255, 255], fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        columnStyles: {
+          0: { cellWidth: 10, halign: 'center' },
+          1: { cellWidth: 35 },
+          2: { fontStyle: 'bold', cellWidth: 55 },
+          3: { cellWidth: 25 },
+          4: { cellWidth: 15, halign: 'center' },
+          5: { cellWidth: 42 }
+        }
+      });
+
+      setSuccessStatus("Elenco confessioni scaricato con successo!");
+      setTimeout(() => setSuccessStatus(null), 3000);
+
+      docPdf.save(`Elenco_Confessioni_${activeSeason}.pdf`);
+    } catch (err) {
+      console.error(err);
+      setErrorStatus("Errore durante la generazione del PDF.");
+    }
+  };
+
+  const togglePersonSelection = (key: string) => {
+    setSelectedConfessionPeople(prev => 
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+    );
   };
 
   const handleOpenModal = (type: typeof activeTab, data?: any, presetData?: any) => {
@@ -3807,6 +4153,7 @@ const OratorioFeriale: React.FC = () => {
         {allowedTabs.includes('preghiera') && <TabItem id="preghiera" label="Preghiera & Programma" icon={Sun} />}
         {allowedTabs.includes('workshops') && <TabItem id="workshops" label="Laboratori" icon={BookOpen} />}
         {allowedTabs.includes('events') && <TabItem id="events" label="Eventi Extra" icon={Sparkles} />}
+        {allowedTabs.includes('confessioni') && <TabItem id="confessioni" label="Confessioni" icon={Heart} />}
       </div>
 
       <div className="grid grid-cols-1 gap-6">
@@ -5180,7 +5527,14 @@ const OratorioFeriale: React.FC = () => {
                       const registered = a.seasons?.includes(activeSeason) || (!a.seasons && activeSeason === '2026');
 
                       return (
-                        <tr key={`${a.id}-${index}`} className="hover:bg-slate-50/50 transition-colors group">
+                        <tr 
+                          key={`${a.id}-${index}`} 
+                          className={`transition-colors group ${
+                            a.needsReview 
+                              ? 'bg-sky-50 border-l-4 border-sky-400 hover:bg-sky-100/80' 
+                              : 'hover:bg-slate-50/50'
+                          }`}
+                        >
                           {isEditing ? (
                             <>
                               <td className="px-6 py-3">
@@ -5304,6 +5658,30 @@ const OratorioFeriale: React.FC = () => {
                               </td>
                               <td className="px-8 py-4 text-right whitespace-nowrap">
                                 <div className="flex items-center justify-end gap-1.5">
+                                  <button 
+                                    onClick={() => {
+                                      setSelectedInterviewAnimatorId(a.id);
+                                      setEditingInterviewId(null);
+                                      setInterviewForm({
+                                        number: `Colloquio ${(a.interviews?.length || 0) + 1}`,
+                                        date: getTodayDateStr(),
+                                        notes: '',
+                                        outcome: '',
+                                        needsReview: a.needsReview || false
+                                      });
+                                      setIsInterviewModalOpen(true);
+                                    }}
+                                    className="px-2.5 py-1 text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-lg transition-colors flex items-center gap-1.5 active:scale-95 shadow-sm"
+                                    title="Gestisci Colloqui"
+                                  >
+                                    <ClipboardList size={11} className="text-sky-500" />
+                                    <span className="text-[9px] font-black uppercase tracking-wider">Colloquio</span>
+                                    {a.interviews && a.interviews.length > 0 && (
+                                      <span className="bg-sky-200 text-sky-800 text-[8px] font-extrabold px-1.5 py-0.5 rounded-full leading-none">
+                                        {a.interviews.length}
+                                      </span>
+                                    )}
+                                  </button>
                                   <button 
                                     onClick={() => handleOpenModal('animators', a)}
                                     className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" 
@@ -6174,21 +6552,46 @@ const OratorioFeriale: React.FC = () => {
                                 </p>
                               )}
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setExpandedTeams(prev => ({ ...prev, [item.team.id]: true }));
-                                setTimeout(() => {
-                                  const targetEl = document.getElementById(`team-card-${item.team.id}`);
-                                  if (targetEl) {
-                                    targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                  }
-                                }, 80);
-                              }}
-                              className="mt-3 text-[9px] font-black text-blue-600 hover:text-blue-800 uppercase tracking-widest text-left flex items-center gap-1 cursor-pointer"
-                            >
-                              Mostra in Squadra &rarr;
-                            </button>
+                            <div className="mt-3 pt-2.5 border-t border-slate-200/60 flex flex-col gap-1.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setExpandedTeams(prev => ({ ...prev, [item.team.id]: true }));
+                                    setTimeout(() => {
+                                      const targetEl = document.getElementById(`team-card-${item.team.id}`);
+                                      if (targetEl) {
+                                        targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                      }
+                                    }, 80);
+                                  }}
+                                  className="text-[9px] font-black text-blue-600 hover:text-blue-800 uppercase tracking-widest text-left flex items-center gap-1 cursor-pointer"
+                                >
+                                  Mostra in Squadra &rarr;
+                                </button>
+                              </div>
+                              <div className="space-y-1 mt-1">
+                                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Sposta in un'altra Squadra:</span>
+                                <select
+                                  value=""
+                                  onChange={async (e) => {
+                                    const targetId = e.target.value;
+                                    if (!targetId) return;
+                                    await handleMoveKidToAnotherTeam(item.kid, item.team.id, targetId);
+                                  }}
+                                  className="w-full text-[10px] font-bold bg-white text-slate-700 border border-slate-205 rounded-lg px-2 py-1 outline-none transition-all focus:border-blue-400 cursor-pointer shadow-sm"
+                                >
+                                  <option value="" disabled>Seleziona squadra...</option>
+                                  {filteredTeams
+                                    .filter(t => t.id !== item.team.id)
+                                    .map(t => (
+                                      <option key={t.id} value={t.id}>
+                                        {t.name}
+                                      </option>
+                                    ))}
+                                </select>
+                              </div>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -6753,6 +7156,30 @@ const OratorioFeriale: React.FC = () => {
                                             💬 {k.note}
                                           </p>
                                         )}
+                                        <div className="mt-2 pt-1.5 border-t border-slate-200/60 flex items-center justify-between gap-1 shrink-0">
+                                          <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest leading-none">Sposta:</span>
+                                          <select
+                                            value=""
+                                            onChange={async (e) => {
+                                              const targetTeamId = e.target.value;
+                                              if (targetTeamId) {
+                                                if (confirm(`Vuoi spostare ${k.firstName} ${k.lastName} alla squadra "${filteredTeams.find(team => team.id === targetTeamId)?.name}"?`)) {
+                                                  await handleMoveKidToAnotherTeam(k, t.id, targetTeamId);
+                                                }
+                                              }
+                                            }}
+                                            className="bg-white border border-slate-200 hover:border-slate-300 rounded-md px-1 py-0.5 text-[8.5px] font-bold text-slate-705 outline-none transition cursor-pointer max-w-[120px] shadow-sm truncate"
+                                          >
+                                            <option value="" disabled>Seleziona...</option>
+                                            {filteredTeams
+                                              .filter(team => team.id !== t.id)
+                                              .map(team => (
+                                                <option key={team.id} value={team.id}>
+                                                  {team.name}
+                                                </option>
+                                              ))}
+                                          </select>
+                                        </div>
                                       </div>
                                     );
                                   })}
@@ -9143,6 +9570,521 @@ const OratorioFeriale: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Confessioni Tab */}
+        {activeTab === 'confessioni' && (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* Header / Progress Card */}
+            {(() => {
+              const activeTeamsForSeason = teams.filter(t => t.season === activeSeason);
+              const allKids = activeTeamsForSeason.flatMap(team => (team.kids || []).map(k => ({ ...k, teamId: team.id, fullName: `${k.lastName} ${k.firstName}` })));
+              const allAnimators = activeTeamsForSeason.flatMap(team => 
+                activeSeasonAnimatorsList
+                  .filter(anim => team.animatorIds?.includes(anim.id))
+                  .map(a => ({ id: a.id, firstName: a.firstName, lastName: a.lastName, teamId: team.id, fullName: `${a.lastName} ${a.firstName}` }))
+              );
+
+              const totalCount = allKids.length + allAnimators.length;
+              const confessedRecords = confessions.filter(c => c.season === activeSeason && c.confessed);
+              const confessedCount = confessedRecords.length;
+              const percentage = totalCount > 0 ? Math.round((confessedCount / totalCount) * 100) : 0;
+
+              return (
+                <div className="bg-white border border-slate-200 rounded-[2.5rem] p-6 sm:p-8 shadow-sm flex flex-col md:flex-row gap-6 md:items-center justify-between">
+                  <div className="space-y-3 flex-1">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 bg-red-50 text-red-650 rounded-2xl shadow-inner">
+                        <Heart size={24} className="text-red-500 fill-red-500" />
+                      </div>
+                      <div>
+                        <span className="text-[9px] font-black uppercase text-red-600 tracking-wider font-mono">Sacramento della Confessione</span>
+                        <h2 className="text-xl sm:text-2xl font-black text-slate-800 uppercase tracking-tight">
+                          Gestione Confessioni
+                        </h2>
+                      </div>
+                    </div>
+                    <p className="text-slate-500 text-xs font-semibold leading-relaxed max-w-xl">
+                      Monitora l&apos;andamento delle confessioni per i ragazzi e gli animatori, seleziona gruppi specifici per stampare fogli firma fisici per i sacerdoti e conferma chi ha completato il sacramento.
+                    </p>
+                  </div>
+
+                  <div className="bg-slate-50 p-5 rounded-3xl border border-slate-100 min-w-[240px] md:min-w-[280px]">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-black uppercase text-slate-450 tracking-wider font-sans">Avanzamento Totale</span>
+                      <span className="text-xs font-extrabold text-blue-600 font-mono">{confessedCount} / {totalCount} ({percentage}%)</span>
+                    </div>
+                    <div className="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden shadow-inner font-sans">
+                      <div 
+                        className="bg-gradient-to-r from-blue-500 to-indigo-600 h-2.5 rounded-full transition-all duration-500" 
+                        style={{ width: `${percentage}%` }}
+                      />
+                    </div>
+                    <div className="flex gap-4 mt-3 pt-3 border-t border-slate-200/60 justify-around text-center">
+                      <div>
+                        <span className="block text-[10px] font-black uppercase text-slate-400">Ragazzi</span>
+                        <span className="text-xs font-black text-slate-700 font-mono">
+                          {allKids.filter(k => confessions.some(c => c.personKey === `${k.teamId}_kid_${k.firstName}_${k.lastName}` && c.season === activeSeason && c.confessed)).length} / {allKids.length}
+                        </span>
+                      </div>
+                      <div className="border-l border-slate-200" />
+                      <div>
+                        <span className="block text-[10px] font-black uppercase text-slate-400 font-sans">Animatori</span>
+                        <span className="text-xs font-black text-slate-700 font-mono">
+                          {allAnimators.filter(a => confessions.some(c => c.personKey === `${a.teamId}_anim_${a.id}` && c.season === activeSeason && c.confessed)).length} / {allAnimators.length}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Filter and Mass Actions Controls */}
+            <div className="bg-white border border-slate-200 rounded-[2.5rem] p-6 shadow-sm space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                {/* Search */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black uppercase text-slate-400 block tracking-wider">Cerca Nome</label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                      <Search size={14} />
+                    </span>
+                    <input
+                      type="text"
+                      value={confessionSearch}
+                      onChange={(e) => setConfessionSearch(e.target.value)}
+                      placeholder="Filtra per cognome o nome..."
+                      className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold leading-normal text-slate-850 outline-none focus:ring-2 focus:ring-blue-500 shadow-inner"
+                    />
+                  </div>
+                </div>
+
+                {/* Team Filter */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black uppercase text-slate-400 block tracking-wider">Squadra</label>
+                  <select
+                    value={confessionTeamFilter}
+                    onChange={(e) => setConfessionTeamFilter(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold leading-normal text-slate-855 outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="all">Tutte le squadre</option>
+                    {teams.filter(t => t.season === activeSeason).map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Role Filter */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black uppercase text-slate-400 block tracking-wider">Ruolo</label>
+                  <select
+                    value={confessionRoleFilter}
+                    onChange={(e) => setConfessionRoleFilter(e.target.value as any)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold leading-normal text-slate-855 outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="all">Tutti (Ragazzi & Animatori)</option>
+                    <option value="kid">Solo Ragazzi</option>
+                    <option value="animator">Solo Animatori</option>
+                  </select>
+                </div>
+
+                {/* Progress Status Filter */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black uppercase text-slate-400 block tracking-wider font-sans">Stato Confessione</label>
+                  <select
+                    value={confessionStatusFilter}
+                    onChange={(e) => setConfessionStatusFilter(e.target.value as any)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold leading-normal text-slate-855 outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="all">Tutti gli iscritti</option>
+                    <option value="not_confessed">Solo da Confessare</option>
+                    <option value="confessed">Solo Confessati</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Mass Selection Actions and Print Toolbar */}
+              {(() => {
+                const activeTeamsForSeason = teams.filter(t => t.season === activeSeason);
+                
+                // Compile the list of people visible after applying the filters
+                const getVisiblePeopleKeys = () => {
+                  const keys: string[] = [];
+                  activeTeamsForSeason.forEach(team => {
+                    if (confessionTeamFilter !== 'all' && team.id !== confessionTeamFilter) return;
+
+                    // Kids
+                    if (confessionRoleFilter !== 'animator') {
+                      (team.kids || []).forEach(kid => {
+                        const name = `${kid.lastName} ${kid.firstName}`.toLowerCase();
+                        if (confessionSearch && !name.includes(confessionSearch.toLowerCase())) return;
+                        
+                        const personKey = `${team.id}_kid_${kid.firstName}_${kid.lastName}`;
+                        const isConfessed = confessions.some(c => c.personKey === personKey && c.season === activeSeason && c.confessed);
+                        
+                        if (confessionStatusFilter === 'confessed' && !isConfessed) return;
+                        if (confessionStatusFilter === 'not_confessed' && isConfessed) return;
+
+                        keys.push(personKey);
+                      });
+                    }
+
+                    // Animators
+                    if (confessionRoleFilter !== 'kid') {
+                      const teamAnimators = activeSeasonAnimatorsList.filter(anim => team.animatorIds?.includes(anim.id));
+                      teamAnimators.forEach(anim => {
+                        const name = `${anim.lastName} ${anim.firstName}`.toLowerCase();
+                        if (confessionSearch && !name.includes(confessionSearch.toLowerCase())) return;
+                        
+                        const personKey = `${team.id}_anim_${anim.id}`;
+                        const isConfessed = confessions.some(c => c.personKey === personKey && c.season === activeSeason && c.confessed);
+                        
+                        if (confessionStatusFilter === 'confessed' && !isConfessed) return;
+                        if (confessionStatusFilter === 'not_confessed' && isConfessed) return;
+
+                        keys.push(personKey);
+                      });
+                    }
+                  });
+                  return keys;
+                };
+
+                const visibleKeys = getVisiblePeopleKeys();
+                const allSelected = visibleKeys.length > 0 && visibleKeys.every(k => selectedConfessionPeople.includes(k));
+
+                return (
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 pt-3 border-t border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (allSelected) {
+                            setSelectedConfessionPeople(prev => prev.filter(k => !visibleKeys.includes(k)));
+                          } else {
+                            setSelectedConfessionPeople(prev => {
+                              const next = [...prev];
+                              visibleKeys.forEach(k => {
+                                if (!next.includes(k)) next.push(k);
+                              });
+                              return next;
+                            });
+                          }
+                        }}
+                        className="px-4 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl text-[10px] font-black uppercase tracking-wider text-slate-600 transition-all select-none active:scale-95"
+                      >
+                        {allSelected ? 'Deseleziona Filtrati' : 'Seleziona Tutti i Filtrati'}
+                      </button>
+                      
+                      {selectedConfessionPeople.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedConfessionPeople([])}
+                          className="px-4 py-2 text-danger hover:bg-red-50 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all select-none active:scale-95 text-red-600"
+                        >
+                          Deseleziona Tutto ({selectedConfessionPeople.length})
+                        </button>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleDownloadConfessionsPDF}
+                      disabled={selectedConfessionPeople.length === 0}
+                      className="px-5 py-2.5 bg-blue-600 font-extrabold text-[11px] uppercase tracking-wider text-white rounded-xl shadow-md shadow-blue-100/50 hover:bg-blue-700 disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2 select-none active:scale-95"
+                    >
+                      <Download size={14} />
+                      Stampa PDF Elenco Selezionati ({selectedConfessionPeople.length})
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Teams and Members Lists */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {(() => {
+                const activeTeamsForSeason = teams.filter(t => t.season === activeSeason);
+                const teamsToShow = activeTeamsForSeason.filter(t => confessionTeamFilter === 'all' || t.id === confessionTeamFilter);
+
+                if (teamsToShow.length === 0) {
+                  return (
+                    <div className="col-span-full py-20 text-center bg-white rounded-[2.5rem] border border-slate-200">
+                      <Sparkles size={48} className="mx-auto text-slate-300 mb-4 animate-bounce" />
+                      <h4 className="text-sm font-black text-slate-700 uppercase tracking-tight">Nessuna Squadra Trovata</h4>
+                      <p className="text-slate-400 text-xs font-semibold mt-1">
+                        Crea ed associa squadre nella sezione &quot;Squadre&quot; prima di visualizzare l&apos;elenco confessioni.
+                      </p>
+                    </div>
+                  );
+                }
+
+                return teamsToShow.map(team => {
+                  // Animators setup
+                  const teamAnimators = activeSeasonAnimatorsList.filter(anim => team.animatorIds?.includes(anim.id));
+                  
+                  // Filter Animators
+                  const filteredTeamAnimators = teamAnimators.filter(anim => {
+                    const name = `${anim.lastName} ${anim.firstName}`.toLowerCase();
+                    if (confessionSearch && !name.includes(confessionSearch.toLowerCase())) return false;
+                    
+                    const personKey = `${team.id}_anim_${anim.id}`;
+                    const isConfessed = confessions.some(c => c.personKey === personKey && c.season === activeSeason && c.confessed);
+                    
+                    if (confessionStatusFilter === 'confessed' && !isConfessed) return false;
+                    if (confessionStatusFilter === 'not_confessed' && isConfessed) return false;
+
+                    return true;
+                  });
+
+                  // Kids grouped by year
+                  const kidsByYear: { [year: string]: Kid[] } = {};
+                  (team.kids || []).forEach(kid => {
+                    const name = `${kid.lastName} ${kid.firstName}`.toLowerCase();
+                    if (confessionSearch && !name.includes(confessionSearch.toLowerCase())) return;
+
+                    const personKey = `${team.id}_kid_${kid.firstName}_${kid.lastName}`;
+                    const isConfessed = confessions.some(c => c.personKey === personKey && c.season === activeSeason && c.confessed);
+                    
+                    if (confessionStatusFilter === 'confessed' && !isConfessed) return;
+                    if (confessionStatusFilter === 'not_confessed' && isConfessed) return;
+
+                    const yr = kid.birthYear || "Anno Non Specificato";
+                    if (!kidsByYear[yr]) kidsByYear[yr] = [];
+                    kidsByYear[yr].push(kid);
+                  });
+
+                  const sortedYears = Object.keys(kidsByYear).sort((a, b) => b.localeCompare(a));
+
+                  const hasAnimatorsCount = filteredTeamAnimators.length > 0;
+                  const hasKidsCount = sortedYears.some(yr => kidsByYear[yr].length > 0);
+
+                  // If filters hide everything in this team, don't show the card
+                  if (confessionRoleFilter === 'animator' && !hasAnimatorsCount) return null;
+                  if (confessionRoleFilter === 'kid' && !hasKidsCount) return null;
+                  if (!hasAnimatorsCount && !hasKidsCount) return null;
+
+                  // Counts for team stats
+                  const totalTeamCount = teamAnimators.length + (team.kids || []).length;
+                  const teamConfessedRecords = confessions.filter(c => c.teamId === team.id && c.season === activeSeason && c.confessed);
+                  const teamConfessedCount = teamConfessedRecords.length;
+                  const teamPercentage = totalTeamCount > 0 ? Math.round((teamConfessedCount / totalTeamCount) * 100) : 0;
+
+                  // Team group selection keys list
+                  const teamAllKeys = [
+                    ...teamAnimators.map(a => `${team.id}_anim_${a.id}`),
+                    ...(team.kids || []).map(k => `${team.id}_kid_${k.firstName}_${k.lastName}`)
+                  ];
+                  const teamAllSelected = teamAllKeys.length > 0 && teamAllKeys.every(k => selectedConfessionPeople.includes(k));
+
+                  return (
+                    <div 
+                      key={team.id} 
+                      className="bg-white border border-slate-200 rounded-[2.5rem] shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-all duration-300"
+                    >
+                      {/* Card Header with Custom Team Color */}
+                      <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                        <div className="flex items-center gap-3">
+                          <span 
+                            className="w-3.5 h-3.5 rounded-full block border shadow-sm"
+                            style={{ backgroundColor: team.color || '#3B82F6', borderColor: team.color || '#3B82F6' }}
+                          />
+                          <div>
+                            <h3 className="font-black text-slate-800 uppercase italic tracking-tight text-sm">
+                              {team.name}
+                            </h3>
+                            <span className="text-[10px] font-black text-blue-600 uppercase tracking-wider font-mono">
+                              Progresso: {teamConfessedCount} / {totalTeamCount} ({teamPercentage}%)
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Team Actions */}
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (teamAllSelected) {
+                                setSelectedConfessionPeople(prev => prev.filter(k => !teamAllKeys.includes(k)));
+                              } else {
+                                setSelectedConfessionPeople(prev => {
+                                  const next = [...prev];
+                                  teamAllKeys.forEach(k => {
+                                    if (!next.includes(k)) next.push(k);
+                                  });
+                                  return next;
+                                });
+                              }
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-[9px] font-extrabold uppercase hover:bg-slate-100 transition-all text-slate-500 font-sans"
+                          >
+                            {teamAllSelected ? 'Desel. Team' : 'Seleziona Team'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Card Progress Microline */}
+                      <div className="w-full bg-slate-100 h-1">
+                        <div 
+                          className="h-full transition-all duration-300"
+                          style={{ backgroundColor: team.color || '#3B82F6', width: `${teamPercentage}%` }}
+                        />
+                      </div>
+
+                      {/* Card Members Body */}
+                      <div className="p-5 space-y-6 flex-1">
+                        {/* Animators section */}
+                        {confessionRoleFilter !== 'kid' && filteredTeamAnimators.length > 0 && (
+                          <div className="space-y-3">
+                            <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1.5 font-sans">
+                              Animatori Attivi ({filteredTeamAnimators.length})
+                            </span>
+                            <div className="space-y-2">
+                              {filteredTeamAnimators.map(anim => {
+                                const personKey = `${team.id}_anim_${anim.id}`;
+                                const isSelected = selectedConfessionPeople.includes(personKey);
+                                const isConfessed = confessions.some(c => c.personKey === personKey && c.season === activeSeason && c.confessed);
+
+                                return (
+                                  <div 
+                                    key={personKey}
+                                    className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${isConfessed ? 'bg-emerald-50/40 border-emerald-100' : 'bg-slate-50/50 border-slate-150'} hover:border-slate-300`}
+                                  >
+                                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                                      {/* Printing select checkbox */}
+                                      <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={() => togglePersonSelection(personKey)}
+                                        className="w-4.5 h-4.5 text-blue-600 border-slate-305 rounded cursor-pointer"
+                                        title="Includi in stampa PDF"
+                                      />
+                                      <div className="truncate">
+                                        <p className="text-xs font-black text-slate-800 uppercase italic truncate">
+                                          {anim.lastName} {anim.firstName}
+                                        </p>
+                                        <span className="bg-amber-100 border border-amber-300 text-amber-800 text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md inline-block mt-0.5 font-mono">
+                                          Animatore
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {/* Action Toggle Confession */}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleConfession(personKey, `${anim.lastName} ${anim.firstName}`, 'animator', team.id)}
+                                      className={`px-3 py-1.5 rounded-xl font-black text-[9px] uppercase tracking-wider transition-all border ${
+                                        isConfessed 
+                                          ? 'bg-emerald-500 text-white border-emerald-500 hover:bg-emerald-600' 
+                                          : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                                      }`}
+                                    >
+                                      {isConfessed ? 'Confessato ✓' : 'Segna Fatto'}
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Kids grouped by Year sections */}
+                        {confessionRoleFilter !== 'animator' && sortedYears.length > 0 && (
+                          <div className="space-y-4 font-sans">
+                            {sortedYears.map(year => {
+                              const groupKids = kidsByYear[year];
+                              if (groupKids.length === 0) return null;
+
+                              const yearKeys = groupKids.map(k => `${team.id}_kid_${k.firstName}_${k.lastName}`);
+                              const yearAllSelected = yearKeys.every(k => selectedConfessionPeople.includes(k));
+
+                              return (
+                                <div key={year} className="space-y-2 border-t border-slate-100 pt-3 first:border-0 first:pt-0">
+                                  {/* Year Group Header with group actions */}
+                                  <div className="flex items-center justify-between pb-1">
+                                    <span className="text-[9px] font-black uppercase text-indigo-600 tracking-wider font-mono">
+                                      Anno di Nascita: {year} ({groupKids.length})
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (yearAllSelected) {
+                                          setSelectedConfessionPeople(prev => prev.filter(k => !yearKeys.includes(k)));
+                                        } else {
+                                          setSelectedConfessionPeople(prev => {
+                                            const next = [...prev];
+                                            yearKeys.forEach(k => {
+                                              if (!next.includes(k)) next.push(k);
+                                            });
+                                            return next;
+                                          });
+                                        }
+                                      }}
+                                      className="text-[9px] font-extrabold uppercase hover:text-indigo-805 text-indigo-405 font-mono"
+                                    >
+                                      {yearAllSelected ? 'Desel. Anno' : 'Sel. Anno'}
+                                    </button>
+                                  </div>
+
+                                  {/* Kids list */}
+                                  <div className="space-y-2 font-sans">
+                                    {groupKids.map(kid => {
+                                      const personKey = `${team.id}_kid_${kid.firstName}_${kid.lastName}`;
+                                      const isSelected = selectedConfessionPeople.includes(personKey);
+                                      const isConfessed = confessions.some(c => c.personKey === personKey && c.season === activeSeason && c.confessed);
+
+                                      return (
+                                        <div 
+                                          key={personKey}
+                                          className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${isConfessed ? 'bg-emerald-50/40 border-emerald-100' : 'bg-slate-50/50 border-slate-150'} hover:border-slate-300`}
+                                        >
+                                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                                            {/* Printing select checkbox */}
+                                            <input
+                                              type="checkbox"
+                                              checked={isSelected}
+                                              onChange={() => togglePersonSelection(personKey)}
+                                              className="w-4.5 h-4.5 text-blue-600 border-slate-305 rounded cursor-pointer"
+                                              title="Includi in stampa PDF"
+                                            />
+                                            <div className="truncate">
+                                              <p className="text-xs font-black text-slate-800 uppercase italic truncate">
+                                                {kid.lastName} {kid.firstName}
+                                              </p>
+                                              <span className="bg-slate-100 border border-slate-205 text-slate-550 text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md inline-block mt-0.5 font-mono">
+                                                Ragazzo • {year}
+                                              </span >
+                                            </div>
+                                          </div>
+
+                                          {/* Action Toggle Confession */}
+                                          <button
+                                            type="button"
+                                            onClick={() => handleToggleConfession(personKey, `${kid.lastName} ${kid.firstName}`, 'kid', team.id)}
+                                            className={`px-3 py-1.5 rounded-xl font-black text-[9px] uppercase tracking-wider transition-all border ${
+                                              isConfessed 
+                                                ? 'bg-emerald-500 text-white border-emerald-500 hover:bg-emerald-600' 
+                                                : 'bg-white text-slate-500 border-slate-200 hover:border-slate-305 hover:bg-slate-50'
+                                            }`}
+                                          >
+                                            {isConfessed ? 'Confessato ✓' : 'Segna Fatto'}
+                                          </button>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Creation/Edit dialogue modal */}
@@ -11066,6 +12008,301 @@ const OratorioFeriale: React.FC = () => {
               >
                 {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
                 Salva Modifiche
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Animator Interviews Modal (Gestione Colloqui) */}
+      {isInterviewModalOpen && selectedInterviewAnimator && (
+        <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-4xl rounded-[2.5rem] shadow-2xl overflow-hidden border border-white animate-in zoom-in fade-in duration-300">
+            {/* Modal Header */}
+            <div className="p-8 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-black text-slate-900 uppercase italic flex items-center gap-2">
+                  <ClipboardList className="text-sky-500" size={20} />
+                  Gestione Colloqui
+                </h2>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
+                  {selectedInterviewAnimator.lastName} {selectedInterviewAnimator.firstName} — {activeSeason}
+                </p>
+              </div>
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2.5 bg-sky-50 hover:bg-sky-100 transition-colors px-3 py-2 rounded-xl border border-sky-100 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={selectedInterviewAnimator.needsReview || false}
+                    onChange={(e) => handleToggleNeedsReview(selectedInterviewAnimator.id, selectedInterviewAnimator.needsReview || false)}
+                    className="w-4 h-4 rounded text-sky-655 focus:ring-sky-500 border-sky-350"
+                  />
+                  <span className="text-[9px] font-black text-sky-800 uppercase tracking-wide">
+                    Da Rivedere (Azzurro)
+                  </span>
+                </label>
+                <button 
+                  onClick={() => setIsInterviewModalOpen(false)} 
+                  className="p-2.5 hover:bg-slate-100 rounded-full text-slate-400 animate-in fade-in"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8 max-h-[60vh] overflow-y-auto custom-scrollbar">
+              
+              {/* Left Column: History of previous interviews */}
+              <div className="space-y-4">
+                <h3 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-50 pb-2">
+                  <span>Cronologia Colloqui</span>
+                  <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-[9px] font-extrabold">
+                    {selectedInterviewAnimator.interviews?.length || 0}
+                  </span>
+                </h3>
+
+                <div className="space-y-3 max-h-[45vh] overflow-y-auto pr-1">
+                  {(!selectedInterviewAnimator.interviews || selectedInterviewAnimator.interviews.length === 0) ? (
+                    <div className="p-8 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 text-center text-slate-400 py-12">
+                      <ClipboardList className="mx-auto text-slate-200 mb-2" size={32} />
+                      <p className="text-[10px] font-black uppercase tracking-wider italic">Nessun colloquio ancora registrato</p>
+                      <p className="text-[9px] font-bold uppercase mt-1 leading-relaxed">Usa il modulo a fianco per inserire il primo colloquio di questo animatore.</p>
+                    </div>
+                  ) : (
+                    [...selectedInterviewAnimator.interviews]
+                      .sort((a, b) => b.date.localeCompare(a.date))
+                      .map((intv) => (
+                        <div 
+                          key={intv.id} 
+                          className={`p-4 rounded-2xl border transition-all ${
+                            intv.needsReview 
+                              ? 'bg-sky-50/70 hover:bg-sky-100/70 border-sky-200' 
+                              : 'bg-white hover:bg-slate-50/85 border-slate-100'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div>
+                              <span className="font-black text-xs text-slate-800 italic uppercase">
+                                {intv.number || "Colloquio s.n."}
+                              </span>
+                              <span className="block text-[9px] text-slate-400 font-mono font-bold uppercase mt-0.5">
+                                Data: {intv.date}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              {intv.needsReview && (
+                                <span className="bg-sky-100 border border-sky-200 text-sky-850 text-[8px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">
+                                  Da rivedere
+                                </span>
+                              )}
+                              {deleteConfirmInterviewId === intv.id ? (
+                                <div className="flex items-center gap-1.5 bg-red-50/80 px-2.5 py-1.5 rounded-xl border border-red-100 animate-in zoom-in-95 leading-none">
+                                  <span className="text-[9px] font-black uppercase text-red-700 tracking-wider">Sicuro?</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteInterview(selectedInterviewAnimator.id, intv.id)}
+                                    className="bg-red-650 hover:bg-red-800 text-white text-[8px] font-black uppercase px-2 py-1 rounded-md active:scale-95 transition-all shadow-sm"
+                                  >
+                                    Sì
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeleteConfirmInterviewId(null)}
+                                    className="bg-slate-200 hover:bg-slate-350 text-slate-750 text-[8px] font-black uppercase px-2 py-1 rounded-md active:scale-95 transition-all"
+                                  >
+                                    No
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingInterviewId(intv.id);
+                                      setInterviewForm({
+                                        number: intv.number,
+                                        date: intv.date,
+                                        notes: intv.notes,
+                                        outcome: intv.outcome,
+                                        needsReview: intv.needsReview
+                                      });
+                                    }}
+                                    className={`p-1.5 rounded-lg transition-colors ${
+                                      editingInterviewId === intv.id
+                                        ? 'text-sky-600 bg-sky-100 border border-sky-200'
+                                        : 'text-blue-500 hover:text-blue-700 hover:bg-blue-50'
+                                    }`}
+                                    title="Modifica colloquio"
+                                  >
+                                    <Pencil size={12} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeleteConfirmInterviewId(intv.id)}
+                                    className="p-1.5 text-red-500 hover:text-red-750 hover:bg-red-50 rounded-lg transition-colors"
+                                    title="Elimina colloquio"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {intv.outcome && (
+                            <div className="mb-2">
+                              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block font-bold">Esito:</span>
+                              <span className="text-xs font-bold text-slate-700 bg-slate-100/60 px-2 py-0.5 rounded-md inline-block mt-0.5">
+                                {intv.outcome}
+                              </span>
+                            </div>
+                          )}
+
+                          {intv.notes && (
+                            <div className="pt-2 border-t border-slate-100/80">
+                              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1 font-bold">Note:</span>
+                              <p className="text-[11px] text-slate-600 font-bold whitespace-pre-line italic font-medium leading-relaxed">
+                                {intv.notes}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      ))
+                  )}
+                </div>
+              </div>
+
+              {/* Right Column: Add or edit an interview form */}
+              <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-4">
+                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                  {editingInterviewId ? (
+                    <>
+                      <Pencil size={14} className="text-blue-500 animate-pulse" />
+                      Modifica Colloquio
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={14} className="text-blue-500" />
+                      Registra Nuovo Colloquio
+                    </>
+                  )}
+                </h3>
+
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <div className="space-y-1.5">
+                      <span className="text-[9px] font-black text-slate-450 uppercase tracking-widest ml-1 block">N. Colloquio</span>
+                      <input 
+                        required 
+                        type="text" 
+                        value={interviewForm.number} 
+                        onChange={e => setInterviewForm({...interviewForm, number: e.target.value})} 
+                        className="w-full px-4 py-3 rounded-xl bg-white border border-slate-150 focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold shadow-sm" 
+                        placeholder="Es. Colloquio 1"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <span className="text-[9px] font-black text-slate-450 uppercase tracking-widest ml-1 block">Data Colloquio</span>
+                      <input 
+                        required 
+                        type="date" 
+                        value={interviewForm.date} 
+                        onChange={e => setInterviewForm({...interviewForm, date: e.target.value})} 
+                        className="w-full px-4 py-3 rounded-xl bg-white border border-slate-150 focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold shadow-sm" 
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className="text-[9px] font-black text-slate-450 uppercase tracking-widest ml-1 block">Esito Colloquio</span>
+                    <input 
+                      type="text" 
+                      value={interviewForm.outcome} 
+                      onChange={e => setInterviewForm({...interviewForm, outcome: e.target.value})} 
+                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-150 focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold shadow-sm" 
+                      placeholder="Es. Positivo, Da rivedere, Non idoneo..."
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className="text-[9px] font-black text-slate-450 uppercase tracking-widest ml-1 block font-medium">Note / Descrizione Colloquio</span>
+                    <textarea 
+                      rows={3}
+                      value={interviewForm.notes} 
+                      onChange={e => setInterviewForm({...interviewForm, notes: e.target.value})} 
+                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-150 focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold shadow-sm resize-none" 
+                      placeholder="Inserisci note, valutazioni e dettagli..."
+                    />
+                  </div>
+
+                  <label className="flex items-center gap-2.5 p-3.5 bg-white rounded-xl border border-slate-150 cursor-pointer hover:bg-slate-100/30 transition select-none">
+                    <input
+                      type="checkbox"
+                      checked={interviewForm.needsReview}
+                      onChange={(e) => setInterviewForm({...interviewForm, needsReview: e.target.checked})}
+                      className="w-4.5 h-4.5 rounded text-sky-600 focus:ring-sky-500 border-slate-205"
+                    />
+                    <div>
+                      <span className="text-[9px] font-black text-slate-700 uppercase tracking-wide block">Contrassegna come da rivedere</span>
+                      <span className="text-[8px] font-bold text-slate-405 uppercase tracking-widest mt-0.5 block">(colora la riga dell&apos;animatore di azzurro)</span>
+                    </div>
+                  </label>
+
+                  <div className="flex flex-col gap-2">
+                    <button
+                      type="button"
+                      disabled={isSaving || !interviewForm.number || !interviewForm.date}
+                      onClick={() => handleSaveInterview(selectedInterviewAnimator.id, interviewForm)}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-black uppercase tracking-widest py-4 rounded-xl shadow-lg hover:shadow-blue-50 transition active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {isSaving ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" />
+                          Salvataggio...
+                        </>
+                      ) : (
+                        <>
+                          <Save size={14} />
+                          {editingInterviewId ? 'Salva Modifiche' : 'Salva Colloquio'}
+                        </>
+                      )}
+                    </button>
+
+                    {editingInterviewId && (
+                      <button
+                        type="button"
+                        disabled={isSaving}
+                        onClick={() => {
+                          setEditingInterviewId(null);
+                          setInterviewForm({
+                            number: `Colloquio ${(selectedInterviewAnimator.interviews?.length || 0) + 1}`,
+                            date: getTodayDateStr(),
+                            notes: '',
+                            outcome: '',
+                            needsReview: false
+                          });
+                        }}
+                        className="w-full bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-black uppercase tracking-widest py-3 rounded-xl transition active:scale-[0.98] flex items-center justify-center gap-1.5"
+                      >
+                        <X size={12} />
+                        Annulla Modifica
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-8 bg-slate-50 border-t border-slate-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsInterviewModalOpen(false)}
+                className="bg-white text-slate-500 border border-slate-200 text-[10px] font-black uppercase tracking-widest px-6 py-3.5 rounded-full hover:bg-slate-100 transition active:scale-95 shadow-sm"
+              >
+                Chiudi
               </button>
             </div>
           </div>
