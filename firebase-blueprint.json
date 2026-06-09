@@ -443,6 +443,50 @@
       },
       "required": ["name", "date", "location"]
     },
+    "OratorioMeeting": {
+      "title": "Oratorio Meeting",
+      "description": "Daily/periodic meetings for Oratorio Feriale to register details, questions to teams, answers, and points of critique/improvement.",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "questions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "text": { "type": "string" },
+              "teamResponses": {
+                "type": "object",
+                "additionalProperties": { "type": "string" }
+              }
+            }
+          }
+        },
+        "criticalPoints": { "type": "string" },
+        "whatWorked": { "type": "string" },
+        "notes": { "type": "string" },
+        "season": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["date", "time"]
+    },
+    "OratorioPrayer": {
+      "title": "Oratorio Daily Program & Prayer",
+      "description": "Daily prayers, reflections, and program elements like Word of the Day, Daily Story, Daily Game, and Daily Activity.",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string" },
+        "wordOfTheDay": { "type": "string" },
+        "story": { "type": "string" },
+        "game": { "type": "string" },
+        "activity": { "type": "string" },
+        "season": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["date"]
+    },
     "Parish": {
       "title": "Parish",
       "description": "A parish or service unit managed by the portal.",
@@ -484,6 +528,7 @@
     "/parishes/{parishId}/oratorio_teams": { "schema": "OratorioTeam", "description": "Teams for Oratorio Feriale" },
     "/parishes/{parishId}/oratorio_absences": { "schema": "OratorioAbsence", "description": "Absences for Oratorio Feriale animators" },
     "/parishes/{parishId}/oratorio_workshops": { "schema": "OratorioWorkshop", "description": "Workshops for Oratorio Feriale" },
-    "/parishes/{parishId}/oratorio_events": { "schema": "OratorioEvent", "description": "Extra events with animator attendance and meal tracking for Oratorio Feriale" }
+    "/parishes/{parishId}/oratorio_events": { "schema": "OratorioEvent", "description": "Extra events with animator attendance and meal tracking for Oratorio Feriale" },
+    "/parishes/{parishId}/oratorio_meetings": { "schema": "OratorioMeeting", "description": "Meetings for Oratorio Feriale" }
   }
 }

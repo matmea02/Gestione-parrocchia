@@ -49,7 +49,10 @@ import {
   Settings,
   LayoutDashboard,
   Play,
-  Pause
+  Pause,
+  Eye,
+  EyeOff,
+  ClipboardList
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -110,6 +113,15 @@ interface Absence {
   createdAt: string;
 }
 
+interface DailyNotes {
+  id: string;
+  season: string;
+  date: string;
+  notes: string;
+  tasks: { id: string; text: string; completed: boolean }[];
+  updatedAt?: string;
+}
+
 interface Workshop {
   id: string;
   name: string;
@@ -144,12 +156,60 @@ interface OratorioEvent {
   createdAt: string;
 }
 
+interface MeetingQuestion {
+  id: string;
+  text: string;
+  teamResponses: { [teamId: string]: string };
+}
+
+interface OratorioMeeting {
+  id: string;
+  date: string;
+  time: string;
+  season: string;
+  questions: MeetingQuestion[];
+  criticalPoints: string;
+  whatWorked: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+interface OratorioPrayer {
+  id: string;
+  date: string;
+  wordOfTheDay: string;
+  story: string;
+  game: string;
+  activity: string;
+  season: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 const getTodayDateStr = () => {
   const d = new Date();
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+const parseSafeDate = (dayStr: string): Date => {
+  if (!dayStr || typeof dayStr !== 'string') return new Date();
+  const parts = dayStr.split('-');
+  if (parts.length < 3) return new Date(dayStr);
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const date = parseInt(parts[2], 10);
+  return new Date(year, month, date, 12, 0, 0);
+};
+
+const timeToMinutes = (timeStr: string): number => {
+  if (!timeStr) return 0;
+  const parts = timeStr.split(':').map(Number);
+  if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) return 0;
+  return parts[0] * 60 + parts[1];
 };
 
 const getWeatherForDate = (dateStr: string) => {
@@ -204,6 +264,9 @@ const OratorioFeriale: React.FC = () => {
   const workshopsColl = useParishCollection('oratorio_workshops');
   const eventsColl = useParishCollection('oratorio_events');
   const dailyTeamsColl = useParishCollection('oratorio_daily_teams');
+  const dailyNotesColl = useParishCollection('oratorio_daily_notes');
+  const meetingsColl = useParishCollection('oratorio_meetings');
+  const prayersColl = useParishCollection('oratorio_prayers');
   const parishSettingsDoc = useParishDoc('settings', 'parish');
 
   const [parishInfo, setParishInfo] = useState<any>({
@@ -247,7 +310,7 @@ const OratorioFeriale: React.FC = () => {
     }
   };
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'animators' | 'shifts' | 'teams' | 'absences' | 'workshops' | 'events'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'animators' | 'shifts' | 'teams' | 'absences' | 'workshops' | 'events' | 'meetings' | 'preghiera'>('dashboard');
   const [animators, setAnimators] = useState<Animator[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -255,8 +318,32 @@ const OratorioFeriale: React.FC = () => {
   const [absences, setAbsences] = useState<Absence[]>([]);
   const [workshops, setWorkshops] = useState<Workshop[]>([]);
   const [events, setEvents] = useState<OratorioEvent[]>([]);
+  const [meetings, setMeetings] = useState<OratorioMeeting[]>([]);
+  const [prayers, setPrayers] = useState<OratorioPrayer[]>([]);
   const [seasonsData, setSeasonsData] = useState<{ [seasonId: string]: string[] }>({});
+  const [dailyNotesList, setDailyNotesList] = useState<DailyNotes[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // States for custom Meeting section
+  const [isMeetingModalOpen, setIsMeetingModalOpen] = useState(false);
+  const [editingMeeting, setEditingMeeting] = useState<OratorioMeeting | null>(null);
+  const [meetingSearchQuery, setMeetingSearchQuery] = useState('');
+  const [meetingDateForm, setMeetingDateForm] = useState(getTodayDateStr());
+  const [meetingTimeForm, setMeetingTimeForm] = useState('18:00');
+  const [meetingQuestionsForm, setMeetingQuestionsForm] = useState<MeetingQuestion[]>([]);
+  const [meetingCriticalPointsForm, setMeetingCriticalPointsForm] = useState('');
+  const [meetingWhatWorkedForm, setMeetingWhatWorkedForm] = useState('');
+  const [meetingNotesForm, setMeetingNotesForm] = useState('');
+  const [newQuestionTextForm, setNewQuestionTextForm] = useState('');
+
+  // States for Prayer & Daily Program section
+  const [isPrayerModalOpen, setIsPrayerModalOpen] = useState(false);
+  const [prayerDateForm, setPrayerDateForm] = useState('');
+  const [prayerWordForm, setPrayerWordForm] = useState('');
+  const [prayerStoryForm, setPrayerStoryForm] = useState('');
+  const [prayerGameForm, setPrayerGameForm] = useState('');
+  const [prayerActivityForm, setPrayerActivityForm] = useState('');
+  const [prayerSelectedWeekId, setPrayerSelectedWeekId] = useState<string>('all');
 
   // Active season state (persisted)
   const [activeSeason, setActiveSeason] = useState<string>(() => {
@@ -268,14 +355,14 @@ const OratorioFeriale: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
 
   const allowedTabs = portalUser?.isAdmin 
-    ? ['dashboard', 'animators', 'shifts', 'teams', 'absences', 'workshops', 'events']
+    ? ['dashboard', 'animators', 'absences', 'teams', 'shifts', 'meetings', 'preghiera', 'workshops', 'events']
     : portalUser 
-      ? ['dashboard', ...(portalUser.permissions?.[currentParish?.id || '']?.oratorioTabs || ['animators', 'shifts', 'teams', 'absences', 'workshops', 'events'])]
-      : ['dashboard', 'animators', 'shifts', 'teams', 'absences', 'workshops', 'events'];
+      ? ['dashboard', ...(portalUser.permissions?.[currentParish?.id || '']?.oratorioTabs || ['animators', 'absences', 'teams', 'shifts', 'meetings', 'preghiera', 'workshops', 'events'])]
+      : ['dashboard', 'animators', 'absences', 'teams', 'shifts', 'meetings', 'preghiera', 'workshops', 'events'];
 
   useEffect(() => {
     if (allowedTabs && allowedTabs.length > 0 && !allowedTabs.includes(activeTab)) {
-      setActiveTab(allowedTabs[0] as 'dashboard' | 'animators' | 'shifts' | 'teams' | 'absences' | 'workshops' | 'events');
+      setActiveTab(allowedTabs[0] as any);
     }
   }, [allowedTabs, activeTab]);
 
@@ -302,6 +389,7 @@ const OratorioFeriale: React.FC = () => {
   const [shiftFormSelectedDates, setShiftFormSelectedDates] = useState<string[]>([]);
   const [copiedShiftsDay, setCopiedShiftsDay] = useState<string | null>(null);
   const [onlyActiveSeasonAnimators, setOnlyActiveSeasonAnimators] = useState(true);
+  const [ignoreShiftConflicts, setIgnoreShiftConflicts] = useState(false);
 
   // Seasons dropdown and days popup states
   const [isSeasonDropdownOpen, setIsSeasonDropdownOpen] = useState(false);
@@ -318,6 +406,7 @@ const OratorioFeriale: React.FC = () => {
   const [dashboardSelectedDay, setDashboardSelectedDay] = useState<string>('');
   const [dashboardSlide, setDashboardSlide] = useState<number>(0);
   const [isDashboardSlidePaused, setIsDashboardSlidePaused] = useState<boolean>(false);
+  const [currentTime, setCurrentTime] = useState<Date>(new Date());
   const [seasonManagerForm, setSeasonManagerForm] = useState({
     name: '',
     isEditing: false,
@@ -516,6 +605,70 @@ const OratorioFeriale: React.FC = () => {
     return dates;
   };
 
+  const handleSaveDailyNotes = async (date: string, noteText: string, updatedTasksObj?: any[]) => {
+    try {
+      const docId = `${activeSeason}_${date}`;
+      const docRef = doc(dailyNotesColl, docId);
+      const existingDoc = dailyNotesList.find(n => n.id === docId);
+      
+      await setDoc(docRef, {
+        date,
+        season: activeSeason,
+        notes: noteText ?? (existingDoc?.notes || ''),
+        tasks: updatedTasksObj ?? (existingDoc?.tasks || []),
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      
+      setSuccessStatus('Note e Checklist giornaliere salvate!');
+    } catch (err) {
+      console.error("Errore salvataggio note/checklist:", err);
+      setErrorStatus("Impossibile salvare note/checklist.");
+    }
+  };
+
+  const handleAddTask = async (date: string, taskText: string) => {
+    if (!taskText.trim()) return;
+    const docId = `${activeSeason}_${date}`;
+    const currentNotes = dailyNotesList.find(n => n.id === docId);
+    const existingTasks = currentNotes?.tasks || [];
+    const newTask = {
+      id: 'task_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+      text: taskText,
+      completed: false
+    };
+    const updatedTasks = [...existingTasks, newTask];
+    await handleSaveDailyNotes(date, currentNotes?.notes || '', updatedTasks);
+  };
+
+  const handleToggleTask = async (date: string, taskId: string) => {
+    const docId = `${activeSeason}_${date}`;
+    const currentNotes = dailyNotesList.find(n => n.id === docId);
+    const existingTasks = currentNotes?.tasks || [];
+    const updatedTasks = existingTasks.map(t => t.id === taskId ? { ...t, completed: !t.completed } : t);
+    await handleSaveDailyNotes(date, currentNotes?.notes || '', updatedTasks);
+  };
+
+  const handleDeleteTask = async (date: string, taskId: string) => {
+    const docId = `${activeSeason}_${date}`;
+    const currentNotes = dailyNotesList.find(n => n.id === docId);
+    const existingTasks = currentNotes?.tasks || [];
+    const updatedTasks = existingTasks.filter(t => t.id !== taskId);
+    await handleSaveDailyNotes(date, currentNotes?.notes || '', updatedTasks);
+  };
+
+  const handleRemoveAnimatorFromShiftOnDashboard = async (shiftId: string, animatorId: string) => {
+    try {
+      const s = shifts.find(sh => sh.id === shiftId);
+      if (!s) return;
+      const newAnimatorIds = s.animatorIds.filter(id => id !== animatorId);
+      await updateDoc(doc(shiftsColl, shiftId), { animatorIds: newAnimatorIds });
+      setSuccessStatus("Animatore rimosso dal turno con successo!");
+    } catch (err) {
+      console.error(err);
+      setErrorStatus("Impossibile risolvere il conflitto.");
+    }
+  };
+
   // Filters by Active Season
   const belongsToSeason = (a: Animator) => {
     if (!a.seasons || a.seasons.length === 0) {
@@ -536,7 +689,7 @@ const OratorioFeriale: React.FC = () => {
   const activeSeasonAnimatorsList = sortedAnimators.filter(belongsToSeason);
   const filteredAnimators = sortedAnimators.filter(a => !onlyActiveSeasonAnimators || belongsToSeason(a));
 
-  const filteredShifts = shifts.filter(s => s.season === activeSeason || (!s.season && new Date(s.date).getFullYear().toString() === activeSeason));
+  const filteredShifts = shifts.filter(s => s.season === activeSeason || (!s.season && parseSafeDate(s.date).getFullYear().toString() === activeSeason));
   const filteredTeams = teams.filter(t => t.season === activeSeason || (!t.season && (activeSeason === '2026' || activeSeason === '26')));
   const filteredAbsences = absences.filter(ab => ab.season === activeSeason || (!ab.season && (activeSeason === '2026' || activeSeason === '26')));
   const filteredWorkshops = workshops.filter(w => w.season === activeSeason);
@@ -591,11 +744,23 @@ const OratorioFeriale: React.FC = () => {
       }
     });
     
-    const explicitAbsences = absences.filter(ab => ab.date === day);
-    const allAbsences: Absence[] = [...virtualAbsences];
+    const explicitAbsences = absences.filter(ab => 
+      ab.date === day && 
+      (ab.season === activeSeason || (!ab.season && (activeSeason === '2026' || activeSeason === '26')))
+    );
+    
+    // We prioritize explicit absences over virtual absences.
+    const allAbsences: Absence[] = [];
+    
+    // 1. Add all explicit absences first
     explicitAbsences.forEach(ab => {
-      if (!allAbsences.some(v => v.animatorId === ab.animatorId)) {
-        allAbsences.push(ab);
+      allAbsences.push(ab);
+    });
+    
+    // 2. Add virtual absences only if there's no explicit absence for the same animator
+    virtualAbsences.forEach(v => {
+      if (!allAbsences.some(ab => ab.animatorId === v.animatorId)) {
+        allAbsences.push(v);
       }
     });
     
@@ -605,6 +770,32 @@ const OratorioFeriale: React.FC = () => {
   const getAbsenceForAnimatorOnDay = (animId: string, day: string): Absence | undefined => {
     const dayAbsences = getAbsencesForDay(day);
     return dayAbsences.find(ab => ab.animatorId === animId);
+  };
+
+  const isAnimatorAbsentDuringShift = (animatorId: string, day: string, shiftStartTime: string, shiftEndTime: string): string | null => {
+    const ab = getAbsenceForAnimatorOnDay(animatorId, day);
+    if (!ab) return null;
+    
+    // Ignore virtual absences (week not selected) for shift assignment conflicts.
+    // If the administrator has explicitly assigned the animator, they are active on this shift.
+    if (ab.id?.startsWith('virtual-week-')) {
+      return null;
+    }
+    
+    if (!ab.startTime && !ab.endTime) {
+      return ab.reason || "Assente tutto il giorno";
+    }
+    
+    const shiftStart = shiftStartTime || '00:00';
+    const shiftEnd = shiftEndTime || '23:59';
+    const absStart = ab.startTime || '00:00';
+    const absEnd = ab.endTime || '23:59';
+    
+    if (shiftStart < absEnd && absStart < shiftEnd) {
+      return `${ab.reason || 'Assente'} (${absStart}-${absEnd})`;
+    }
+    
+    return null;
   };
 
   const getWeeks = () => {
@@ -679,6 +870,8 @@ const OratorioFeriale: React.FC = () => {
     }
   }, [activeSeason, activeSeasonDays.length]);
 
+
+
   // Calculate distinct list of seasons (from database config, fall back to default if totally empty)
   const allSeasons = Array.from(new Set([
     ...Object.keys(seasonsData)
@@ -713,9 +906,21 @@ const OratorioFeriale: React.FC = () => {
       setEvents(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as OratorioEvent)));
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'oratorio_events'));
 
+    const unsubMeetings = onSnapshot(query(meetingsColl, orderBy('date', 'desc')), (snap) => {
+      setMeetings(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as OratorioMeeting)));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'oratorio_meetings'));
+
+    const unsubPrayers = onSnapshot(query(prayersColl, orderBy('date', 'desc')), (snap) => {
+      setPrayers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as OratorioPrayer)));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'oratorio_prayers'));
+
     const unsubDailyTeams = onSnapshot(query(dailyTeamsColl), (snap) => {
       setDailyTeams(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)));
     }, (err) => console.error("Could not load daily teams", err));
+
+    const unsubDailyNotes = onSnapshot(query(dailyNotesColl), (snap) => {
+      setDailyNotesList(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as DailyNotes)));
+    }, (err) => console.error("Could not load daily notes", err));
 
     const unsubSeasons = onSnapshot(seasonsColl, (snap) => {
       const result: { [seasonId: string]: string[] } = {};
@@ -748,8 +953,11 @@ const OratorioFeriale: React.FC = () => {
       unsubAbsences();
       unsubWorkshops();
       unsubEvents();
+      unsubMeetings();
+      unsubPrayers();
       unsubSeasons();
       unsubParish();
+      unsubDailyNotes();
     };
   }, [currentParish?.id]);
 
@@ -818,6 +1026,14 @@ const OratorioFeriale: React.FC = () => {
 
     return () => clearInterval(interval);
   }, [activeTab, isDashboardSlidePaused]);
+
+  useEffect(() => {
+    if (activeTab !== 'dashboard') return;
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [activeTab]);
 
   const resetForms = () => {
     setAnimatorForm({ firstName: '', lastName: '', email: '', phone: '', notes: '', seasons: [activeSeason] });
@@ -2896,6 +3112,343 @@ const OratorioFeriale: React.FC = () => {
     }
   };
 
+  const handleOpenMeetingModal = (meeting: OratorioMeeting | null = null) => {
+    if (meeting) {
+      setEditingMeeting(meeting);
+      setMeetingDateForm(meeting.date);
+      setMeetingTimeForm(meeting.time);
+      setMeetingQuestionsForm(JSON.parse(JSON.stringify(meeting.questions || [])));
+      setMeetingCriticalPointsForm(meeting.criticalPoints || '');
+      setMeetingWhatWorkedForm(meeting.whatWorked || '');
+      setMeetingNotesForm(meeting.notes || '');
+    } else {
+      setEditingMeeting(null);
+      setMeetingDateForm(getTodayDateStr());
+      setMeetingTimeForm('18:00');
+      setMeetingQuestionsForm([
+        { id: '1', text: 'Com’è andato il momento dell’accoglienza e della preghiera?', teamResponses: {} },
+        { id: '2', text: 'Come si sono comportate le squadre durante i giochi e i tornei?', teamResponses: {} },
+        { id: '3', text: 'Ci sono state note disciplinari o di sicurezza da segnalare?', teamResponses: {} }
+      ]);
+      setMeetingCriticalPointsForm('');
+      setMeetingWhatWorkedForm('');
+      setMeetingNotesForm('');
+    }
+    setIsMeetingModalOpen(true);
+  };
+
+  const handleUpdateTeamResponse = (questionId: string, teamId: string, value: string) => {
+    setMeetingQuestionsForm(prev => prev.map(q => {
+      if (q.id === questionId) {
+        return {
+          ...q,
+          teamResponses: {
+            ...q.teamResponses,
+            [teamId]: value
+          }
+        };
+      }
+      return q;
+    }));
+  };
+
+  const handleAddQuestionForm = () => {
+    if (!newQuestionTextForm.trim()) return;
+    const newId = Date.now().toString();
+    setMeetingQuestionsForm(prev => [
+      ...prev,
+      { id: newId, text: newQuestionTextForm.trim(), teamResponses: {} }
+    ]);
+    setNewQuestionTextForm('');
+  };
+
+  const handleRemoveQuestionForm = (id: string) => {
+    setMeetingQuestionsForm(prev => prev.filter(q => q.id !== id));
+  };
+
+  const handleSaveMeeting = async () => {
+    try {
+      setIsSaving(true);
+      const payload = {
+        date: meetingDateForm,
+        time: meetingTimeForm,
+        questions: meetingQuestionsForm,
+        criticalPoints: meetingCriticalPointsForm,
+        whatWorked: meetingWhatWorkedForm,
+        notes: meetingNotesForm,
+        season: activeSeason,
+      };
+
+      if (editingMeeting) {
+        let exists = meetings.some(m => m.id === editingMeeting.id);
+        if (!exists) {
+          throw new Error("La riunione selezionata non esiste più.");
+        }
+        await updateDoc(doc(meetingsColl, editingMeeting.id), {
+          ...payload,
+          updatedAt: new Date().toISOString()
+        });
+        setSuccessStatus('Riunione aggiornata con successo!');
+      } else {
+        await addDoc(meetingsColl, {
+          ...payload,
+          createdAt: new Date().toISOString()
+        });
+        setSuccessStatus('Nuova riunione registrata con successo!');
+      }
+      setTimeout(() => setSuccessStatus(null), 3000);
+      setIsMeetingModalOpen(false);
+    } catch (err: any) {
+      console.error(err);
+      setErrorStatus(err.message || 'Errore nel salvataggio della riunione.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteMeeting = async (meetingId: string) => {
+    try {
+      setIsSaving(true);
+      await deleteDoc(doc(meetingsColl, meetingId));
+      setSuccessStatus('Riunione eliminata con successo!');
+      setTimeout(() => setSuccessStatus(null), 3000);
+    } catch (err) {
+      console.error(err);
+      setErrorStatus("Errore nell'eliminazione della riunione.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleOpenPrayerModal = (dateStr: string) => {
+    const existing = prayers.find(p => p.date === dateStr && p.season === activeSeason);
+    setPrayerDateForm(dateStr);
+    if (existing) {
+      setPrayerWordForm(existing.wordOfTheDay || '');
+      setPrayerStoryForm(existing.story || '');
+      setPrayerGameForm(existing.game || '');
+      setPrayerActivityForm(existing.activity || '');
+    } else {
+      setPrayerWordForm('');
+      setPrayerStoryForm('');
+      setPrayerGameForm('');
+      setPrayerActivityForm('');
+    }
+    setIsPrayerModalOpen(true);
+  };
+
+  const handleSavePrayer = async () => {
+    try {
+      setIsSaving(true);
+      const existing = prayers.find(p => p.date === prayerDateForm && p.season === activeSeason);
+      const docPayload = {
+        date: prayerDateForm,
+        wordOfTheDay: prayerWordForm.trim(),
+        story: prayerStoryForm.trim(),
+        game: prayerGameForm.trim(),
+        activity: prayerActivityForm.trim(),
+        season: activeSeason,
+      };
+
+      if (existing) {
+        await updateDoc(doc(prayersColl, existing.id), {
+          ...docPayload,
+          updatedAt: new Date().toISOString()
+        });
+        setSuccessStatus('Programma e preghiera della giornata aggiornati con successo!');
+      } else {
+        await addDoc(prayersColl, {
+          ...docPayload,
+          createdAt: new Date().toISOString()
+        });
+        setSuccessStatus('Programma e preghiera della giornata salvati con successo!');
+      }
+      setTimeout(() => setSuccessStatus(null), 3000);
+      setIsPrayerModalOpen(false);
+    } catch (err: any) {
+      console.error(err);
+      setErrorStatus('Errore durante il salvataggio: ' + (err.message || err));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeletePrayer = async (id: string) => {
+    try {
+      setIsSaving(true);
+      await deleteDoc(doc(prayersColl, id));
+      setSuccessStatus('Programma feriale eliminato con successo!');
+      setTimeout(() => setSuccessStatus(null), 3000);
+    } catch (err) {
+      console.error(err);
+      setErrorStatus("Errore nell'eliminazione del programma.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const generateMeetingPDF = (meeting: OratorioMeeting) => {
+    try {
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 14;
+
+      const chosenLogoUrl = parishInfo.oratorioLogoUrl || parishInfo.logoUrl;
+      if (chosenLogoUrl) {
+        try {
+          doc.addImage(chosenLogoUrl, 'PNG', margin, 10, 20, 20);
+        } catch (e) {
+          doc.setDrawColor(37, 99, 235);
+          doc.circle(margin + 10, 20, 10, 'S');
+        }
+      }
+
+      const textStartX = chosenLogoUrl ? 38 : margin;
+      
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(18);
+      doc.setTextColor(30, 41, 59);
+      const titleName = parishInfo.oratorioName || parishInfo.name || "Oratorio Feriale";
+      doc.text(titleName, textStartX, 16);
+
+      doc.setFont("Helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Verbale Riunione Animatori - Stagione ${activeSeason}`, textStartX, 22);
+      
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(12);
+      doc.setTextColor(37, 99, 235);
+      doc.text(`Giorno: ${format(parseSafeDate(meeting.date), "EEEE d MMMM yyyy", { locale: it })} - Ore: ${meeting.time}`, textStartX, 28);
+
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.5);
+      doc.line(margin, 35, pageWidth - margin, 35);
+
+      let currentY = 42;
+
+      // WHAT WORKED
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(12);
+      doc.setTextColor(15, 118, 110);
+      doc.text("Cos'ha Funzionato:", margin, currentY);
+      currentY += 5;
+
+      doc.setFont("Helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(71, 85, 105);
+      const workedLines = doc.splitTextToSize(meeting.whatWorked || "Nessun dato registrato", pageWidth - margin * 2);
+      doc.text(workedLines, margin, currentY);
+      currentY += workedLines.length * 5 + 8;
+
+      // CRITICAL POINTS
+      if (currentY > 250) {
+        doc.addPage();
+        currentY = 20;
+      }
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(12);
+      doc.setTextColor(185, 28, 28);
+      doc.text("Punti di Criticita' o Miglioramento della Giornata:", margin, currentY);
+      currentY += 5;
+
+      doc.setFont("Helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(71, 85, 105);
+      const critLines = doc.splitTextToSize(meeting.criticalPoints || "Nessun dato registrato", pageWidth - margin * 2);
+      doc.text(critLines, margin, currentY);
+      currentY += critLines.length * 5 + 10;
+
+      // QUESTIONS & ANSWERS
+      if (currentY > 240) {
+        doc.addPage();
+        currentY = 20;
+      }
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(13);
+      doc.setTextColor(30, 41, 59);
+      doc.text("Domande & Risposte delle Squadre:", margin, currentY);
+      currentY += 7;
+
+      if (!meeting.questions || meeting.questions.length === 0) {
+        doc.setFont("Helvetica", "italic");
+        doc.setFontSize(10);
+        doc.setTextColor(148, 163, 184);
+        doc.text("Nessuna domanda registrata per questa riunione.", margin, currentY);
+      } else {
+        const teamsInSeason = teams.filter(t => t.season === activeSeason);
+        meeting.questions.forEach((q, idx) => {
+          if (currentY > 250) {
+            doc.addPage();
+            currentY = 20;
+          }
+
+          doc.setFont("Helvetica", "bold");
+          doc.setFontSize(11);
+          doc.setTextColor(51, 65, 85);
+          const qText = `D${idx + 1}: ${q.text}`;
+          const qLines = doc.splitTextToSize(qText, pageWidth - margin * 2);
+          doc.text(qLines, margin, currentY);
+          currentY += qLines.length * 5 + 3;
+
+          teamsInSeason.forEach(t => {
+            const resp = q.teamResponses[t.id] || "Nessuna risposta";
+            if (currentY > 270) {
+              doc.addPage();
+              currentY = 20;
+            }
+
+            doc.setFont("Helvetica", "bold");
+            doc.setFontSize(10);
+            doc.setTextColor(100, 116, 139);
+            doc.text(`* Squadra ${t.name}: `, margin + 4, currentY);
+            
+            const teamNameWidth = doc.getTextWidth(`* Squadra ${t.name}: `);
+            doc.setFont("Helvetica", "normal");
+            doc.setTextColor(71, 85, 105);
+            
+            const respLines = doc.splitTextToSize(resp, pageWidth - margin * 2 - teamNameWidth - 4);
+            doc.text(respLines, margin + 4 + teamNameWidth, currentY);
+            currentY += respLines.length * 5;
+          });
+          currentY += 6;
+        });
+      }
+
+      // NOTES field
+      if (meeting.notes && meeting.notes.trim()) {
+        if (currentY > 240) {
+          doc.addPage();
+          currentY = 20;
+        } else {
+          currentY += 4;
+        }
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(12);
+        doc.setTextColor(30, 41, 59);
+        doc.text("Note Varie o Osservazioni Finali:", margin, currentY);
+        currentY += 5;
+
+        doc.setFont("Helvetica", "normal");
+        doc.setFontSize(10);
+        doc.setTextColor(71, 85, 105);
+        const notesLines = doc.splitTextToSize(meeting.notes, pageWidth - margin * 2);
+        doc.text(notesLines, margin, currentY);
+        currentY += notesLines.length * 5 + 10;
+      }
+
+      doc.save(`Riunione_${meeting.date}_${meeting.time.replace(':', '-')}.pdf`);
+    } catch (err) {
+      console.error(err);
+      setErrorStatus("Errore nell'esportazione PDF.");
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
@@ -3043,6 +3596,29 @@ const OratorioFeriale: React.FC = () => {
     ? dashboardSelectedDay
     : (dashboardDisplayedDays[0] || dashboardSelectedDay || activeSeasonDays[0]);
 
+  // Synchronize shifts active week (selectedWeeklyWeekId) with the dashboard selected day/week (active only when in dashboard)
+  useEffect(() => {
+    if (activeTab === 'dashboard' && dashboardActiveRecapDay) {
+      const weekId = getWeekIdForDay(dashboardActiveRecapDay);
+      if (weekId && selectedWeeklyWeekId !== weekId) {
+        setSelectedWeeklyWeekId(weekId);
+      }
+    }
+  }, [dashboardActiveRecapDay, activeTab, selectedWeeklyWeekId]);
+
+  // Keep active week synchronized from Turni tab to Dashboard to ensure alignment when switching tabs (active only when in shifts tab)
+  useEffect(() => {
+    if (activeTab === 'shifts' && selectedWeeklyWeekId) {
+      if (dashboardSelectedWeekId !== selectedWeeklyWeekId) {
+        setDashboardSelectedWeekId(selectedWeeklyWeekId);
+      }
+      const matchingWeek = weeks.find(w => w.id === selectedWeeklyWeekId);
+      if (matchingWeek && !matchingWeek.days.includes(dashboardSelectedDay)) {
+        setDashboardSelectedDay(matchingWeek.days[0] || '');
+      }
+    }
+  }, [selectedWeeklyWeekId, weeks, activeTab, dashboardSelectedWeekId, dashboardSelectedDay]);
+
   const TabItem = ({ id, label, icon: Icon }: { id: typeof activeTab, label: string, icon: any }) => (
     <button
       onClick={() => setActiveTab(id)}
@@ -3153,7 +3729,7 @@ const OratorioFeriale: React.FC = () => {
           </button>
         </div>
 
-        {activeTab !== 'animators' && activeTab !== 'dashboard' && (
+        {activeTab !== 'animators' && activeTab !== 'dashboard' && activeTab !== 'meetings' && (
           <button
             onClick={() => handleOpenModal(activeTab as any)}
             className="flex items-center justify-center gap-2 bg-blue-600 text-white px-8 py-4 rounded-full font-black uppercase italic tracking-wider hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 active:scale-95 text-[11px] self-start md:self-auto"
@@ -3167,9 +3743,11 @@ const OratorioFeriale: React.FC = () => {
       <div className="flex flex-wrap gap-3 overflow-x-auto pb-2 custom-scrollbar">
         {allowedTabs.includes('dashboard') && <TabItem id="dashboard" label="Dashboard" icon={LayoutDashboard} />}
         {allowedTabs.includes('animators') && <TabItem id="animators" label="Animatori" icon={Users} />}
-        {allowedTabs.includes('shifts') && <TabItem id="shifts" label="Turni" icon={Clock} />}
-        {allowedTabs.includes('teams') && <TabItem id="teams" label="Squadre" icon={Trophy} />}
         {allowedTabs.includes('absences') && <TabItem id="absences" label="Assenze" icon={UserX} />}
+        {allowedTabs.includes('teams') && <TabItem id="teams" label="Squadre" icon={Trophy} />}
+        {allowedTabs.includes('shifts') && <TabItem id="shifts" label="Turni" icon={Clock} />}
+        {allowedTabs.includes('meetings') && <TabItem id="meetings" label="Riunioni di Verifica" icon={ClipboardList} />}
+        {allowedTabs.includes('preghiera') && <TabItem id="preghiera" label="Preghiera & Programma" icon={Sun} />}
         {allowedTabs.includes('workshops') && <TabItem id="workshops" label="Laboratori" icon={BookOpen} />}
         {allowedTabs.includes('events') && <TabItem id="events" label="Eventi Extra" icon={Sparkles} />}
       </div>
@@ -3206,7 +3784,7 @@ const OratorioFeriale: React.FC = () => {
                   <Calendar size={15} className="text-blue-500" />
                   <span>
                     {dashboardActiveRecapDay ? (
-                      format(new Date(dashboardActiveRecapDay), 'eeee dd MMMM yyyy', { locale: it })
+                      format(parseSafeDate(dashboardActiveRecapDay), 'eeee dd MMMM yyyy', { locale: it })
                     ) : (
                       'Nessun giorno impostato'
                     )}
@@ -3231,7 +3809,9 @@ const OratorioFeriale: React.FC = () => {
                           ? activeSeasonDays 
                           : (weeks.find(w => w.id === wkId)?.days || []);
                         if (matchingDays.length > 0) {
-                          setDashboardSelectedDay(matchingDays[0]);
+                          if (!matchingDays.includes(dashboardSelectedDay)) {
+                            setDashboardSelectedDay(matchingDays[0]);
+                          }
                         }
                       }}
                       className="w-full bg-slate-50 hover:bg-slate-100/80 text-slate-800 text-xs font-bold uppercase tracking-wider py-3 px-4 rounded-xl border border-slate-200/60 transition-all outline-none cursor-pointer shadow-sm focus:border-blue-400"
@@ -3254,7 +3834,7 @@ const OratorioFeriale: React.FC = () => {
                       className="w-full bg-slate-50 hover:bg-slate-100/80 text-slate-800 text-xs font-bold uppercase tracking-wider py-3 px-4 rounded-xl border border-slate-200/60 transition-all outline-none cursor-pointer shadow-sm focus:border-blue-400"
                     >
                       {dashboardDisplayedDays.map(day => {
-                        const dayObj = new Date(day);
+                        const dayObj = parseSafeDate(day);
                         const formattedDateSelect = format(dayObj, 'eeee dd/MM/yyyy', { locale: it });
                         return (
                           <option key={`dashboard-select-day-${day}`} value={day}>
@@ -3306,9 +3886,18 @@ const OratorioFeriale: React.FC = () => {
               </div>
             </div>
 
-            {dashboardActiveRecapDay ? (
-              (() => {
-                const currentWeekId = getWeekIdForDay(dashboardActiveRecapDay);
+            {(() => {
+              if (!dashboardActiveRecapDay) {
+                return (
+                  <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-12 text-center">
+                    <Calendar size={48} className="text-slate-300 mx-auto mb-4" />
+                    <h3 className="text-sm font-black uppercase tracking-wider text-slate-500 mb-2 font-sans">Seleziona o Inserisci un Giorno</h3>
+                    <p className="text-xs text-slate-400 font-medium max-w-md mx-auto">Configura le date per la stagione attiva per visualizzare e gestire la dashboard giornaliera dell'Oratorio Feriale.</p>
+                  </div>
+                );
+              }
+
+              const currentWeekId = getWeekIdForDay(dashboardActiveRecapDay);
                 const activeAnimatorsOnDay = activeSeasonAnimatorsList.filter(anim => isAnimatorPresentInWeek(anim, activeSeason, currentWeekId));
 
                 // Grouping lists
@@ -3336,6 +3925,37 @@ const OratorioFeriale: React.FC = () => {
                 // Shifts
                 const shiftsForDay = filteredShifts.filter(s => s.date === dashboardActiveRecapDay);
                 
+                const todayStr = format(currentTime, 'yyyy-MM-dd');
+                const isTodayStr = dashboardActiveRecapDay === todayStr;
+                const currentMinutesSinceMidnight = currentTime.getHours() * 60 + currentTime.getMinutes();
+
+                const sortedShiftsForDay = [...shiftsForDay].sort((a, b) => {
+                  const startA = timeToMinutes(a.startTime);
+                  const startB = timeToMinutes(b.startTime);
+                  if (startA !== startB) return startA - startB;
+                  return timeToMinutes(a.endTime) - timeToMinutes(b.endTime);
+                });
+
+                const displayedShifts = isTodayStr
+                  ? sortedShiftsForDay.filter(s => currentMinutesSinceMidnight <= timeToMinutes(s.endTime))
+                  : sortedShiftsForDay;
+                
+                // Calculate conflicts
+                const conflictsOnDay = shiftsForDay.flatMap(s => {
+                  return s.animatorIds.map(aid => {
+                    const reason = isAnimatorAbsentDuringShift(aid, s.date, s.startTime, s.endTime);
+                    if (reason) {
+                      const anim = animators.find(a => a.id === aid);
+                      return {
+                        shift: s,
+                        animator: anim,
+                        reason
+                      };
+                    }
+                    return null;
+                  }).filter(Boolean);
+                }) as { shift: Shift; animator: Animator; reason: string }[];
+
                 // Workshops for current week
                 const workshopsForWeek = filteredWorkshops.filter(w => w.weeks?.includes(currentWeekId));
 
@@ -3343,7 +3963,195 @@ const OratorioFeriale: React.FC = () => {
                 const eventsForDay = filteredEvents.filter(ev => ev.date === dashboardActiveRecapDay);
 
                 return (
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <div className="space-y-6">
+                    
+                    {/* Dynamic High-Contrast Shift Conflict Alert & Direct Solution Area */}
+                    {conflictsOnDay.length > 0 && (
+                      <div className="bg-gradient-to-br from-red-600 to-rose-700 text-white rounded-[2.5rem] shadow-xl border border-red-500/25 p-6 md:p-8 animate-in slide-in-from-top-4 duration-300">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div className="flex items-center gap-4">
+                            <div className="bg-white/10 backdrop-blur-md p-3 rounded-2xl shrink-0 border border-white/20">
+                              <AlertCircle size={24} className="text-red-100 animate-pulse" />
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-black uppercase italic tracking-widest text-yellow-300">ATTENZIONE: RILEVATI CONFLITTI NEI TURNI!</h3>
+                              <p className="text-[11px] text-red-100 font-extrabold max-w-2xl mt-1 leading-relaxed">
+                                Ci sono degli animatori assegnati a dei turni per la giornata di oggi che risultano assenti (per l'intera giornata o in fasce orarie sovrapposte). Risolvi i conflitti rimuovendo l'animatore dal turno con un solo clic.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 mt-5">
+                          {conflictsOnDay.map((conf, idx) => (
+                            <div 
+                              key={`dashboard-conflict-${conf.shift.id}-${conf.animator?.id}-${idx}`} 
+                              className="bg-white/10 hover:bg-white/15 backdrop-blur-md rounded-2xl border border-white/15 p-4 flex flex-col justify-between gap-3 text-white transition-all shadow-md group"
+                            >
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="w-2 h-2 rounded-full bg-red-400 animate-ping"></span>
+                                  <p className="text-xs font-black uppercase tracking-tight truncate text-yellow-100 italic">
+                                    {conf.animator?.lastName || ''} {conf.animator?.firstName || 'Anonimo'}
+                                  </p>
+                                </div>
+                                <p className="text-[10px] text-red-50 font-black truncate mt-1.5 uppercase tracking-wide">
+                                  Turno: {conf.shift.activity}
+                                </p>
+                                <p className="text-[9.5px] text-white/80 font-semibold truncate mt-0.5">
+                                  Inizio-Fine: {conf.shift.startTime} - {conf.shift.endTime}
+                                </p>
+                                <span className="inline-block bg-red-800/65 text-red-100 text-[8.5px] font-black uppercase tracking-wide px-2 py-0.5 rounded-md mt-2 border border-red-500/40">
+                                  ⚠️ {conf.reason}
+                                </span>
+                              </div>
+                              <button
+                                onClick={() => handleRemoveAnimatorFromShiftOnDashboard(conf.shift.id, conf.animator?.id || '')}
+                                className="w-full mt-1 bg-white hover:bg-red-50 text-red-700 py-2 px-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all duration-205 cursor-pointer shadow-sm group-hover:scale-[1.01] active:scale-95 text-center"
+                              >
+                                Risolvi (Rimuovi dal Turno)
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Preghiera e Programma Giornaliero Spotlight */}
+                    {(() => {
+                      const prayerForDay = prayers.find(p => p.season === activeSeason && p.date === dashboardActiveRecapDay);
+                      
+                      return (
+                        <div className="bg-white border border-slate-100 rounded-[2.5rem] p-6 md:p-8 shadow-sm space-y-6">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                            <div className="flex items-center gap-3">
+                              <div className="p-2.5 bg-amber-400 text-amber-900 rounded-2xl shadow-sm">
+                                <Sun size={20} className="animate-spin-slow" />
+                              </div>
+                              <div>
+                                <span className="text-[9px] font-black uppercase text-amber-600 tracking-wider font-mono">Dettaglio Giornaliero</span>
+                                <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight flex items-center gap-2">
+                                  Programma di oggi, Attività e Preghiera
+                                </h3>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => {
+                                setActiveTab('preghiera');
+                                if (dashboardActiveRecapDay) {
+                                  // Auto-scool/auto-select week on preghiera tab
+                                  const wkId = getWeekIdForDay(dashboardActiveRecapDay);
+                                  if (wkId) setPrayerSelectedWeekId(wkId);
+                                }
+                              }}
+                              className="px-4 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 font-extrabold uppercase tracking-widest text-[9px] rounded-xl transition-all self-start sm:self-auto"
+                            >
+                              Gestisci Preghiera →
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            {/* Parola del Giorno (High Spotlight) */}
+                            <div className="bg-gradient-to-br from-amber-50 to-orange-50/60 border border-amber-100 rounded-[2rem] p-5 flex flex-col justify-between gap-3 shadow-inner">
+                              <div>
+                                <div className="flex items-center gap-1.5 text-amber-800">
+                                  <Sparkles size={14} className="text-amber-500" />
+                                  <span className="text-[9.5px] font-black uppercase tracking-wider">Parola del Giorno</span>
+                                </div>
+                                <p className="text-base font-black italic text-slate-800 mt-2.5 leading-snug tracking-tight">
+                                  {prayerForDay?.wordOfTheDay ? `“${prayerForDay.wordOfTheDay}”` : 'Nessuna parola impostata.'}
+                                </p>
+                              </div>
+                              {!prayerForDay?.wordOfTheDay && (
+                                <button
+                                  onClick={() => {
+                                    setActiveTab('preghiera');
+                                    setTimeout(() => handleOpenPrayerModal(dashboardActiveRecapDay), 50);
+                                  }}
+                                  className="text-[9px] font-black text-amber-700 hover:text-amber-900 uppercase tracking-wider text-left"
+                                >
+                                  + Aggiungi ora
+                                </button>
+                              )}
+                            </div>
+
+                            {/* La Storia da Raccontare */}
+                            <div className="bg-blue-50/30 border border-blue-50/50 rounded-[2rem] p-5 flex flex-col justify-between gap-2">
+                              <div>
+                                <div className="flex items-center gap-1.5 text-blue-700">
+                                  <BookOpen size={14} />
+                                  <span className="text-[9.5px] font-black uppercase tracking-wider">Storia Del Giorno</span>
+                                </div>
+                                <p className="text-xs font-bold text-slate-700 mt-2.5 leading-relaxed line-clamp-4 whitespace-pre-wrap">
+                                  {prayerForDay?.story || 'Nessuna storia registrata per oggi.'}
+                                </p>
+                              </div>
+                              {prayerForDay?.story && (
+                                <button
+                                  onClick={() => {
+                                    setActiveTab('preghiera');
+                                    setTimeout(() => handleOpenPrayerModal(dashboardActiveRecapDay), 50);
+                                  }}
+                                  className="text-[8px] font-black text-blue-500 hover:text-blue-750 uppercase tracking-wider text-left"
+                                >
+                                  Leggi tutto o modifica
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Lo Spazio per un Gioco */}
+                            <div className="bg-emerald-50/30 border border-emerald-50/50 rounded-[2rem] p-5 flex flex-col justify-between gap-2">
+                              <div>
+                                <div className="flex items-center gap-1.5 text-emerald-700">
+                                  <Trophy size={14} />
+                                  <span className="text-[9.5px] font-black uppercase tracking-wider">Gioco di Oggi</span>
+                                </div>
+                                <p className="text-xs font-bold text-slate-700 mt-2.5 leading-relaxed line-clamp-4 whitespace-pre-wrap">
+                                  {prayerForDay?.game || 'Nessun gioco registrato per oggi.'}
+                                </p>
+                              </div>
+                              {prayerForDay?.game && (
+                                <button
+                                  onClick={() => {
+                                    setActiveTab('preghiera');
+                                    setTimeout(() => handleOpenPrayerModal(dashboardActiveRecapDay), 50);
+                                  }}
+                                  className="text-[8px] font-black text-emerald-600 hover:text-emerald-800 uppercase tracking-wider text-left"
+                                >
+                                  Modifica gioco
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Attività */}
+                            <div className="bg-purple-50/30 border border-purple-50/50 rounded-[2rem] p-5 flex flex-col justify-between gap-2 font-sans">
+                              <div>
+                                <div className="flex items-center gap-1.5 text-purple-700">
+                                  <Sun size={14} />
+                                  <span className="text-[9.5px] font-black uppercase tracking-wider">Eventuale Attività</span>
+                                </div>
+                                <p className="text-xs font-bold text-slate-700 mt-2.5 leading-relaxed line-clamp-4 whitespace-pre-wrap">
+                                  {prayerForDay?.activity || 'Nessuna attività programmata per oggi.'}
+                                </p>
+                              </div>
+                              {prayerForDay?.activity && (
+                                <button
+                                  onClick={() => {
+                                    setActiveTab('preghiera');
+                                    setTimeout(() => handleOpenPrayerModal(dashboardActiveRecapDay), 50);
+                                  }}
+                                  className="text-[8px] font-black text-purple-500 hover:text-purple-750 uppercase tracking-wider text-left"
+                                >
+                                  Modifica attività
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     
                     {/* Column 1 & 2: Animator Day Attendance Status (KPIs and Details) */}
                     <div className="lg:col-span-2 space-y-6">
@@ -3678,9 +4486,274 @@ const OratorioFeriale: React.FC = () => {
 
                           </div>
                         </div>
-
-                        </div>
                       </div>
+
+                      {/* Note & Checklist del Giorno */}
+                      <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden p-6 md:p-8 space-y-6">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                          <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                            <span className="text-sm">📝</span>
+                            NOTE & CHECK-LIST GIORNALIERA
+                          </h3>
+                          <span className="text-[10px] font-black uppercase text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg">
+                            {dashboardActiveRecapDay}
+                          </span>
+                        </div>
+
+                        {(() => {
+                          const docId = `${activeSeason}_${dashboardActiveRecapDay}`;
+                          const notesDoc = dailyNotesList.find(n => n.id === docId);
+                          const currentNotesText = notesDoc?.notes || '';
+                          const currentTasks = notesDoc?.tasks || [];
+
+                          return (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                              {/* Left column: Notes pad */}
+                              <div className="space-y-3.5 bg-amber-50/50 border border-amber-100 rounded-[2rem] p-5 md:p-6 flex flex-col justify-between shadow-xs">
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <label className="text-[10px] font-black uppercase tracking-wider text-amber-800 flex items-center gap-1.5 leading-none">
+                                      <span className="text-sm">📌</span> Note del Giorno
+                                    </label>
+                                    <span className="text-[8px] font-black text-amber-600 bg-amber-200/60 px-2 py-0.5 rounded-md uppercase tracking-wide">Autosalvataggio</span>
+                                  </div>
+                                  <textarea
+                                    defaultValue={currentNotesText}
+                                    key={`notes-text-${docId}`}
+                                    placeholder="Scrivi qui indicazioni, comunicazioni urgenti o promemoria per la giornata di oggi..."
+                                    className="w-full h-[150px] bg-white border border-amber-200 rounded-2xl p-4 text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-400 font-sans resize-none transition-all shadow-sm placeholder-amber-600/35"
+                                    id={`textarea-notes-${docId}`}
+                                    onBlur={(e) => {
+                                      handleSaveDailyNotes(dashboardActiveRecapDay, e.target.value);
+                                    }}
+                                  />
+                                  <p className="text-[9px] text-amber-750/90 font-bold italic leading-tight">
+                                    💡 Le note vengono salvate automaticamente quando esci dal campo.
+                                  </p>
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    const area = document.getElementById(`textarea-notes-${docId}`) as HTMLTextAreaElement;
+                                    handleSaveDailyNotes(dashboardActiveRecapDay, area?.value || '');
+                                  }}
+                                  className="w-full mt-2 bg-amber-600 hover:bg-amber-700 text-white py-3 px-4 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 shadow-sm hover:scale-[1.01] active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
+                                >
+                                  <Save size={14} />
+                                  <span>Salva Ora</span>
+                                </button>
+                              </div>
+
+                              {/* Right column: Checklist tasks */}
+                              <div className="space-y-4 flex flex-col justify-between">
+                                <div className="space-y-3">
+                                  <div className="flex items-center justify-between">
+                                    <label className="text-[10px] font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                                      <span className="text-sm">✅</span> Task da Svolgere ({currentTasks.filter(t => t.completed).length}/{currentTasks.length})
+                                    </label>
+                                    {currentTasks.length > 0 && (
+                                      <span className="text-[9.5px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md uppercase">Clicca per completare</span>
+                                    )}
+                                  </div>
+
+                                  {/* Tasks List */}
+                                  <div className="space-y-2 max-h-[190px] overflow-y-auto pr-1">
+                                    {currentTasks.length > 0 ? (
+                                      currentTasks.map((t) => (
+                                        <div 
+                                          key={t.id} 
+                                          className={`flex items-center justify-between gap-3 p-3 rounded-xl border transition-all ${
+                                            t.completed 
+                                              ? 'bg-emerald-50/40 border-emerald-100 text-slate-400' 
+                                              : 'bg-slate-50 border-slate-200 text-slate-800 hover:bg-slate-100/50'
+                                          }`}
+                                        >
+                                          <button
+                                            onClick={() => handleToggleTask(dashboardActiveRecapDay, t.id)}
+                                            className="flex items-center gap-2.5 text-left min-w-0 flex-1 cursor-pointer"
+                                          >
+                                            <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all ${
+                                              t.completed 
+                                                ? 'bg-emerald-500 border-emerald-600 text-white' 
+                                                : 'border-slate-300 bg-white'
+                                            }`}>
+                                              {t.completed && <Check size={12} strokeWidth={3} />}
+                                            </div>
+                                            <span className={`text-[10.5px] font-black uppercase tracking-wide font-sans truncate ${t.completed ? 'line-through opacity-60' : ''}`}>
+                                              {t.text}
+                                            </span>
+                                          </button>
+                                          <button
+                                            onClick={() => handleDeleteTask(dashboardActiveRecapDay, t.id)}
+                                            className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition"
+                                            title="Elimina"
+                                          >
+                                            <Trash2 size={13} />
+                                          </button>
+                                        </div>
+                                      ))
+                                    ) : (
+                                      <div className="text-center py-8 bg-slate-50 rounded-2xl border border-dashed border-slate-205">
+                                        <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Nessun task per oggi</p>
+                                        <p className="text-[9.5px] text-slate-400/80 font-semibold">Digita un'attività urgente qui sotto e premi +</p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Add Task Input Row */}
+                                <form 
+                                  onSubmit={(e) => {
+                                    e.preventDefault();
+                                    const form = e.currentTarget;
+                                    const input = form.elements.namedItem('taskInput') as HTMLInputElement;
+                                    if (input && input.value.trim()) {
+                                      handleAddTask(dashboardActiveRecapDay, input.value.trim());
+                                      input.value = '';
+                                    }
+                                  }}
+                                  className="flex gap-2"
+                                >
+                                  <input
+                                    name="taskInput"
+                                    type="text"
+                                    placeholder="Es. Preparare campo, comprare merenda..."
+                                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs text-slate-800 outline-none focus:border-blue-400 focus:bg-white transition-all font-sans font-medium"
+                                  />
+                                  <button
+                                    type="submit"
+                                    className="p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all shadow-sm hover:scale-105 duration-250 cursor-pointer flex items-center justify-center shrink-0"
+                                    title="Aggiungi Task"
+                                  >
+                                    <Plus size={16} />
+                                  </button>
+                                </form>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+
+                      {/* Riassunto della Riunione di Verifica */}
+                      <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-6 md:p-8 space-y-6">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                          <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                            <span className="text-sm">💬</span>
+                            RIASSUNTO RIUNIONE DI VERIFICA
+                          </h3>
+                          <button
+                            onClick={() => setActiveTab('meetings')}
+                            className="text-[9px] font-black text-blue-600 hover:text-blue-800 uppercase tracking-wider font-sans shrink-0"
+                          >
+                            Dettagli →
+                          </button>
+                        </div>
+
+                        {(() => {
+                          const meetingForDay = meetings.find(m => m.season === activeSeason && m.date === dashboardActiveRecapDay);
+                          if (!meetingForDay) {
+                            return (
+                              <div className="text-center py-8 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
+                                <ClipboardList size={32} className="text-slate-350 mx-auto mb-2" />
+                                <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Nessuna Riunione di Verifica registrata per oggi</p>
+                                <p className="text-[9px] text-slate-400 font-semibold mt-1 font-mono">Crea un verbale nella scheda per visualizzare qui il riassunto dell'efficacia della giornata.</p>
+                                <button
+                                  onClick={() => {
+                                    setActiveTab('meetings');
+                                    setTimeout(() => handleOpenMeetingModal(null), 50);
+                                  }}
+                                  className="mt-3 inline-flex items-center gap-1.5 px-4.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all"
+                                >
+                                  <Plus size={10} />
+                                  Registra Ora
+                                </button>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div className="space-y-5 animate-in fade-in duration-200">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-blue-50/30 border border-blue-50/50 p-4 rounded-2xl">
+                                <span className="text-[10px] font-bold text-slate-650 flex items-center gap-1 font-mono">
+                                  <Clock size={13} className="text-blue-500" />
+                                  Registrata alle ore {meetingForDay.time}
+                                </span>
+                                <button
+                                  onClick={() => generateMeetingPDF(meetingForDay)}
+                                  className="flex items-center justify-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 hover:text-slate-900 px-3.5 py-1.5 rounded-xl font-bold uppercase tracking-wider text-[9px] transition-all cursor-pointer shadow-sm self-start sm:self-auto"
+                                >
+                                  <Download size={11} />
+                                  Esporta PDF
+                                </button>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="p-4 bg-emerald-50/40 rounded-2xl border border-emerald-100/40">
+                                  <span className="text-[9px] font-black uppercase text-emerald-800 tracking-wider block mb-1">🟢 Cos'ha Funzionato</span>
+                                  <p className="text-xs font-bold text-slate-700 leading-relaxed whitespace-pre-wrap">
+                                    {meetingForDay.whatWorked || 'Nessuna nota inserita.'}
+                                  </p>
+                                </div>
+
+                                <div className="p-4 bg-rose-50/40 rounded-2xl border border-rose-100/40">
+                                  <span className="text-[9px] font-black uppercase text-rose-800 tracking-wider block mb-1">🔴 Punti di Criticità</span>
+                                  <p className="text-xs font-bold text-slate-700 leading-relaxed whitespace-pre-wrap">
+                                    {meetingForDay.criticalPoints || 'Nessun problema registrato.'}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {meetingForDay.notes && (
+                                <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+                                  <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider block mb-1">📝 Note Libere & Strategie</span>
+                                  <p className="text-xs font-bold text-slate-700 leading-relaxed whitespace-pre-wrap">
+                                    {meetingForDay.notes}
+                                  </p>
+                                </div>
+                              )}
+
+                              {meetingForDay.questions && meetingForDay.questions.length > 0 && (
+                                <div className="space-y-2.5">
+                                  <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest block">💬 Sintesi risposte delle squadre</span>
+                                  <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                                    {meetingForDay.questions.map((q, qIdx) => {
+                                      const teamAnswersMap = Object.entries(q.teamResponses || {});
+                                      return (
+                                        <div key={q.id} className="p-3 bg-slate-50/60 rounded-xl border border-slate-100">
+                                          <p className="text-[10.5px] font-black text-slate-800 mb-1.5 leading-tight">
+                                            {qIdx + 1}. {q.text}
+                                          </p>
+                                          {teamAnswersMap.length > 0 ? (
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                                              {teamAnswersMap.map(([tId, resp]) => {
+                                                const matchingTeam = teams.find(t => t.id === tId);
+                                                if (!matchingTeam) return null;
+                                                return (
+                                                  <div key={tId} className="bg-white p-2 rounded-lg border border-slate-100/60 text-[9.5px]">
+                                                    <div className="flex items-center gap-1 font-bold">
+                                                      <span className="w-1.5 h-1.5 rounded-full border border-slate-200" style={{ backgroundColor: matchingTeam.color || '#ccc' }} />
+                                                      <span className="text-slate-650 truncate font-black uppercase tracking-wider">{matchingTeam.name}</span>
+                                                    </div>
+                                                    <p className="text-slate-800 font-bold mt-1 text-[10px] break-words italic">
+                                                      "{resp || 'Nessuna risposta'}"
+                                                    </p>
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          ) : (
+                                            <p className="text-[9px] text-slate-400 font-bold italic">Nessuna squadra ha risposto ancora.</p>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
 
                     {/* Column 3: Shifts, Workshops and Extra Activities */}
                     <div className="space-y-6">
@@ -3690,7 +4763,7 @@ const OratorioFeriale: React.FC = () => {
                         <div className="flex items-center justify-between border-b border-slate-50 pb-3">
                           <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
                             <Clock size={16} className="text-blue-500" />
-                            Turni del Giorno ({shiftsForDay.length})
+                            Turni del Giorno ({displayedShifts.length})
                           </h3>
                           <button
                             onClick={() => setActiveTab('shifts')}
@@ -3701,8 +4774,8 @@ const OratorioFeriale: React.FC = () => {
                         </div>
 
                         <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
-                          {shiftsForDay.length > 0 ? (
-                            shiftsForDay.map(s => {
+                          {displayedShifts.length > 0 ? (
+                            displayedShifts.map(s => {
                               const assignedAnimators = s.animatorIds
                                 .map(aid => animators.find(a => a.id === aid))
                                 .filter(Boolean) as Animator[];
@@ -3711,12 +4784,34 @@ const OratorioFeriale: React.FC = () => {
                               const isUnderStaffed = requiredPeople > 0 && totalAssigned < requiredPeople;
                               const isOverStaffed = requiredPeople > 0 && totalAssigned > requiredPeople;
 
+                              const startMin = timeToMinutes(s.startTime);
+                              const endMin = timeToMinutes(s.endTime);
+                              const isInProgress = isTodayStr && currentMinutesSinceMidnight >= startMin && currentMinutesSinceMidnight <= endMin;
+
                               return (
-                                <div key={s.id} className="bg-slate-50/70 border border-slate-100 rounded-2xl p-4 space-y-2.5">
+                                <div 
+                                  key={s.id} 
+                                  className={`border rounded-2xl p-4 space-y-2.5 transition-all duration-300 ${
+                                    isInProgress 
+                                      ? 'bg-amber-50/70 border-amber-200 shadow-[0_0_15px_rgba(245,158,11,0.12)] animate-pulse' 
+                                      : 'bg-slate-50/70 border-slate-100/80'
+                                  }`}
+                                >
                                   <div className="flex items-start justify-between gap-2">
                                     <div>
-                                      <h4 className="text-xs font-black text-slate-900 uppercase tracking-tight leading-tight">{s.activity}</h4>
-                                      <span className="inline-block bg-blue-105 text-blue-800 text-[8.5px] font-black uppercase tracking-wide px-2 py-0.5 rounded-md mt-1 font-sans">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <h4 className="text-xs font-black text-slate-900 uppercase tracking-tight leading-tight">{s.activity}</h4>
+                                        {isInProgress && (
+                                          <span className="inline-flex items-center gap-0.5 bg-amber-500 text-white text-[7.5px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md animate-bounce">
+                                            ⚡ IN CORSO
+                                          </span>
+                                        )}
+                                      </div>
+                                      <span className={`inline-block text-[8.5px] font-black uppercase tracking-wide px-2 py-0.5 rounded-md mt-1 font-sans ${
+                                        isInProgress 
+                                          ? 'bg-amber-200 text-amber-900' 
+                                          : 'bg-blue-105 text-blue-800'
+                                      }`}>
                                         🕒 {s.startTime} - {s.endTime}
                                       </span>
                                     </div>
@@ -3741,7 +4836,7 @@ const OratorioFeriale: React.FC = () => {
                                       <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Assegnati:</span>
                                       <div className="flex flex-wrap gap-1.5">
                                         {assignedAnimators.map(a => {
-                                          const isAbsentToday = !!getAbsenceForAnimatorOnDay(a.id, dashboardActiveRecapDay);
+                                          const isAbsentToday = !!isAnimatorAbsentDuringShift(a.id, s.date, s.startTime, s.endTime);
                                           return (
                                             <span 
                                               key={a.id} 
@@ -3765,8 +4860,8 @@ const OratorioFeriale: React.FC = () => {
                             })
                           ) : (
                             <div className="text-center py-6 bg-slate-50/50 rounded-2xl border border-dashed border-slate-205">
-                              <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Nessun Turno programmato</p>
-                              <p className="text-[9.5px] text-slate-400 font-medium">I turni creati per questa data appariranno qui.</p>
+                              <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Nessun Turno attivo</p>
+                              <p className="text-[9.5px] text-slate-400 font-medium">I turni futuri o in corso appariranno qui.</p>
                             </div>
                           )}
                         </div>
@@ -3898,15 +4993,9 @@ const OratorioFeriale: React.FC = () => {
 
                     </div>
                   </div>
-                );
-              })()
-            ) : (
-              <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-12 text-center">
-                <Calendar size={48} className="text-slate-300 mx-auto mb-4" />
-                <h3 className="text-sm font-black uppercase tracking-wider text-slate-500 mb-2 font-sans">Seleziona o Inserisci un Giorno</h3>
-                <p className="text-xs text-slate-400 font-medium max-w-md mx-auto">Configura le date per la stagione attiva per visualizzare e gestire la dashboard giornaliera dell'Oratorio Feriale.</p>
-              </div>
-            )}
+                </div>
+              );
+            })()}
 
           </div>
         )}
@@ -4211,6 +5300,15 @@ const OratorioFeriale: React.FC = () => {
           const currentWeeklyWeek = weeks.find(w => w.id === selectedWeeklyWeekId) || weeks[0];
           const weeklyDays = currentWeeklyWeek ? currentWeeklyWeek.days : [];
           
+          const relevantShifts = shiftsSubTab === 'weekly' 
+            ? filteredShifts.filter(s => weeklyDays.includes(s.date))
+            : filteredShifts;
+
+          const conflictedAnimatorsCount = relevantShifts.reduce((count, s) => {
+            const conflicts = s.animatorIds.filter(aid => !!isAnimatorAbsentDuringShift(aid, s.date, s.startTime, s.endTime));
+            return count + conflicts.length;
+          }, 0);
+          
           return (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
               {/* Sub-navigation & Actions Bar - HIGHER CONTRAST & RESPONSIVE DESIGN */}
@@ -4286,6 +5384,71 @@ const OratorioFeriale: React.FC = () => {
                 </div>
               </div>
 
+              {/* Alert Banner for Overlaps or Success State */}
+              {conflictedAnimatorsCount > 0 ? (
+                ignoreShiftConflicts ? (
+                  <div className="bg-slate-50 border border-slate-200/80 p-4.5 rounded-[2.2rem] shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 animate-in slide-in-from-top-3 duration-300">
+                    <div className="flex items-center gap-3.5">
+                      <div className="bg-slate-500 text-white p-3 rounded-2xl shrink-0 shadow-sm">
+                        <AlertCircle size={18} />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-black text-slate-700 uppercase italic leading-none">
+                          CONFLITTI IGNORATI
+                        </h4>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-1.5 font-sans leading-relaxed">
+                          Hai nascosto {conflictedAnimatorsCount} {conflictedAnimatorsCount === 1 ? "conflitto di turno" : "conflitti di turno"}. Gli animatori sono visualizzati normalmente.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setIgnoreShiftConflicts(false)}
+                      className="self-start md:self-auto px-4 py-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-250 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-xs active:scale-95 whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer font-sans"
+                    >
+                      <Eye size={12} />
+                      Mostra Avvisi ({conflictedAnimatorsCount})
+                    </button>
+                  </div>
+                ) : (
+                  <div className="bg-red-50 border border-red-200/80 p-5 rounded-[2.2rem] shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 animate-in slide-in-from-top-3 duration-300">
+                    <div className="flex items-center gap-3.5">
+                      <div className="bg-red-650 text-white p-3.5 rounded-2xl shrink-0 shadow-md">
+                        <AlertCircle size={20} className="animate-pulse" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black text-red-955 uppercase italic leading-none">
+                          ATTENZIONE: CONFLITTI DI ASSENZA RILEVATI!
+                        </h4>
+                        <p className="text-[11px] font-bold text-red-700 uppercase tracking-wider mt-1.5 leading-relaxed font-sans">
+                          Ci sono {conflictedAnimatorsCount} {conflictedAnimatorsCount === 1 ? "animatore assegnato" : "animatori assegnati"} a turni in cui risulta assente o non presente. Gli animatori in conflitto sono evidenziati <span className="font-extrabold text-red-800 bg-red-100 px-1 py-0.5 rounded">in rosso con un'icona ⚠️</span>.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setIgnoreShiftConflicts(true)}
+                      className="self-start md:self-auto px-4.5 py-2.5 bg-red-100 hover:bg-red-200 text-red-800 border border-red-200 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-sm hover:shadow active:scale-95 whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer font-sans"
+                    >
+                      <EyeOff size={12} />
+                      Ignora Avvisi
+                    </button>
+                  </div>
+                )
+              ) : (
+                <div className="bg-emerald-50 border border-emerald-150 p-4.5 rounded-[2.2rem] shadow-sm flex items-center gap-3.5 animate-in slide-in-from-top-3 duration-305">
+                  <div className="bg-emerald-600 text-white p-3 rounded-2xl shrink-0 shadow-sm">
+                    <CheckCircle2 size={18} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-emerald-950 uppercase italic leading-none">
+                      Pianificazione Corretta
+                    </h4>
+                    <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest mt-1.5 font-sans">
+                      Nessun conflitto rilevato! Tutti gli animatori assegnati ai turni correnti sono disponibili.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Clipboard Info Bar (when structure is copied) */}
               {copiedShiftsDay && (
                 <div className="bg-indigo-50 border border-indigo-150 p-4 rounded-[2rem] shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 animate-in fade-in zoom-in-95 duration-300">
@@ -4298,7 +5461,7 @@ const OratorioFeriale: React.FC = () => {
                         Struttura Turni Copiata!
                       </p>
                       <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest mt-1">
-                        Copiati i turni di: {format(new Date(copiedShiftsDay), 'eeee dd MMMM', { locale: it })}
+                        Copiati i turni di: {format(parseSafeDate(copiedShiftsDay), 'eeee dd MMMM', { locale: it })}
                       </p>
                     </div>
                   </div>
@@ -4384,7 +5547,7 @@ const OratorioFeriale: React.FC = () => {
                       {/* Weekly Grid - RESPONSIVE COLUMNS CONFIG */}
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5 items-stretch">
                         {weeklyDays.map(dayStr => {
-                          const dayDateObj = new Date(dayStr);
+                          const dayDateObj = parseSafeDate(dayStr);
                           const dayName = format(dayDateObj, 'EEEE', { locale: it });
                           const capitalizedDayName = dayName.charAt(0).toUpperCase() + dayName.slice(1);
                           const formattedDate = format(dayDateObj, 'dd MMMM', { locale: it });
@@ -4426,7 +5589,7 @@ const OratorioFeriale: React.FC = () => {
                                   <button
                                     onClick={() => {
                                       setCopiedShiftsDay(dayStr);
-                                      const dObj = new Date(dayStr);
+                                      const dObj = parseSafeDate(dayStr);
                                       setSuccessStatus(`Struttura turni copiata per ${format(dObj, 'dd/MM')}!`);
                                       setTimeout(() => setSuccessStatus(null), 1500);
                                     }}
@@ -4477,7 +5640,7 @@ const OratorioFeriale: React.FC = () => {
                                               await addDoc(shiftsColl, replica);
                                             }
                                           }
-                                          const dObj = new Date(dayStr);
+                                          const dObj = parseSafeDate(dayStr);
                                           setSuccessStatus(`Turni pronti per ${format(dObj, 'dd/MM')}!`);
                                           setTimeout(() => setSuccessStatus(null), 1500);
                                         } catch (err) {
@@ -4610,9 +5773,22 @@ const OratorioFeriale: React.FC = () => {
                                           {s.animatorIds.map((aid, index) => {
                                             const anim = animators.find(a => a.id === aid);
                                             if (!anim) return null;
+                                            const absenceReason = isAnimatorAbsentDuringShift(aid, dayStr, s.startTime, s.endTime);
+                                            const hasConflict = absenceReason && !ignoreShiftConflicts;
                                             return (
-                                              <div key={`${s.id}-animlist-${aid}-${index}`} className="flex items-center justify-between gap-1 px-2 py-1 bg-white text-[9.5px] font-bold text-slate-700 rounded-lg border border-slate-150/60 italic leading-none shadow-sm shrink-0">
-                                                <span className="truncate max-w-[85px]">{anim.lastName} {anim.firstName[0]}.</span>
+                                              <div 
+                                                key={`${s.id}-animlist-${aid}-${index}`} 
+                                                className={`flex items-center justify-between gap-1 px-2 py-1 text-[9.5px] font-bold rounded-lg border italic leading-none shadow-sm shrink-0 transition-all ${
+                                                  hasConflict 
+                                                    ? 'bg-red-650 text-white font-extrabold border-red-700 hover:bg-red-700 shadow-sm' 
+                                                    : 'bg-white text-slate-700 border-slate-150/60'
+                                                }`}
+                                                title={absenceReason ? `In conflitto: ${absenceReason}` : undefined}
+                                              >
+                                                <span className="truncate max-w-[85px] flex items-center gap-1">
+                                                  {hasConflict && <span className="text-[9px] text-white animate-pulse">⚠️</span>}
+                                                  {anim.lastName} {anim.firstName[0]}.
+                                                </span>
                                                 <button 
                                                   onClick={async () => {
                                                     const newIds = s.animatorIds.filter(id => id !== aid);
@@ -4620,7 +5796,11 @@ const OratorioFeriale: React.FC = () => {
                                                     setSuccessStatus(`Animatore rimosso!`);
                                                     setTimeout(() => setSuccessStatus(null), 1200);
                                                   }}
-                                                  className="text-red-500 hover:text-red-700 font-black px-1 rounded-sm hover:bg-red-50 transition"
+                                                  className={`font-black px-1 rounded-sm transition ${
+                                                    hasConflict 
+                                                      ? 'text-white hover:text-red-200' 
+                                                      : 'text-red-500 hover:text-red-700 hover:bg-red-50'
+                                                  }`}
                                                   title="Rimuovi"
                                                 >
                                                   &times;
@@ -4654,11 +5834,11 @@ const OratorioFeriale: React.FC = () => {
                                             {activeSeasonAnimatorsList
                                               .filter(a => isAnimatorPresentInWeek(a, activeSeason, currentWeeklyWeek.id) && !s.animatorIds.includes(a.id))
                                               .map(a => {
-                                                const hasAbsence = getAbsenceForAnimatorOnDay(a.id, dayStr);
-                                                const isAbsentInfo = hasAbsence ? ` (${hasAbsence.reason || 'S.M./P.'})` : '';
+                                                const absenceReason = isAnimatorAbsentDuringShift(a.id, dayStr, s.startTime, s.endTime);
+                                                const isAbsentInfo = absenceReason ? ` ❌ CONFLITTO (${absenceReason})` : '';
                                                 return (
-                                                  <option key={`opt-${s.id}-${a.id}`} value={a.id}>
-                                                    👤 {a.lastName} {a.firstName}{isAbsentInfo}
+                                                  <option key={`opt-${s.id}-${a.id}`} value={a.id} className={absenceReason ? "text-red-500 font-bold" : ""}>
+                                                    {absenceReason ? '⚠️' : '👤'} {a.lastName} {a.firstName}{isAbsentInfo}
                                                   </option>
                                                 );
                                               })
@@ -4684,7 +5864,7 @@ const OratorioFeriale: React.FC = () => {
                                               const teamAnimators = animators.filter(a => dayTeam.animatorIds.includes(a.id));
                                               const presentAnimators = teamAnimators.filter(a => 
                                                 isAnimatorPresentInWeek(a, activeSeason, currentWeeklyWeek.id) &&
-                                                !getAbsenceForAnimatorOnDay(a.id, dayStr)
+                                                !isAnimatorAbsentDuringShift(a.id, dayStr, s.startTime, s.endTime)
                                               );
                                               if (presentAnimators.length === 0) {
                                                 setErrorStatus(`Nessun animatore della squadra "${dayTeam.name}" presente oggi!`);
@@ -4718,7 +5898,7 @@ const OratorioFeriale: React.FC = () => {
                                               const teamAnimators = animators.filter(a => targetT.animatorIds.includes(a.id));
                                               const presentAnimators = teamAnimators.filter(a => 
                                                 isAnimatorPresentInWeek(a, activeSeason, currentWeeklyWeek.id) &&
-                                                !getAbsenceForAnimatorOnDay(a.id, dayStr)
+                                                !isAnimatorAbsentDuringShift(a.id, dayStr, s.startTime, s.endTime)
                                               );
                                               if (presentAnimators.length === 0) {
                                                 setErrorStatus(`Nessun animatore della squadra "${targetT.name}" presente oggi!`);
@@ -4774,8 +5954,8 @@ const OratorioFeriale: React.FC = () => {
                       <div key={`${s.id}-${idx}`} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 hover:shadow-md transition-all">
                         <div className="flex items-center gap-6">
                           <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex flex-col items-center min-w-[80px]">
-                            <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">{format(new Date(s.date), 'MMM', { locale: it })}</span>
-                            <span className="text-2xl font-black text-blue-600">{format(new Date(s.date), 'dd')}</span>
+                            <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">{format(parseSafeDate(s.date), 'MMM', { locale: it })}</span>
+                            <span className="text-2xl font-black text-blue-600">{format(parseSafeDate(s.date), 'dd')}</span>
                           </div>
                           <div>
                             <h3 className="text-sm font-black text-slate-900 uppercase italic tracking-tight">{s.activity || 'Attività Oratorio'}</h3>
@@ -4798,11 +5978,23 @@ const OratorioFeriale: React.FC = () => {
                         <div className="flex-1 flex flex-wrap gap-2 px-4">
                           {s.animatorIds.map((aid, itemIdx) => {
                             const anim = animators.find(a => a.id === aid);
-                            return anim ? (
-                              <span key={`${s.id}-anim-${aid}-${itemIdx}`} className="text-[9px] font-black uppercase tracking-widest px-3 py-1.5 bg-slate-50 text-slate-500 rounded-lg border border-slate-100 italic">
+                            if (!anim) return null;
+                            const absenceReason = isAnimatorAbsentDuringShift(aid, s.date, s.startTime, s.endTime);
+                            const hasConflict = absenceReason && !ignoreShiftConflicts;
+                            return (
+                              <span 
+                                key={`${s.id}-anim-${aid}-${itemIdx}`} 
+                                className={`text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg border italic flex items-center gap-1 shadow-xs transition-all ${
+                                  hasConflict 
+                                    ? 'bg-red-650 text-white font-extrabold border-red-700 hover:bg-red-700 shadow-sm' 
+                                    : 'bg-slate-50 text-slate-500 border-slate-100'
+                                }`}
+                                title={absenceReason ? `In conflitto: ${absenceReason}` : undefined}
+                              >
+                                {hasConflict && <span className="text-[9px] text-white animate-pulse">⚠️</span>}
                                 {anim.lastName} {anim.firstName[0]}.
                               </span>
-                            ) : null;
+                            );
                           })}
                         </div>
                         <div className="flex items-center gap-2">
@@ -4836,7 +6028,7 @@ const OratorioFeriale: React.FC = () => {
                       <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block leading-none">GIORNO SELEZIONATO</span>
                       {teamsActiveRecapDay ? (
                         <span className="text-sm font-black uppercase text-amber-300 font-sans tracking-tight">
-                          {format(new Date(teamsActiveRecapDay), 'eeee dd MMMM yyyy', { locale: it })}
+                          {format(parseSafeDate(teamsActiveRecapDay), 'eeee dd MMMM yyyy', { locale: it })}
                         </span>
                       ) : (
                         <span className="text-sm font-black text-slate-400">Nessun giorno selezionato</span>
@@ -4906,7 +6098,7 @@ const OratorioFeriale: React.FC = () => {
                 <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1.5 scrollbar-thin scrollbar-thumb-slate-850">
                   {teamsDisplayedDays.map(day => {
                     const isSel = day === teamsActiveRecapDay;
-                    const dayObj = new Date(day);
+                    const dayObj = parseSafeDate(day);
                     const formattedDateStr = format(dayObj, 'eee dd/MM', { locale: it });
                     return (
                       <button
@@ -5249,7 +6441,7 @@ const OratorioFeriale: React.FC = () => {
                                                     {week.days.map(day => {
                                                       const matchingAbs = getAbsenceForAnimatorOnDay(anim.id, day);
                                                       const meta = getAbsenceMeta(matchingAbs);
-                                                      const weekdayStr = format(new Date(day), 'eeeee d', { locale: it });
+                                                      const weekdayStr = format(parseSafeDate(day), 'eeeee d', { locale: it });
                                                       const isSelectDay = day === teamsActiveRecapDay;
                                                       
                                                       let bgClass = 'bg-emerald-600 text-white border-emerald-700 shadow-sm font-black';
@@ -5278,12 +6470,12 @@ const OratorioFeriale: React.FC = () => {
                                                           className={`w-7 h-7 rounded-lg flex flex-col items-center justify-center text-[7px] font-black transition-all shrink-0 border ${
                                                             isSelectDay ? 'ring-2 ring-slate-900 scale-105 border-transparent' : ''
                                                           } ${bgClass}`}
-                                                          title={`${format(new Date(day), 'dd/MM/yyyy')}: ${titleText}${isSelectDay ? ' (Oggi/Selezionato)' : ''}`}
+                                                          title={`${format(parseSafeDate(day), 'dd/MM/yyyy')}: ${titleText}${isSelectDay ? ' (Oggi/Selezionato)' : ''}`}
                                                         >
                                                           <span className={`text-[4.2px] uppercase font-bold leading-none ${isSelectDay ? 'text-slate-950 font-black' : 'opacity-90'}`}>
                                                             {weekdayStr[0]}{labelChar ? ` · ${labelChar}` : ''}
                                                           </span>
-                                                          <span className="leading-none mt-0.5">{format(new Date(day), 'd')}</span>
+                                                          <span className="leading-none mt-0.5">{format(parseSafeDate(day), 'd')}</span>
                                                         </div>
                                                       );
                                                     })}
@@ -5317,7 +6509,7 @@ const OratorioFeriale: React.FC = () => {
                                     </button>
                                   )}
                                 </div>
-                                <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-2.5 max-h-64 overflow-y-auto custom-scrollbar pr-1">
                                   {t.kids && [...t.kids].sort((a, b) => {
                                     const yA = a.birthYear ? a.birthYear.trim() : '';
                                     const yB = b.birthYear ? b.birthYear.trim() : '';
@@ -5336,19 +6528,25 @@ const OratorioFeriale: React.FC = () => {
                                     if (comp !== 0) return comp;
                                     return (a.firstName || '').localeCompare(b.firstName || '', 'it', { sensitivity: 'base' });
                                   }).map((k, idx) => (
-                                    <div key={idx} className="flex items-center justify-between py-1.5 border-b border-slate-150 last:border-0 hover:bg-slate-50 px-1 rounded gap-2">
-                                      <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                                        <span className="text-[11px] font-black text-slate-900 italic truncate">{k.lastName} {k.firstName}</span>
+                                    <div key={idx} className="flex flex-col justify-between p-2.5 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-205 transition-all text-left min-w-0 border-b-0 last:border-b">
+                                      <div className="flex items-center justify-between gap-1.5 min-w-0">
+                                        <span className="text-[10px] font-black text-slate-800 uppercase italic truncate leading-tight" title={`${k.lastName} ${k.firstName}`}>
+                                          {k.lastName} {k.firstName}
+                                        </span>
                                         {k.birthYear && (
-                                          <span className="text-[9px] px-1.5 py-0.5 bg-blue-50 border border-blue-105 text-blue-700 font-bold rounded-md shrink-0">
+                                          <span className="text-[8px] px-1 bg-blue-50 border border-blue-105 text-blue-700 font-bold rounded shrink-0 leading-none">
                                             {k.birthYear}
                                           </span>
                                         )}
                                       </div>
-                                      {k.note && <span className="text-[9.5px] text-slate-600 font-bold italic truncate max-w-[150px]" title={k.note}>{k.note}</span>}
+                                      {k.note && (
+                                        <p className="text-[8.5px] text-slate-500 font-medium italic truncate mt-1.5 border-t border-slate-200/60 pt-1 w-full" title={k.note}>
+                                          💬 {k.note}
+                                        </p>
+                                      )}
                                     </div>
                                   ))}
-                                  {(!t.kids || t.kids.length === 0) && <p className="text-[10px] text-slate-400 uppercase font-black italic py-2 text-center">Nessun ragazzo assegnato</p>}
+                                  {(!t.kids || t.kids.length === 0) && <p className="text-[10px] text-slate-400 uppercase font-black italic py-4 text-center col-span-full">Nessun ragazzo assegnato</p>}
                                 </div>
                               </div>
 
@@ -5581,7 +6779,7 @@ const OratorioFeriale: React.FC = () => {
                               };
                             };
 
-                            const dObj = new Date(activeRecapDay);
+                            const dObj = parseSafeDate(activeRecapDay);
                             const formattedFullDate = format(dObj, "eeee dd MMMM yyyy", { locale: it });
                             const todayStr = format(new Date(), 'yyyy-MM-dd');
                             const isToday = activeRecapDay === todayStr;
@@ -5599,7 +6797,7 @@ const OratorioFeriale: React.FC = () => {
                                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 gap-2 max-h-[340px] overflow-y-auto pr-2 custom-scrollbar">
                                     {displayedDays.map(day => {
                                       const isSel = day === activeRecapDay;
-                                      const dayObj = new Date(day);
+                                      const dayObj = parseSafeDate(day);
                                       const dayStats = dailyStats[day] || { present: 0, absent: 0, partial: 0, total: 0 };
                                       const isDayToday = day === todayStr;
 
@@ -5745,7 +6943,7 @@ const OratorioFeriale: React.FC = () => {
                             <tr className="bg-slate-100/90 border-b border-slate-250 italic">
                               <th className="px-8 py-5 text-left text-[10px] font-black uppercase tracking-widest text-slate-650 font-sans">Animatore</th>
                               {displayedDays.map(day => {
-                                const dateObj = new Date(day);
+                                const dateObj = parseSafeDate(day);
                                 const stats = dailyStats[day] || { present: 0, absent: 0, partial: 0, total: 0 };
                                 const isActive = activeRecapDay === day;
                                 return (
@@ -5898,7 +7096,7 @@ const OratorioFeriale: React.FC = () => {
                         <tr key={`${ab.id}-${index}`} className="hover:bg-slate-50/50 transition-colors group">
                           <td className="px-8 py-5">
                             <span className="text-xs font-black text-slate-900 italic">
-                              {format(new Date(ab.date), 'dd/MM/yyyy')}
+                              {format(parseSafeDate(ab.date), 'dd/MM/yyyy')}
                             </span>
                           </td>
                           <td className="px-8 py-5">
@@ -6156,6 +7354,754 @@ const OratorioFeriale: React.FC = () => {
                     </div>
                   );
                 }
+              })()}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'meetings' && (() => {
+          // Inner Sub-Component for secure double click delete confirmations
+          const MeetingDeleteButton = ({ meetingId }: { meetingId: string }) => {
+            const [confirming, setConfirming] = useState(false);
+            useEffect(() => {
+              if (confirming) {
+                const t = setTimeout(() => setConfirming(false), 3050);
+                return () => clearTimeout(t);
+              }
+            }, [confirming]);
+
+            return (
+              <button
+                onClick={() => {
+                  if (confirming) {
+                    handleDeleteMeeting(meetingId);
+                  } else {
+                    setConfirming(true);
+                  }
+                }}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${
+                  confirming
+                    ? 'bg-red-500 text-white animate-pulse border border-red-550'
+                    : 'bg-red-50 text-red-650 hover:bg-red-100 border border-transparent'
+                }`}
+              >
+                <Trash2 size={12} />
+                {confirming ? 'Sicuro? Clicca di nuovo' : 'Elimina'}
+              </button>
+            );
+          };
+
+          const filteredMeetings = meetings.filter(m => {
+            if (m.season !== activeSeason) return false;
+            if (!meetingSearchQuery.trim()) return true;
+            const q = meetingSearchQuery.toLowerCase();
+            return (
+              m.date.toLowerCase().includes(q) ||
+              m.time.toLowerCase().includes(q) ||
+              m.criticalPoints.toLowerCase().includes(q) ||
+              m.whatWorked.toLowerCase().includes(q) ||
+              m.questions.some(qn => qn.text.toLowerCase().includes(q) || Object.values(qn.teamResponses || {}).some(resp => typeof resp === 'string' && resp.toLowerCase().includes(q)))
+            );
+          });
+
+          return (
+            <div className="space-y-6 animate-in fade-in duration-300">
+              {/* Stats Display */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center gap-4">
+                  <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center shrink-0">
+                    <ClipboardList size={22} />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Riunioni Registrate</span>
+                    <span className="text-2xl font-black italic text-slate-900">{filteredMeetings.length}</span>
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center gap-4">
+                  <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0">
+                    <BookOpen size={20} />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Domande Poste</span>
+                    <span className="text-2xl font-black italic text-slate-900">
+                      {filteredMeetings.reduce((acc, m) => acc + (m.questions?.length || 0), 0)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center gap-4">
+                  <div className="w-12 h-12 bg-purple-50 text-purple-650 rounded-2xl flex items-center justify-center shrink-0">
+                    <Star size={20} />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Stagione Attiva</span>
+                    <span className="text-2xl font-black italic text-slate-900">{activeSeason}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Riunioni Controls */}
+              <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
+                <div className="flex-1 max-w-md">
+                  <input
+                    type="text"
+                    placeholder="Cerca nei verbali, domande, risposte o criticità..."
+                    value={meetingSearchQuery}
+                    onChange={(e) => setMeetingSearchQuery(e.target.value)}
+                    className="w-full px-5 py-3.5 rounded-2xl border border-slate-100 bg-white placeholder-slate-400 outline-none focus:ring-2 focus:ring-blue-500 font-bold text-xs shadow-sm"
+                  />
+                </div>
+                <button
+                  onClick={() => handleOpenMeetingModal(null)}
+                  className="flex items-center justify-center gap-2 bg-blue-600 text-white px-8 py-3.5 rounded-full font-black uppercase italic tracking-wider hover:bg-blue-700 transition-all shadow-lg hover:shadow-xl hover:shadow-blue-100 active:scale-95 text-[11px]"
+                >
+                  <Plus size={18} />
+                  Nuova Riunione
+                </button>
+              </div>
+
+              {/* Riunioni Cards List */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-12">
+                {filteredMeetings.map((meeting) => {
+                  const parsedDate = parseSafeDate(meeting.date);
+                  const dayName = format(parsedDate, "EEEE", { locale: it });
+                  const formattedDateStr = format(parsedDate, "d MMMM yyyy", { locale: it });
+
+                  return (
+                    <div key={meeting.id} className="bg-white border border-slate-100 hover:border-blue-100 hover:shadow-md transition-all rounded-[2.5rem] p-6 md:p-8 flex flex-col gap-6 relative">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                          <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-[1.25rem] flex flex-col items-center justify-center font-black">
+                            <span className="text-[10px] uppercase leading-none">{dayName.slice(0, 3)}</span>
+                            <span className="text-lg leading-tight mt-0.5">{parsedDate.getDate()}</span>
+                          </div>
+                          <div>
+                            <h4 className="font-extrabold text-slate-800 text-sm">Riunione di Verifica</h4>
+                            <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1 mt-1">
+                              <Clock size={12} />
+                              Ore {meeting.time} | {formattedDateStr}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => generateMeetingPDF(meeting)}
+                          className="p-2.5 bg-slate-50 hover:bg-blue-50 text-slate-500 hover:text-blue-650 rounded-xl transition-all"
+                          title="Esporta PDF"
+                        >
+                          <Download size={14} />
+                        </button>
+                      </div>
+
+                      <div className="space-y-3.5 flex-1">
+                        {/* What Worked */}
+                        <div className="p-4 bg-emerald-50/40 rounded-2xl border border-emerald-100/50">
+                          <span className="text-[9px] font-black uppercase text-teal-650 tracking-wider block mb-1">🟢 Cos'ha Funzionato</span>
+                          <p className="text-xs font-bold text-slate-650 line-clamp-2">
+                            {meeting.whatWorked || 'Nessuna nota inserita.'}
+                          </p>
+                        </div>
+
+                        {/* Critical Points */}
+                        <div className="p-4 bg-rose-50/40 rounded-2xl border border-rose-100/50">
+                          <span className="text-[9px] font-black uppercase text-red-650 tracking-wider block mb-1">🔴 Punti di Criticità</span>
+                          <p className="text-xs font-bold text-slate-650 line-clamp-2">
+                            {meeting.criticalPoints || 'Nessuna nota inserita.'}
+                          </p>
+                        </div>
+
+                        {/* Free Notes */}
+                        {meeting.notes && (
+                          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100/60">
+                            <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider block mb-1">📝 Note Libere</span>
+                            <p className="text-xs font-bold text-slate-700 line-clamp-3 whitespace-pre-wrap">
+                              {meeting.notes}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Questions count */}
+                        <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 px-1 pt-1">
+                          <span>Domande fatte alle squadre:</span>
+                          <span className="px-2.5 py-0.5 bg-slate-100 text-slate-700 rounded-full text-[10px] font-black">
+                            {meeting.questions?.length || 0}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-slate-50 pt-4 flex items-center justify-between gap-2 mt-2">
+                        <button
+                          onClick={() => handleOpenMeetingModal(meeting)}
+                          className="flex items-center gap-1.5 px-4 py-2 bg-slate-50 text-slate-650 hover:bg-slate-100 hover:text-slate-800 rounded-xl text-[10px] font-black transition-all"
+                        >
+                          <Pencil size={12} />
+                          Dettagli & Modifica
+                        </button>
+
+                        <MeetingDeleteButton meetingId={meeting.id} />
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {filteredMeetings.length === 0 && (
+                  <div className="col-span-full bg-slate-50 border border-dashed border-slate-200 rounded-[2.5rem] py-16 px-6 text-center animate-in fade-in duration-300">
+                    <ClipboardList size={48} className="mx-auto text-slate-300 mb-4" />
+                    <h3 className="text-base font-black italic text-slate-850 uppercase tracking-tight">Nessun verbale trovato</h3>
+                    <p className="text-xs text-slate-400 font-bold max-w-sm mx-auto mt-2">
+                      Non ci sono riunioni registrate per la stagione {activeSeason} oppure nessun verbale corrisponde alla ricerca.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Custom Meeting Editor Floating Modal Canvas */}
+        {isMeetingModalOpen && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-[2.5rem] shadow-2xl border border-slate-50 w-full max-w-4xl h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+              {/* Header */}
+              <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                <div>
+                  <h3 className="text-lg font-black text-slate-800 tracking-tight flex items-center gap-2">
+                    <ClipboardList className="text-blue-600" />
+                    {editingMeeting ? 'Modifica Verbale Riunione di Verifica' : 'Registra Nuova Riunione di Verifica'}
+                  </h3>
+                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider font-mono">
+                    Stagione {activeSeason}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setIsMeetingModalOpen(false)}
+                  className="p-2.5 bg-white border border-slate-150 hover:bg-slate-50 rounded-full transition-all text-slate-400 hover:text-slate-705"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Form Content Scroll Canvas */}
+              <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
+                {/* Inputs Date and Time */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Giorno della Riunione</span>
+                    <input
+                      required
+                      type="date"
+                      value={meetingDateForm}
+                      onChange={(e) => setMeetingDateForm(e.target.value)}
+                      className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none outline-none text-xs font-bold ring-offset-2 focus:ring-2 focus:ring-blue-500 shadow-inner"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Ora della Riunione</span>
+                    <input
+                      required
+                      type="time"
+                      value={meetingTimeForm}
+                      onChange={(e) => setMeetingTimeForm(e.target.value)}
+                      className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none outline-none text-xs font-bold ring-offset-2 focus:ring-2 focus:ring-blue-500 shadow-inner"
+                    />
+                  </div>
+                </div>
+
+                {/* What Worked & Critical points side by side */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Cos'ha funzionato */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-black text-teal-600 uppercase tracking-widest ml-1 block">🟢 Cos'ha Funzionato Oggi?</span>
+                    <textarea
+                      placeholder="Cosa ha funzionato bene oggi? Es. I giochi d'acqua sono piaciuti molto, ottima gestione ingressi..."
+                      value={meetingWhatWorkedForm}
+                      onChange={(e) => setMeetingWhatWorkedForm(e.target.value)}
+                      rows={5}
+                      className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none outline-none text-xs font-bold ring-offset-2 focus:ring-2 focus:ring-emerald-500 shadow-inner custom-scrollbar resize-none"
+                    />
+                  </div>
+
+                  {/* Punti di criticità */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-black text-red-650 uppercase tracking-widest ml-1 block">🔴 Punti di Criticità / Miglioramento?</span>
+                    <textarea
+                      placeholder="Cosa non ha funzionato o può essere migliorato? Es. Qualche ritardo nell'inizio dei turni corvè..."
+                      value={meetingCriticalPointsForm}
+                      onChange={(e) => setMeetingCriticalPointsForm(e.target.value)}
+                      rows={5}
+                      className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none outline-none text-xs font-bold ring-offset-2 focus:ring-2 focus:ring-red-500 shadow-inner custom-scrollbar resize-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Domande e Risposte Squadre */}
+                <div className="space-y-4 border-t border-slate-100 pt-6">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-4">
+                    <div>
+                      <h4 className="font-extrabold text-slate-800 text-sm">💬 Domande fatte alle Squadre & Risposte</h4>
+                      <p className="text-[10px] font-bold text-slate-400 mt-1">
+                        Compila le domande poste alle squadre e registra le risposte fornite da ogni squadra referente.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Questions Lists */}
+                  <div className="space-y-6">
+                    {meetingQuestionsForm.map((q, qIndex) => {
+                      const seasonTeams = teams.filter(t => t.season === activeSeason);
+
+                      return (
+                        <div key={q.id} className="p-6 bg-slate-50/50 border border-slate-100 rounded-[1.75rem] space-y-4 relative animate-in fade-in duration-200">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 space-y-1">
+                              <span className="text-[9px] font-black uppercase text-blue-600 tracking-wider">Domanda #{qIndex + 1}</span>
+                              <input
+                                type="text"
+                                value={q.text}
+                                onChange={(e) => {
+                                  const newVal = e.target.value;
+                                  setMeetingQuestionsForm(prev => prev.map(item => item.id === q.id ? { ...item, text: newVal } : item));
+                                }}
+                               placeholder="Completa o modifica la domanda posta..."
+                               className="w-full bg-transparent border-b border-dashed border-slate-200 hover:border-slate-400 focus:border-blue-500 py-1 font-bold text-xs text-slate-705 outline-none transition-colors"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveQuestionForm(q.id)}
+                              className="p-1 px-2.5 bg-white border border-slate-200 hover:border-red-200 text-red-500 hover:bg-red-50 rounded-xl transition-all font-bold text-[9px] uppercase shadow-sm"
+                            >
+                              Elimina
+                            </button>
+                          </div>
+
+                          {/* Team responses input list */}
+                          <div className="space-y-2.5 bg-white p-4 rounded-2xl border border-slate-100">
+                            <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest block mb-2">Risposta per ogni Squadra:</span>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                              {seasonTeams.map(t => (
+                                <div key={t.id} className="flex flex-col gap-1.5 p-2 bg-slate-50/40 border border-slate-100/50 rounded-xl">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="w-3 h-3 rounded-full shrink-0 border border-slate-200" style={{ backgroundColor: t.color || '#ccc' }} />
+                                    <span className="text-[10px] font-extrabold text-slate-700 truncate capitalize">{t.name}</span>
+                                  </div>
+                                  <input
+                                    type="text"
+                                    placeholder={`Risposta della squadra ${t.name}...`}
+                                    value={q.teamResponses[t.id] || ''}
+                                    onChange={(e) => handleUpdateTeamResponse(q.id, t.id, e.target.value)}
+                                    className="w-full text-[11px] font-medium placeholder-slate-450 px-2.5 py-1.5 bg-white border border-slate-150 rounded-lg outline-none focus:ring-1 focus:ring-blue-500"
+                                  />
+                                </div>
+                              ))}
+
+                              {seasonTeams.length === 0 && (
+                                <p className="col-span-full text-[10px] italic font-bold text-red-400 py-2">
+                                  Nessuna squadra configurata per la stagione {activeSeason}. Riempi prima la scheda "Squadre".
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {meetingQuestionsForm.length === 0 && (
+                      <div className="text-center py-6 bg-slate-50 rounded-2xl border border-slate-100 border-dashed">
+                        <p className="text-[11px] font-bold text-slate-400 italic">Nessun quesito inserito. Aggiungi una domanda in basso.</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Add dynamic Question input controller */}
+                  <div className="bg-blue-50/30 border border-blue-50/50 rounded-2xl p-4 flex gap-3 items-center mt-2">
+                    <input
+                      type="text"
+                      placeholder="Digita una nuova domanda (es. 'Come sono andati i giochi a squadre di oggi?')..."
+                      value={newQuestionTextForm}
+                      onChange={(e) => setNewQuestionTextForm(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddQuestionForm();
+                        }
+                      }}
+                      className="flex-1 bg-white px-4 py-2.5 rounded-xl border border-slate-150 text-xs text-slate-800 font-bold placeholder-slate-400 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddQuestionForm}
+                      className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold uppercase italic tracking-wider text-[10px] rounded-xl transition-all active:scale-95 shadow-md shadow-blue-100"
+                    >
+                      Aggiungi Domanda
+                    </button>
+                  </div>
+                </div>
+
+                {/* Note Libere Finali */}
+                <div className="space-y-2 border-t border-slate-100 pt-6">
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1 block">📝 Note Libere o Osservazioni Finali</span>
+                  <textarea
+                    placeholder="Inserisci qui annotazioni aggiuntive, dettagli logistici o osservazioni libere della giornata..."
+                    value={meetingNotesForm}
+                    onChange={(e) => setMeetingNotesForm(e.target.value)}
+                    rows={4}
+                    className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none outline-none text-xs font-bold ring-offset-2 focus:ring-2 focus:ring-blue-500 shadow-inner custom-scrollbar resize-none"
+                  />
+                </div>
+              </div>
+
+              {/* Action Footer */}
+              <div className="px-8 py-5 border-t border-slate-100 flex items-center justify-end gap-3 bg-slate-50/40">
+                <button
+                  type="button"
+                  onClick={() => setIsMeetingModalOpen(false)}
+                  disabled={isSaving}
+                  className="px-6 py-3 bg-white border border-slate-200 hover:bg-slate-50 hover:text-slate-800 text-slate-650 rounded-xl font-bold uppercase tracking-wider text-[10px] transition-colors"
+                >
+                  Annulla
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveMeeting}
+                  disabled={isSaving}
+                  className="flex items-center gap-2 px-8 py-3 bg-blue-600 text-white hover:bg-blue-700 rounded-xl font-extrabold uppercase italic tracking-widest text-[10px] transition-all disabled:opacity-50"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 size={12} className="animate-spin" />
+                      Salvataggio...
+                    </>
+                  ) : (
+                    <>
+                      <Save size={12} />
+                      Salva Verbale
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Custom Prayer & Daily Program Editor Floating Modal */}
+        {isPrayerModalOpen && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-[2.5rem] shadow-2xl border border-slate-50 w-full max-w-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+              {/* Header */}
+              <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                <div>
+                  <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest font-mono">
+                    PROGRAMMA GIORNALIERO & PREGHIERA
+                  </h3>
+                  <h2 className="text-lg font-black text-slate-800 tracking-tight flex items-center gap-2 mt-0.5">
+                    <Sun size={18} className="text-amber-500 animate-spin-slow" />
+                    {format(parseSafeDate(prayerDateForm), 'eeee dd MMMM yyyy', { locale: it })}
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsPrayerModalOpen(false)}
+                  className="p-2.5 bg-white border border-slate-150 hover:bg-slate-50 rounded-full transition-all text-slate-400 hover:text-slate-700"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Form Content */}
+              <div className="p-8 space-y-5 overflow-y-auto max-h-[70vh] custom-scrollbar">
+                {/* Parola del Giorno */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 block ml-1">
+                    🌟 Parola / Frase del Giorno
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Esempio: 'Amatevi gli uni gli altri come io ho amato voi' oppure un tema centrale..."
+                    value={prayerWordForm}
+                    onChange={(e) => setPrayerWordForm(e.target.value)}
+                    className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border-none outline-none text-xs font-bold leading-normal ring-offset-2 focus:ring-2 focus:ring-amber-500 shadow-inner"
+                  />
+                  <p className="text-[9px] text-slate-400 font-semibold ml-1">Viene visualizzata in prima evidenza sulla Dashboard di oggi.</p>
+                </div>
+
+                {/* Story */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 block ml-1">
+                    📖 Storia da raccontare oggi
+                  </label>
+                  <textarea
+                    placeholder="Inserisci la trama, il versetto del vangelo, l'ispirazione o il racconto della giornata..."
+                    value={prayerStoryForm}
+                    onChange={(e) => setPrayerStoryForm(e.target.value)}
+                    rows={4}
+                    className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none outline-none text-xs font-semibold ring-offset-2 focus:ring-2 focus:ring-blue-500 shadow-inner resize-none custom-scrollbar"
+                  />
+                </div>
+
+                {/* Game */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 block ml-1">
+                    🎮 Spazio per un Gioco
+                  </label>
+                  <textarea
+                    placeholder="Regole del gioco, sfide speciali tra le squadre o l'area attrezzata per oggi..."
+                    value={prayerGameForm}
+                    onChange={(e) => setPrayerGameForm(e.target.value)}
+                    rows={3}
+                    className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none outline-none text-xs font-semibold ring-offset-2 focus:ring-2 focus:ring-emerald-500 shadow-inner resize-none custom-scrollbar"
+                  />
+                </div>
+
+                {/* Activity */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 block ml-1">
+                    🎨 Eventuale Attività co-curriculare o programmatica
+                  </label>
+                  <textarea
+                    placeholder="Attività pomeridiane, laboratori manuali speciali, compiti o lavoretti previsti..."
+                    value={prayerActivityForm}
+                    onChange={(e) => setPrayerActivityForm(e.target.value)}
+                    rows={3}
+                    className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none outline-none text-xs font-semibold ring-offset-2 focus:ring-2 focus:ring-purple-500 shadow-inner resize-none custom-scrollbar"
+                  />
+                </div>
+              </div>
+
+              {/* Footer Actions */}
+              <div className="px-8 py-5 border-t border-slate-100 flex items-center justify-end gap-3 bg-slate-50/40">
+                <button
+                  type="button"
+                  onClick={() => setIsPrayerModalOpen(false)}
+                  disabled={isSaving}
+                  className="px-6 py-3 bg-white border border-slate-200 hover:bg-slate-50 hover:text-slate-850 text-slate-650 rounded-xl font-bold uppercase tracking-wider text-[10px] transition-all cursor-pointer"
+                >
+                  Annulla
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSavePrayer}
+                  disabled={isSaving}
+                  className="flex items-center gap-2 px-8 py-3 bg-amber-500 hover:bg-amber-600 text-slate-900 rounded-xl font-extrabold uppercase tracking-widest text-[10px] transition-all shadow-sm disabled:opacity-50 cursor-pointer animate-none"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 size={12} className="animate-spin" />
+                      In Salvataggio...
+                    </>
+                  ) : (
+                    <>
+                      <Save size={12} />
+                      Salva Programma
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'preghiera' && (
+          <div className="space-y-6">
+            {/* Stats Display */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center gap-4">
+                <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center shrink-0">
+                  <Sun size={24} className="animate-spin-slow" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Giorni Totali</span>
+                  <span className="text-2xl font-black italic text-slate-900">{activeSeasonDays.length}</span>
+                </div>
+              </div>
+              <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center gap-4">
+                <div className="w-12 h-12 bg-orange-50 text-orange-600 rounded-2xl flex items-center justify-center shrink-0">
+                  <Sparkles size={24} />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Parole Definite</span>
+                  <span className="text-2xl font-black italic text-slate-900">
+                    {prayers.filter(p => p.season === activeSeason && p.wordOfTheDay).length}
+                  </span>
+                </div>
+              </div>
+              <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center gap-4">
+                <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center shrink-0">
+                  <BookOpen size={24} />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Storie Registrate</span>
+                  <span className="text-2xl font-black italic text-slate-900">
+                    {prayers.filter(p => p.season === activeSeason && p.story).length}
+                  </span>
+                </div>
+              </div>
+              <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center gap-4">
+                <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0">
+                  <Trophy size={24} />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Giochi Inseriti</span>
+                  <span className="text-2xl font-black italic text-slate-900">
+                    {prayers.filter(p => p.season === activeSeason && p.game).length}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Weeks and Days filter banner */}
+            <div className="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden p-8 animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-100">
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 uppercase italic tracking-widest flex items-center gap-3">
+                    <Sun size={18} className="text-amber-500 animate-pulse" />
+                    Preghiere e Programmi Settimanali
+                  </h3>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
+                    Gestisci le meditazioni quotidiane, i racconti e le attività ludiche
+                  </p>
+                </div>
+                
+                {/* Horizontal scrollable selector of weeks */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setPrayerSelectedWeekId('all')}
+                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all select-none border shrink-0 ${
+                      prayerSelectedWeekId === 'all'
+                        ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
+                        : 'bg-slate-50 text-slate-500 hover:text-slate-800 border-slate-200 hover:bg-slate-105'
+                    }`}
+                  >
+                    Tutti i Giorni
+                  </button>
+                  {weeks.map((w, idx) => (
+                    <button
+                      key={`prayer-wk-filt-${w.id}`}
+                      type="button"
+                      onClick={() => setPrayerSelectedWeekId(w.id)}
+                      className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all select-none border shrink-0 ${
+                        prayerSelectedWeekId === w.id
+                          ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
+                          : 'bg-slate-50 text-slate-500 hover:text-slate-800 border-slate-200 hover:bg-slate-105'
+                      }`}
+                    >
+                      Sett. {idx + 1}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Rendering list of Days */}
+              {(() => {
+                const filteredDaysList = prayerSelectedWeekId === 'all'
+                  ? activeSeasonDays
+                  : (weeks.find(w => w.id === prayerSelectedWeekId)?.days || []);
+
+                if (filteredDaysList.length === 0) {
+                  return (
+                    <div className="text-center py-12 bg-slate-50 rounded-[2.5rem] border border-dashed border-slate-200">
+                      <Sun size={40} className="text-slate-300 mx-auto mb-3 animate-spin-slow" />
+                      <p className="text-xs font-black uppercase text-slate-500 tracking-wider">Nessuna giornata configurata per questa settimana</p>
+                      <p className="text-[10px] text-slate-400 font-semibold mt-1">Puoi configurare le giornate dell'oratorio feriale nella scheda Impostazioni o in Dashboard.</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-6">
+                    {filteredDaysList.map(dayStr => {
+                      const prayerObj = prayers.find(p => p.season === activeSeason && p.date === dayStr);
+                      const formattedDate = format(parseSafeDate(dayStr), 'EEEE dd MMMM yyyy', { locale: it });
+
+                      return (
+                        <div 
+                          key={`prayer-item-card-${dayStr}`}
+                          className="bg-slate-50/50 border border-slate-100 hover:border-slate-200/80 rounded-[2rem] p-6 transition-all duration-300 space-y-5 shadow-sm"
+                        >
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100/60">
+                            <span className="text-xs font-black uppercase tracking-widest text-slate-800 flex items-center gap-2">
+                              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 block shrink-0" />
+                              {formattedDate}
+                            </span>
+                            <div className="flex items-center gap-2 self-start sm:self-auto">
+                              <button
+                                onClick={() => handleOpenPrayerModal(dayStr)}
+                                className="flex items-center gap-1 bg-white hover:bg-blue-50 text-blue-600 border border-slate-200 hover:border-blue-200 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all shadow-sm cursor-pointer"
+                              >
+                                <Pencil size={11} />
+                                {prayerObj ? 'Modifica Programma' : 'Compila Giornata'}
+                              </button>
+                              {prayerObj && (
+                                <button
+                                  onClick={() => {
+                                    if (window.confirm(`Eliminare il programma inserito per il giorno ${formattedDate}?`)) {
+                                      handleDeletePrayer(prayerObj.id);
+                                    }
+                                  }}
+                                  className="p-2 bg-white hover:bg-red-50 text-red-500 hover:text-red-700 border border-slate-200 hover:border-red-200 rounded-xl transition-all shadow-sm cursor-pointer"
+                                  title="Cancella Programma Giornaliero"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            {/* Word of the day */}
+                            <div className="bg-amber-50/60 border border-amber-100/50 p-4.5 rounded-2xl flex flex-col justify-between">
+                              <div>
+                                <span className="text-[9px] font-black text-amber-800 uppercase tracking-wider flex items-center gap-1 block mb-2 font-mono">
+                                  <Sparkles size={11} className="text-amber-500" />
+                                  Parola Del Giorno
+                                </span>
+                                <p className="text-xs font-extrabold italic text-slate-850 whitespace-pre-wrap leading-relaxed">
+                                  {prayerObj?.wordOfTheDay ? `“${prayerObj.wordOfTheDay}”` : 'Non ancora configurata...'}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Daily Story */}
+                            <div className="bg-blue-50/30 border border-blue-100/40 p-4.5 rounded-2xl">
+                              <span className="text-[9px] font-black text-blue-700 uppercase tracking-wider flex items-center gap-1 block mb-2 font-mono">
+                                <BookOpen size={11} />
+                                Storia della Giornata
+                              </span>
+                              <p className="text-xs font-semibold text-slate-700 whitespace-pre-wrap leading-relaxed max-h-32 overflow-y-auto custom-scrollbar">
+                                {prayerObj?.story || 'Nessun racconto registrato...'}
+                              </p>
+                            </div>
+
+                            {/* Spazio Gioco */}
+                            <div className="bg-emerald-50/30 border border-emerald-100/40 p-4.5 rounded-2xl font-sans">
+                              <span className="text-[9px] font-black text-emerald-800 uppercase tracking-wider flex items-center gap-1 block mb-2 font-mono">
+                                <Trophy size={11} />
+                                Spazio Gioco
+                              </span>
+                              <p className="text-xs font-semibold text-slate-700 whitespace-pre-wrap leading-relaxed max-h-32 overflow-y-auto custom-scrollbar">
+                                {prayerObj?.game || 'Nessun gioco programmato...'}
+                              </p>
+                            </div>
+
+                            {/* Attività */}
+                            <div className="bg-purple-50/30 border border-purple-100/40 p-4.5 rounded-2xl">
+                              <span className="text-[9px] font-black text-purple-700 uppercase tracking-wider flex items-center gap-1 block mb-2 font-mono">
+                                <Sun size={11} />
+                                Eventuale Attività
+                              </span>
+                              <p className="text-xs font-semibold text-slate-700 whitespace-pre-wrap leading-relaxed max-h-32 overflow-y-auto custom-scrollbar">
+                                {prayerObj?.activity || 'Nessuna attività programmata...'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
               })()}
             </div>
           </div>
@@ -6986,7 +8932,7 @@ const OratorioFeriale: React.FC = () => {
 
                                 <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto px-1 custom-scrollbar">
                                   {modalDaysList.map(dayStr => {
-                                    const dObj = new Date(dayStr);
+                                    const dObj = parseSafeDate(dayStr);
                                     const isChecked = shiftFormSelectedDates.includes(dayStr);
                                     return (
                                       <button
@@ -8139,7 +10085,7 @@ const OratorioFeriale: React.FC = () => {
                 <div className="flex flex-wrap gap-2 overflow-y-auto max-h-[35vh] custom-scrollbar">
                   {activeSeasonDays.map(day => (
                     <div key={day} className="flex items-center gap-1.5 bg-white text-slate-700 border border-slate-100 rounded-xl px-3 py-1.5 text-xs font-bold shadow-sm italic">
-                      <span>{format(new Date(day), 'dd MMM (eee)', { locale: it })}</span>
+                      <span>{format(parseSafeDate(day), 'dd MMM (eee)', { locale: it })}</span>
                       <button 
                         onClick={async () => {
                           const updated = activeSeasonDays.filter(d => d !== day);
@@ -8183,7 +10129,7 @@ const OratorioFeriale: React.FC = () => {
                   Presenza / Assenza
                 </h2>
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
-                  {selectedGridAbsence.anim.firstName} {selectedGridAbsence.anim.lastName} — {format(new Date(selectedGridAbsence.day), 'dd/MM/yyyy')}
+                  {selectedGridAbsence.anim.firstName} {selectedGridAbsence.anim.lastName} — {format(parseSafeDate(selectedGridAbsence.day), 'dd/MM/yyyy')}
                 </p>
               </div>
               <button onClick={() => {

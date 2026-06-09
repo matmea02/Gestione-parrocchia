@@ -171,6 +171,8 @@ const Users: React.FC = () => {
       ...currentPermissions,
       [parishId]: {
         ...parishPerms,
+        enabled: true,
+        modules: Array.from(new Set([...(parishPerms.modules || []), 'oratorio'])),
         oratorioTabs: newTabs
       }
     };
