@@ -468,6 +468,8 @@
         "whatWorked": { "type": "string" },
         "notes": { "type": "string" },
         "season": { "type": "string" },
+        "absentAnimatorIds": { "type": "array", "items": { "type": "string" } },
+        "extraPresentAnimatorIds": { "type": "array", "items": { "type": "string" } },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["date", "time"]

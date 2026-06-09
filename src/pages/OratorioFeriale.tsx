@@ -52,7 +52,8 @@ import {
   Pause,
   Eye,
   EyeOff,
-  ClipboardList
+  ClipboardList,
+  Search
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -171,6 +172,8 @@ interface OratorioMeeting {
   criticalPoints: string;
   whatWorked: string;
   notes?: string;
+  absentAnimatorIds?: string[];
+  extraPresentAnimatorIds?: string[];
   createdAt: string;
   updatedAt?: string;
 }
@@ -328,6 +331,7 @@ const OratorioFeriale: React.FC = () => {
   const [isMeetingModalOpen, setIsMeetingModalOpen] = useState(false);
   const [editingMeeting, setEditingMeeting] = useState<OratorioMeeting | null>(null);
   const [meetingSearchQuery, setMeetingSearchQuery] = useState('');
+  const [kidSearchQuery, setKidSearchQuery] = useState('');
   const [meetingDateForm, setMeetingDateForm] = useState(getTodayDateStr());
   const [meetingTimeForm, setMeetingTimeForm] = useState('18:00');
   const [meetingQuestionsForm, setMeetingQuestionsForm] = useState<MeetingQuestion[]>([]);
@@ -335,6 +339,8 @@ const OratorioFeriale: React.FC = () => {
   const [meetingWhatWorkedForm, setMeetingWhatWorkedForm] = useState('');
   const [meetingNotesForm, setMeetingNotesForm] = useState('');
   const [newQuestionTextForm, setNewQuestionTextForm] = useState('');
+  const [meetingAbsentAnimators, setMeetingAbsentAnimators] = useState<string[]>([]);
+  const [meetingExtraPresentAnimators, setMeetingExtraPresentAnimators] = useState<string[]>([]);
 
   // States for Prayer & Daily Program section
   const [isPrayerModalOpen, setIsPrayerModalOpen] = useState(false);
@@ -3121,6 +3127,8 @@ const OratorioFeriale: React.FC = () => {
       setMeetingCriticalPointsForm(meeting.criticalPoints || '');
       setMeetingWhatWorkedForm(meeting.whatWorked || '');
       setMeetingNotesForm(meeting.notes || '');
+      setMeetingAbsentAnimators(meeting.absentAnimatorIds || []);
+      setMeetingExtraPresentAnimators(meeting.extraPresentAnimatorIds || []);
     } else {
       setEditingMeeting(null);
       setMeetingDateForm(getTodayDateStr());
@@ -3133,6 +3141,8 @@ const OratorioFeriale: React.FC = () => {
       setMeetingCriticalPointsForm('');
       setMeetingWhatWorkedForm('');
       setMeetingNotesForm('');
+      setMeetingAbsentAnimators([]);
+      setMeetingExtraPresentAnimators([]);
     }
     setIsMeetingModalOpen(true);
   };
@@ -3177,6 +3187,8 @@ const OratorioFeriale: React.FC = () => {
         whatWorked: meetingWhatWorkedForm,
         notes: meetingNotesForm,
         season: activeSeason,
+        absentAnimatorIds: meetingAbsentAnimators,
+        extraPresentAnimatorIds: meetingExtraPresentAnimators,
       };
 
       if (editingMeeting) {
@@ -3331,6 +3343,51 @@ const OratorioFeriale: React.FC = () => {
       doc.line(margin, 35, pageWidth - margin, 35);
 
       let currentY = 42;
+
+      // PARTECIPANTI ALLA RIUNIONE
+      const meetWeekId = getWeekIdForDay(meeting.date);
+      const dayPresentsObj = activeSeasonAnimatorsList.filter(anim => {
+        const isRegistered = isAnimatorPresentInWeek(anim, activeSeason, meetWeekId);
+        const ab = absences.find(a => a.animatorId === anim.id && a.date === meeting.date && (a.season === activeSeason || (!a.season && (activeSeason === '2026' || activeSeason === '26'))));
+        const isAbsentDuringDay = !!(ab && !ab.startTime && !ab.endTime);
+        return isRegistered && !isAbsentDuringDay;
+      });
+
+      const absentIds = meeting.absentAnimatorIds || [];
+      const extraPresentIds = meeting.extraPresentAnimatorIds || [];
+
+      const meetingPresents = activeSeasonAnimatorsList.filter(anim => {
+        const isDayPresent = dayPresentsObj.some(dp => dp.id === anim.id);
+        return isDayPresent ? !absentIds.includes(anim.id) : extraPresentIds.includes(anim.id);
+      });
+
+      const expectedAnims = activeSeasonAnimatorsList.filter(anim => isAnimatorPresentInWeek(anim, activeSeason, meetWeekId));
+      const meetingAbsents = expectedAnims.filter(anim => !meetingPresents.some(p => p.id === anim.id));
+
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(30, 41, 59);
+      doc.text("Partecipanti alla Riunione:", margin, currentY);
+      currentY += 5;
+
+      // Presenti str
+      doc.setFont("Helvetica", "normal");
+      doc.setFontSize(9.5);
+      doc.setTextColor(13, 148, 136); // Emerald/Teal hue
+      const presentsStr = "Presenti: " + (meetingPresents.map(anim => {
+        const isExtra = !dayPresentsObj.some(dp => dp.id === anim.id);
+        return `${anim.lastName} ${anim.firstName}${isExtra ? ' (Extra)' : ''}`;
+      }).join(', ') || 'Nessuno');
+      const presentsLines = doc.splitTextToSize(presentsStr, pageWidth - margin * 2);
+      doc.text(presentsLines, margin, currentY);
+      currentY += presentsLines.length * 4.5 + 2;
+
+      // Assenti str
+      doc.setTextColor(220, 38, 38); // Red-600 hue
+      const absentsStr = "Assenti: " + (meetingAbsents.map(anim => `${anim.lastName} ${anim.firstName}`).join(', ') || 'Nessuno');
+      const absentsLines = doc.splitTextToSize(absentsStr, pageWidth - margin * 2);
+      doc.text(absentsLines, margin, currentY);
+      currentY += absentsLines.length * 4.5 + 8;
 
       // WHAT WORKED
       doc.setFont("Helvetica", "bold");
@@ -3622,14 +3679,14 @@ const OratorioFeriale: React.FC = () => {
   const TabItem = ({ id, label, icon: Icon }: { id: typeof activeTab, label: string, icon: any }) => (
     <button
       onClick={() => setActiveTab(id)}
-      className={`flex items-center gap-2 px-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
+      className={`flex items-center shrink-0 gap-1.5 px-3.5 py-2.5 sm:px-5 sm:py-3 rounded-2xl text-[10px] sm:text-[11px] font-black uppercase tracking-widest transition-all ${
         activeTab === id 
-          ? 'bg-blue-600 text-white shadow-xl shadow-blue-100 scale-105 z-10' 
+          ? 'bg-blue-600 text-white shadow-xl shadow-blue-100 scale-102 z-10' 
           : 'bg-white text-slate-400 hover:text-slate-600 border border-slate-100 hover:border-slate-200 shadow-sm'
       }`}
     >
-      <Icon size={16} />
-      <span className="hidden md:inline">{label}</span>
+      <Icon size={14} className="shrink-0" />
+      <span className="whitespace-nowrap">{label}</span>
     </button>
   );
 
@@ -3740,7 +3797,7 @@ const OratorioFeriale: React.FC = () => {
         )}
       </div>
 
-      <div className="flex flex-wrap gap-3 overflow-x-auto pb-2 custom-scrollbar">
+      <div className="flex flex-nowrap overflow-x-auto gap-2.5 pb-3 pt-1.5 custom-scrollbar select-none pr-4 max-w-full">
         {allowedTabs.includes('dashboard') && <TabItem id="dashboard" label="Dashboard" icon={LayoutDashboard} />}
         {allowedTabs.includes('animators') && <TabItem id="animators" label="Animatori" icon={Users} />}
         {allowedTabs.includes('absences') && <TabItem id="absences" label="Assenze" icon={UserX} />}
@@ -6018,6 +6075,136 @@ const OratorioFeriale: React.FC = () => {
         {/* Squadre Tab */}
         {activeTab === 'teams' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* Pannello di Ricerca Ragazzi nelle Squadre */}
+            <div className="bg-white border border-slate-200 rounded-[2.5rem] p-6 shadow-sm space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-blue-50 text-blue-600 rounded-2xl shadow-sm">
+                    <Search size={22} className="text-blue-500" />
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-black uppercase text-blue-600 tracking-wider font-mono">Ricerca Rapida</span>
+                    <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">
+                      Trova Ragazzi nelle Squadre
+                    </h3>
+                  </div>
+                </div>
+                <div className="relative w-full md:w-80">
+                  <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <Search size={14} />
+                  </span>
+                  <input
+                    type="text"
+                    value={kidSearchQuery}
+                    onChange={(e) => setKidSearchQuery(e.target.value)}
+                    placeholder="Cerca per cognome o nome..."
+                    className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-50 border border-slate-200 outline-none text-xs font-bold leading-normal text-slate-800 focus:ring-2 focus:ring-blue-500 shadow-inner"
+                  />
+                  {kidSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setKidSearchQuery('')}
+                      className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-450 hover:text-slate-700"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Risultati della Ricerca */}
+              {(() => {
+                const queryClean = kidSearchQuery.trim().toLowerCase();
+                if (!queryClean) return null;
+
+                const matchingKidsList: { kid: Kid; team: Team }[] = [];
+                filteredTeams.forEach(team => {
+                  if (team.kids) {
+                    team.kids.forEach(k => {
+                      const f = (k.firstName || '').toLowerCase();
+                      const l = (k.lastName || '').toLowerCase();
+                      if (f.includes(queryClean) || l.includes(queryClean) || `${f} ${l}`.includes(queryClean) || `${l} ${f}`.includes(queryClean)) {
+                        matchingKidsList.push({ kid: k, team });
+                      }
+                    });
+                  }
+                });
+
+                return (
+                  <div className="mt-4 pt-4 border-t border-slate-100 space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                        Risultati della Ricerca ({matchingKidsList.length} ragazzi trovati)
+                      </span>
+                      {matchingKidsList.length > 0 && (
+                        <span className="text-[9px] font-extrabold text-blue-600 uppercase bg-blue-50 border border-blue-100 px-2 py-0.5 rounded">
+                          Le squadre corrispondenti sono state espanse automaticamente
+                        </span>
+                      )}
+                    </div>
+
+                    {matchingKidsList.length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 max-h-72 overflow-y-auto pr-1 py-1 custom-scrollbar">
+                        {matchingKidsList.map((item, mIdx) => (
+                          <div
+                            key={`search-res-${mIdx}`}
+                            className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col justify-between hover:shadow-sm hover:border-blue-300 transition-all border-l-4 text-left"
+                            style={{ borderLeftColor: item.team.color }}
+                          >
+                            <div>
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-xs font-black text-slate-800 uppercase italic">
+                                  {item.kid.lastName} {item.kid.firstName}
+                                </span>
+                                {item.kid.birthYear && (
+                                  <span className="text-[8px] px-1.5 py-0.5 bg-blue-50 border border-blue-100 text-blue-750 font-bold rounded">
+                                    {item.kid.birthYear}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="mt-1.5 flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.team.color }} />
+                                <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider">
+                                  {item.team.name}
+                                </span>
+                              </div>
+                              {item.kid.note && (
+                                <p className="text-[8.5px] text-slate-500 font-medium italic mt-1.5 pt-1 border-t border-slate-205/50 line-clamp-2" title={item.kid.note}>
+                                  💬 {item.kid.note}
+                                </p>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setExpandedTeams(prev => ({ ...prev, [item.team.id]: true }));
+                                setTimeout(() => {
+                                  const targetEl = document.getElementById(`team-card-${item.team.id}`);
+                                  if (targetEl) {
+                                    targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                  }
+                                }, 80);
+                              }}
+                              className="mt-3 text-[9px] font-black text-blue-600 hover:text-blue-800 uppercase tracking-widest text-left flex items-center gap-1 cursor-pointer"
+                            >
+                              Mostra in Squadra &rarr;
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="py-6 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                        <Users size={24} className="mx-auto text-slate-300 mb-1 animate-pulse" />
+                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                          Nessun ragazzo trovato con "{kidSearchQuery}"
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+
             {/* Day Selector and PDF export panel - HIGH CONTRAST & COMPACT */}
             <div className="bg-slate-900 text-white p-5 rounded-[2rem] border border-slate-950 shadow-md">
               <div className="space-y-4 w-full">
@@ -6155,7 +6342,7 @@ const OratorioFeriale: React.FC = () => {
                 });
 
                 return (
-                  <div key={`${t.id}-${idx}`} className="bg-white rounded-[2rem] border-2 border-slate-305 shadow-md overflow-hidden flex flex-col hover:shadow-xl transition-all border-t-8" style={{ borderTopColor: t.color }}>
+                  <div id={`team-card-${t.id}`} key={`${t.id}-${idx}`} className="bg-white rounded-[2rem] border-2 border-slate-305 shadow-md overflow-hidden flex flex-col hover:shadow-xl transition-all border-t-8" style={{ borderTopColor: t.color }}>
                     <div className="p-6 pb-4 flex items-center justify-between bg-slate-50/70 border-b border-slate-200">
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
@@ -6326,7 +6513,13 @@ const OratorioFeriale: React.FC = () => {
 
                     {/* Collapsible Details Panel (Tendina) */}
                     {(() => {
-                      const isExpanded = !!expandedTeams[t.id];
+                      const queryCleanCheck = kidSearchQuery.trim().toLowerCase();
+                      const hasMatchingKid = !!(queryCleanCheck && t.kids?.some(k => {
+                        const f = (k.firstName || '').toLowerCase();
+                        const l = (k.lastName || '').toLowerCase();
+                        return f.includes(queryCleanCheck) || l.includes(queryCleanCheck) || `${f} ${l}`.includes(queryCleanCheck) || `${l} ${f}`.includes(queryCleanCheck);
+                      }));
+                      const isExpanded = expandedTeams[t.id] !== undefined ? expandedTeams[t.id] : hasMatchingKid;
                       return (
                         <>
                           <div className="px-6 py-3">
@@ -6527,26 +6720,43 @@ const OratorioFeriale: React.FC = () => {
                                     const comp = (a.lastName || '').localeCompare(b.lastName || '', 'it', { sensitivity: 'base' });
                                     if (comp !== 0) return comp;
                                     return (a.firstName || '').localeCompare(b.firstName || '', 'it', { sensitivity: 'base' });
-                                  }).map((k, idx) => (
-                                    <div key={idx} className="flex flex-col justify-between p-2.5 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-205 transition-all text-left min-w-0 border-b-0 last:border-b">
-                                      <div className="flex items-center justify-between gap-1.5 min-w-0">
-                                        <span className="text-[10px] font-black text-slate-800 uppercase italic truncate leading-tight" title={`${k.lastName} ${k.firstName}`}>
-                                          {k.lastName} {k.firstName}
-                                        </span>
-                                        {k.birthYear && (
-                                          <span className="text-[8px] px-1 bg-blue-50 border border-blue-105 text-blue-700 font-bold rounded shrink-0 leading-none">
-                                            {k.birthYear}
+                                  }).map((k, idx) => {
+                                    const queryClean = kidSearchQuery.trim().toLowerCase();
+                                    const isMatched = !!(queryClean && (
+                                      (k.firstName || '').toLowerCase().includes(queryClean) ||
+                                      (k.lastName || '').toLowerCase().includes(queryClean) ||
+                                      `${(k.firstName || '').toLowerCase()} ${(k.lastName || '').toLowerCase()}`.includes(queryClean) ||
+                                      `${(k.lastName || '').toLowerCase()} ${(k.firstName || '').toLowerCase()}`.includes(queryClean)
+                                    ));
+                                    
+                                    const bgClass = isMatched
+                                      ? 'bg-amber-100/90 border-amber-400 ring-2 ring-amber-300 shadow-sm'
+                                      : queryClean
+                                        ? 'bg-slate-50/40 opacity-40 hover:opacity-100 border-slate-200'
+                                        : 'bg-slate-50 hover:bg-slate-100 border-slate-205';
+
+                                    return (
+                                      <div key={idx} className={`flex flex-col justify-between p-2.5 rounded-xl border transition-all text-left min-w-0 border-b-0 last:border-b ${bgClass}`}>
+                                        <div className="flex items-center justify-between gap-1.5 min-w-0">
+                                          <span className="text-[10px] font-black text-slate-800 uppercase italic truncate leading-tight flex items-center gap-1" title={`${k.lastName} ${k.firstName}`}>
+                                            {isMatched && <span className="text-amber-600 animate-pulse">✨</span>}
+                                            {k.lastName} {k.firstName}
                                           </span>
+                                          {k.birthYear && (
+                                            <span className={`text-[8px] px-1 font-bold rounded shrink-0 leading-none ${isMatched ? 'bg-amber-200 text-amber-900 border border-amber-300' : 'bg-blue-50 border border-blue-105 text-blue-700'}`}>
+                                              {k.birthYear}
+                                            </span>
+                                          )}
+                                        </div>
+                                        {k.note && (
+                                          <p className="text-[8.5px] text-slate-500 font-medium italic truncate mt-1.5 border-t border-slate-200/60 pt-1 w-full" title={k.note}>
+                                            💬 {k.note}
+                                          </p>
                                         )}
                                       </div>
-                                      {k.note && (
-                                        <p className="text-[8.5px] text-slate-500 font-medium italic truncate mt-1.5 border-t border-slate-200/60 pt-1 w-full" title={k.note}>
-                                          💬 {k.note}
-                                        </p>
-                                      )}
-                                    </div>
-                                  ))}
-                                  {(!t.kids || t.kids.length === 0) && <p className="text-[10px] text-slate-400 uppercase font-black italic py-4 text-center col-span-full">Nessun ragazzo assegnato</p>}
+                                    );
+                                  })}
+                                  {(!t.kids || t.kids.length === 0) && <p className="text-[10px] text-slate-401 uppercase font-black italic py-4 text-center col-span-full">Nessun ragazzo assegnato</p>}
                                 </div>
                               </div>
 
@@ -7520,6 +7730,74 @@ const OratorioFeriale: React.FC = () => {
                           </div>
                         )}
 
+                        {/* 👥 Presenze Riunione di Verifica */}
+                        {(() => {
+                          const meetWeekId = getWeekIdForDay(meeting.date);
+                          const dayPresentsObj = activeSeasonAnimatorsList.filter(anim => {
+                            const isRegistered = isAnimatorPresentInWeek(anim, activeSeason, meetWeekId);
+                            const ab = absences.find(a => a.animatorId === anim.id && a.date === meeting.date && (a.season === activeSeason || (!a.season && (activeSeason === '2026' || activeSeason === '26'))));
+                            const isAbsentDuringDay = !!(ab && !ab.startTime && !ab.endTime);
+                            return isRegistered && !isAbsentDuringDay;
+                          });
+
+                          const absentIds = meeting.absentAnimatorIds || [];
+                          const extraPresentIds = meeting.extraPresentAnimatorIds || [];
+
+                          const meetingPresents = activeSeasonAnimatorsList.filter(anim => {
+                            const isDayPresent = dayPresentsObj.some(dp => dp.id === anim.id);
+                            return isDayPresent ? !absentIds.includes(anim.id) : extraPresentIds.includes(anim.id);
+                          });
+
+                          const expectedAnims = activeSeasonAnimatorsList.filter(anim => isAnimatorPresentInWeek(anim, activeSeason, meetWeekId));
+                          const meetingAbsents = expectedAnims.filter(anim => !meetingPresents.some(p => p.id === anim.id));
+
+                          return (
+                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100/60 space-y-2.5">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider">👥 Presenze Riunione</span>
+                                <span className="text-[9px] font-bold text-slate-400">
+                                  Presenti: <strong className="text-emerald-600">{meetingPresents.length}</strong> | Assenti: <strong className="text-rose-500">{meetingAbsents.length}</strong>
+                                </span>
+                              </div>
+                              
+                              <div className="space-y-2 text-[10px]">
+                                {meetingPresents.length > 0 && (
+                                  <div>
+                                    <span className="text-[8px] font-black uppercase text-emerald-600 tracking-wider block mb-1">Presenti ({meetingPresents.length}):</span>
+                                    <div className="flex flex-wrap gap-1">
+                                      {meetingPresents.map(anim => {
+                                        const isExtra = !dayPresentsObj.some(dp => dp.id === anim.id);
+                                        return (
+                                          <span key={anim.id} className={`text-[9.5px] font-bold px-2 py-0.5 rounded-md ${isExtra ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'}`} title={isExtra ? 'Presente Extra' : 'Presente'}>
+                                            {anim.lastName} {anim.firstName.slice(0, 1)}. {isExtra && '✨'}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {meetingAbsents.length > 0 && (
+                                  <div>
+                                    <span className="text-[8px] font-black uppercase text-rose-600 tracking-wider block mb-1">Assenti ({meetingAbsents.length}):</span>
+                                    <div className="flex flex-wrap gap-1">
+                                      {meetingAbsents.map(anim => (
+                                        <span key={anim.id} className="text-[9.5px] font-medium px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-100">
+                                          {anim.lastName} {anim.firstName.slice(0, 1)}.
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {meetingPresents.length === 0 && meetingAbsents.length === 0 && (
+                                  <p className="text-[9px] italic font-bold text-slate-400">Nessun appello registrato.</p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
+
                         {/* Questions count */}
                         <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 px-1 pt-1">
                           <span>Domande fatte alle squadre:</span>
@@ -7561,13 +7839,13 @@ const OratorioFeriale: React.FC = () => {
         {/* Custom Meeting Editor Floating Modal Canvas */}
         {isMeetingModalOpen && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-[2.5rem] shadow-2xl border border-slate-50 w-full max-w-4xl h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="bg-white rounded-3xl sm:rounded-[2.5rem] shadow-2xl border border-slate-50 w-full max-w-4xl h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
               {/* Header */}
-              <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="px-4 sm:px-8 py-4 sm:py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                 <div>
-                  <h3 className="text-lg font-black text-slate-800 tracking-tight flex items-center gap-2">
-                    <ClipboardList className="text-blue-600" />
-                    {editingMeeting ? 'Modifica Verbale Riunione di Verifica' : 'Registra Nuova Riunione di Verifica'}
+                  <h3 className="text-base sm:text-lg font-black text-slate-800 tracking-tight flex items-center gap-2">
+                    <ClipboardList className="text-blue-600 shrink-0" />
+                    <span className="truncate">{editingMeeting ? 'Modifica Riunione di Verifica' : 'Registra Nuova Riunione'}</span>
                   </h3>
                   <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider font-mono">
                     Stagione {activeSeason}
@@ -7575,14 +7853,14 @@ const OratorioFeriale: React.FC = () => {
                 </div>
                 <button
                   onClick={() => setIsMeetingModalOpen(false)}
-                  className="p-2.5 bg-white border border-slate-150 hover:bg-slate-50 rounded-full transition-all text-slate-400 hover:text-slate-705"
+                  className="p-2.5 bg-white border border-slate-150 hover:bg-slate-50 rounded-full transition-all text-slate-400 hover:text-slate-705 shrink-0"
                 >
                   <X size={16} />
                 </button>
               </div>
 
               {/* Form Content Scroll Canvas */}
-              <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 space-y-8 custom-scrollbar">
                 {/* Inputs Date and Time */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
@@ -7607,6 +7885,139 @@ const OratorioFeriale: React.FC = () => {
                     />
                   </div>
                 </div>
+
+                {/* 👥 Appello e Presenze alla Riunione */}
+                {(() => {
+                  const weekId = getWeekIdForDay(meetingDateForm);
+                  const dayPresentsObj = activeSeasonAnimatorsList.filter(anim => {
+                    const isRegistered = isAnimatorPresentInWeek(anim, activeSeason, weekId);
+                    const ab = absences.find(a => a.animatorId === anim.id && a.date === meetingDateForm && (a.season === activeSeason || (!a.season && (activeSeason === '2026' || activeSeason === '26'))));
+                    const isAbsentDuringDay = !!(ab && !ab.startTime && !ab.endTime);
+                    return isRegistered && !isAbsentDuringDay;
+                  });
+
+                  const dayNotPresentsObj = activeSeasonAnimatorsList.filter(anim => {
+                    const isRegistered = isAnimatorPresentInWeek(anim, activeSeason, weekId);
+                    const ab = absences.find(a => a.animatorId === anim.id && a.date === meetingDateForm && (a.season === activeSeason || (!a.season && (activeSeason === '2026' || activeSeason === '26'))));
+                    const isAbsentDuringDay = !!(ab && !ab.startTime && !ab.endTime);
+                    return !isRegistered || isAbsentDuringDay;
+                  });
+
+                  return (
+                    <div className="space-y-4 border-t border-b border-slate-100 py-6">
+                      <div>
+                        <h4 className="font-extrabold text-slate-800 text-sm flex items-center gap-1.5">
+                          <span>👥 Appello e Presenze alla Riunione</span>
+                        </h4>
+                        <p className="text-[10px] font-bold text-slate-405 mt-1">
+                          I presenti della giornata vengono pre-caricati automaticamente. Puoi deselezionare chi è assente alla riunione o selezionare i presenti extra.
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+                        {/* Presenti della giornata */}
+                        <div className="bg-slate-50/75 border border-slate-100 rounded-3xl p-5 space-y-3.5">
+                          <div className="flex items-center justify-between border-b border-slate-200/65 pb-2">
+                            <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                              ✅ Presenti del giorno ({dayPresentsObj.length})
+                            </span>
+                            <span className="text-[9px] font-bold text-slate-400">
+                              Assenti Riunione: <strong className="text-red-500">{meetingAbsentAnimators.length}</strong>
+                            </span>
+                          </div>
+
+                          {dayPresentsObj.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto custom-scrollbar pr-1">
+                              {dayPresentsObj.map(anim => {
+                                const isMeetingPresent = !meetingAbsentAnimators.includes(anim.id);
+                                return (
+                                  <label
+                                    key={anim.id}
+                                    className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border-2 transition-all cursor-pointer select-none ${
+                                      isMeetingPresent
+                                        ? 'bg-emerald-50/50 border-emerald-200 text-emerald-800'
+                                        : 'bg-white border-slate-150 text-slate-400 line-through decoration-slate-350'
+                                    }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isMeetingPresent}
+                                      onChange={() => {
+                                        if (isMeetingPresent) {
+                                          setMeetingAbsentAnimators(prev => [...prev, anim.id]);
+                                        } else {
+                                          setMeetingAbsentAnimators(prev => prev.filter(id => id !== anim.id));
+                                        }
+                                      }}
+                                      className="rounded text-emerald-600 focus:ring-emerald-500 w-3.5 h-3.5 cursor-pointer"
+                                    />
+                                    <span className="text-[10px] font-bold truncate">
+                                      {anim.lastName} {anim.firstName}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <p className="text-[10px] italic font-bold text-slate-400 py-3 text-center">
+                              Nessun animatore presente durante il giorno {meetingDateForm}.
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Presenti Extra */}
+                        <div className="bg-slate-50/75 border border-slate-100 rounded-3xl p-5 space-y-3.5">
+                          <div className="flex items-center justify-between border-b border-slate-200/65 pb-2">
+                            <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                              ✨ Presenti Extra ({meetingExtraPresentAnimators.length})
+                            </span>
+                            <span className="text-[9px] font-bold text-slate-400">
+                              Non in servizio oggi: <strong className="text-orange-550">{dayNotPresentsObj.length}</strong>
+                            </span>
+                          </div>
+
+                          {dayNotPresentsObj.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto custom-scrollbar pr-1">
+                              {dayNotPresentsObj.map(anim => {
+                                const isExtraPresent = meetingExtraPresentAnimators.includes(anim.id);
+                                return (
+                                  <label
+                                    key={anim.id}
+                                    className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border-2 transition-all cursor-pointer select-none ${
+                                      isExtraPresent
+                                        ? 'bg-amber-50 border-amber-300 text-amber-800 shadow-sm shadow-amber-50/50'
+                                        : 'bg-white border-slate-150 text-slate-500'
+                                    }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isExtraPresent}
+                                      onChange={() => {
+                                        if (isExtraPresent) {
+                                          setMeetingExtraPresentAnimators(prev => prev.filter(id => id !== anim.id));
+                                        } else {
+                                          setMeetingExtraPresentAnimators(prev => [...prev, anim.id]);
+                                        }
+                                      }}
+                                      className="rounded text-amber-600 focus:ring-amber-500 w-3.5 h-3.5 cursor-pointer"
+                                    />
+                                    <span className="text-[10px] font-bold truncate">
+                                      {anim.lastName} {anim.firstName}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <p className="text-[10px] italic font-bold text-slate-400 py-3 text-center">
+                              Tutti gli animatori sono stati presenti oggi!
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* What Worked & Critical points side by side */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -7754,7 +8165,7 @@ const OratorioFeriale: React.FC = () => {
               </div>
 
               {/* Action Footer */}
-              <div className="px-8 py-5 border-t border-slate-100 flex items-center justify-end gap-3 bg-slate-50/40">
+              <div className="px-4 sm:px-8 py-4 sm:py-5 border-t border-slate-100 flex items-center justify-end gap-3 bg-slate-50/40">
                 <button
                   type="button"
                   onClick={() => setIsMeetingModalOpen(false)}
@@ -7789,29 +8200,29 @@ const OratorioFeriale: React.FC = () => {
         {/* Custom Prayer & Daily Program Editor Floating Modal */}
         {isPrayerModalOpen && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-[2.5rem] shadow-2xl border border-slate-50 w-full max-w-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="bg-white rounded-3xl sm:rounded-[2.5rem] shadow-2xl border border-slate-50 w-full max-w-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
               {/* Header */}
-              <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="px-4 sm:px-8 py-4 sm:py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                 <div>
-                  <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest font-mono">
+                  <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-mono">
                     PROGRAMMA GIORNALIERO & PREGHIERA
                   </h3>
-                  <h2 className="text-lg font-black text-slate-800 tracking-tight flex items-center gap-2 mt-0.5">
-                    <Sun size={18} className="text-amber-500 animate-spin-slow" />
-                    {format(parseSafeDate(prayerDateForm), 'eeee dd MMMM yyyy', { locale: it })}
+                  <h2 className="text-base sm:text-lg font-black text-slate-800 tracking-tight flex items-center gap-2 mt-0.5">
+                    <Sun size={18} className="text-amber-500 animate-spin-slow shrink-0" />
+                    <span className="truncate">{format(parseSafeDate(prayerDateForm), 'eeee dd MMMM yyyy', { locale: it })}</span>
                   </h2>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsPrayerModalOpen(false)}
-                  className="p-2.5 bg-white border border-slate-150 hover:bg-slate-50 rounded-full transition-all text-slate-400 hover:text-slate-700"
+                  className="p-2.5 bg-white border border-slate-150 hover:bg-slate-50 rounded-full transition-all text-slate-400 hover:text-slate-700 shrink-0"
                 >
                   <X size={16} />
                 </button>
               </div>
 
               {/* Form Content */}
-              <div className="p-8 space-y-5 overflow-y-auto max-h-[70vh] custom-scrollbar">
+              <div className="p-4 sm:p-6 md:p-8 space-y-5 overflow-y-auto max-h-[70vh] custom-scrollbar">
                 {/* Parola del Giorno */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 block ml-1">
@@ -7871,7 +8282,7 @@ const OratorioFeriale: React.FC = () => {
               </div>
 
               {/* Footer Actions */}
-              <div className="px-8 py-5 border-t border-slate-100 flex items-center justify-end gap-3 bg-slate-50/40">
+              <div className="px-4 sm:px-8 py-4 sm:py-5 border-t border-slate-100 flex items-center justify-end gap-3 bg-slate-50/40">
                 <button
                   type="button"
                   onClick={() => setIsPrayerModalOpen(false)}
@@ -8737,20 +9148,20 @@ const OratorioFeriale: React.FC = () => {
       {/* Creation/Edit dialogue modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className={`bg-white w-full ${activeTab === 'teams' ? 'max-w-5xl lg:max-w-6xl' : 'max-w-2xl'} rounded-[3rem] shadow-2xl overflow-hidden border border-white animate-in zoom-in fade-in duration-300 transition-all`}>
-            <div className="p-8 border-b border-slate-50 flex items-center justify-between">
+          <div className={`bg-white w-full ${activeTab === 'teams' ? 'max-w-5xl lg:max-w-6xl' : 'max-w-2xl'} rounded-3xl sm:rounded-[3rem] shadow-2xl overflow-hidden border border-white animate-in zoom-in fade-in duration-300 transition-all`}>
+            <div className="p-4 sm:p-6 md:p-8 border-b border-slate-50 flex items-center justify-between">
               <div>
-                <h2 className="text-2xl font-black text-slate-900 uppercase italic">
+                <h2 className="text-xl sm:text-2xl font-black text-slate-900 uppercase italic">
                   {editingId ? 'Modifica' : 'Nuovo'} {activeTab === 'animators' ? 'Animatore' : activeTab === 'shifts' ? 'Turno' : activeTab === 'teams' ? 'Squadra' : activeTab === 'absences' ? 'Assenza' : activeTab === 'workshops' ? 'Laboratorio' : 'Evento Extra'}
                 </h2>
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Configurazione Oratorio Feriale ({activeSeason})</p>
               </div>
-              <button onClick={() => setIsModalOpen(false)} className="p-2.5 hover:bg-slate-100 rounded-full transition-all text-slate-300">
+              <button onClick={() => setIsModalOpen(false)} className="p-2.5 hover:bg-slate-100 rounded-full transition-all text-slate-300 shrink-0">
                 <X size={24} />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-8 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
+            <form onSubmit={handleSubmit} className="p-4 sm:p-6 md:p-8 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
               {activeTab === 'animators' && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
@@ -8851,7 +9262,7 @@ const OratorioFeriale: React.FC = () => {
                   {/* Date, Start, End controls */}
                   <div className="space-y-4">
                     {(!isMultiDayShift || editingId) ? (
-                      <div className="grid grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div className="space-y-2">
                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Data</span>
                           <input required type="date" value={shiftForm.date} onChange={e => setShiftForm({...shiftForm, date: e.target.value})} className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold shadow-inner"/>
@@ -9073,7 +9484,7 @@ const OratorioFeriale: React.FC = () => {
                             <p className="text-[10px] italic text-slate-400 text-center py-2 w-full">Nessun ragazzo iscritto ancora.</p>
                           )}
                         </div>
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <input type="text" placeholder="Nome" value={newKid.firstName} onChange={e => setNewKid({...newKid, firstName: e.target.value})} className="px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold shadow-sm outline-none placeholder:text-slate-350"/>
                           <input type="text" placeholder="Cognome" value={newKid.lastName} onChange={e => setNewKid({...newKid, lastName: e.target.value})} className="px-3.5 py-2.5 bg-white border border-slate-205 rounded-xl text-xs font-bold shadow-sm outline-none placeholder:text-slate-350"/>
                           <input type="text" placeholder="Anno" value={newKid.birthYear || ''} onChange={e => setNewKid({...newKid, birthYear: e.target.value})} className="px-3.5 py-2.5 bg-white border border-slate-205 rounded-xl text-xs font-bold shadow-sm outline-none placeholder:text-slate-350 text-center" maxLength={4}/>
@@ -9267,7 +9678,7 @@ const OratorioFeriale: React.FC = () => {
                       ))}
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Data Assenza</span>
                       <input required type="date" value={absenceForm.date} onChange={e => setAbsenceForm({...absenceForm, date: e.target.value})} className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none text-sm font-bold outline-none"/>
@@ -9567,11 +9978,11 @@ const OratorioFeriale: React.FC = () => {
       {/* Bulk Year Assignment Modal */}
       {massYearTeam && (
         <div className="fixed inset-0 z-[210] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden border border-white animate-in zoom-in-95 fade-in duration-300 flex flex-col max-h-[85vh]">
+          <div className="bg-white w-full max-w-2xl rounded-3xl sm:rounded-[3rem] shadow-2xl overflow-hidden border border-white animate-in zoom-in-95 fade-in duration-300 flex flex-col max-h-[85vh]">
             {/* Header */}
-            <div className="p-8 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/30">
+            <div className="p-4 sm:p-6 md:p-8 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/30">
               <div>
-                <h2 className="text-xl font-black text-slate-900 uppercase italic flex items-center gap-2">
+                <h2 className="text-lg sm:text-xl font-black text-slate-900 uppercase italic flex items-center gap-2">
                   <span className="p-1.5 bg-blue-50 border border-blue-100 text-blue-700 rounded-xl">
                     <Users size={16} />
                   </span>
@@ -9584,15 +9995,15 @@ const OratorioFeriale: React.FC = () => {
               <button 
                 type="button"
                 onClick={() => setMassYearTeam(null)} 
-                className="p-2.5 hover:bg-slate-100 rounded-full transition-all text-slate-300 hover:text-slate-500"
+                className="p-2.5 hover:bg-slate-100 rounded-full transition-all text-slate-300 hover:text-slate-500 shrink-0"
               >
                 <X size={20} />
               </button>
             </div>
 
             {/* Quick Mass Assign Input */}
-            <div className="px-8 py-5 bg-slate-50 border-b border-slate-100 shrink-0">
-              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">
+            <div className="px-4 sm:px-8 py-4 sm:py-5 bg-slate-50 border-b border-slate-100 shrink-0">
+              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">
                 Assegnazione veloce (scrivi l'anno e applicalo in una sola mossa)
               </span>
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
@@ -9602,7 +10013,7 @@ const OratorioFeriale: React.FC = () => {
                     placeholder="Esempio: 2012" 
                     value={massYearInput} 
                     onChange={e => setMassYearInput(e.target.value.replace(/\D/g, '').slice(0, 4))} 
-                    className="w-full px-5 py-3.5 rounded-2xl bg-white border border-slate-205 focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold shadow-sm"
+                    className="w-full px-5 py-3 rounded-xl bg-white border border-slate-205 focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold shadow-sm"
                   />
                 </div>
                 <div className="flex gap-2 shrink-0">
@@ -9610,7 +10021,7 @@ const OratorioFeriale: React.FC = () => {
                     type="button"
                     disabled={!massYearInput.trim()}
                     onClick={handleApplyMassYearToSelected}
-                    className="flex-1 sm:flex-none px-5 py-3.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-extrabold text-[10px] uppercase tracking-wider rounded-2xl transition-all shadow-md shadow-blue-100/50"
+                    className="flex-1 sm:flex-none px-5 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-extrabold text-[10px] uppercase tracking-wider rounded-xl transition-all shadow-md shadow-blue-100/50"
                   >
                     {massSelectedIndices.length > 0 
                       ? `Applica a ${massSelectedIndices.length} Selezionati` 
@@ -9620,7 +10031,7 @@ const OratorioFeriale: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setMassSelectedIndices([])}
-                      className="px-4 py-3.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-extrabold text-[10px] uppercase tracking-wider rounded-2xl transition-all"
+                      className="px-4 py-3 bg-slate-200 hover:bg-slate-300 text-slate-700 font-extrabold text-[10px] uppercase tracking-wider rounded-xl transition-all"
                     >
                       Deseleziona
                     </button>
@@ -9635,7 +10046,7 @@ const OratorioFeriale: React.FC = () => {
             </div>
 
             {/* List of Kids with Checkboxes & Inline Year Inputs */}
-            <div className="flex-1 overflow-y-auto p-8 space-y-3 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 space-y-3 custom-scrollbar">
               <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
                   Seleziona ed edita direttamente
@@ -9661,7 +10072,7 @@ const OratorioFeriale: React.FC = () => {
                   return (
                     <div 
                       key={`${k.lastName}-${k.firstName}-${idx}`}
-                      className={`flex items-center justify-between p-3.5 rounded-2xl border transition-all ${
+                      className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${
                         isChecked 
                           ? 'bg-blue-50/50 border-blue-200 shadow-sm' 
                           : 'bg-white border-slate-100 hover:border-slate-200'
@@ -9686,7 +10097,7 @@ const OratorioFeriale: React.FC = () => {
                             {k.lastName} {k.firstName}
                           </p>
                           {k.note && (
-                            <p className="text-[9.5px] text-slate-405 font-medium truncate italic" title={k.note}>
+                            <p className="text-[9.5px] text-slate-400 font-medium truncate italic" title={k.note}>
                               {k.note}
                             </p>
                           )}
@@ -9711,11 +10122,11 @@ const OratorioFeriale: React.FC = () => {
             </div>
 
             {/* Footer actions */}
-            <div className="p-8 border-t border-slate-100 flex gap-4 bg-slate-50/50 shrink-0">
+            <div className="p-4 sm:p-6 md:p-8 border-t border-slate-100 flex gap-4 bg-slate-50/50 shrink-0">
               <button
                 type="button"
                 onClick={() => setMassYearTeam(null)}
-                className="flex-1 py-4 bg-white border border-slate-200 text-slate-600 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-slate-100 hover:text-slate-800 transition"
+                className="flex-1 py-4 bg-white border border-slate-200 text-slate-605 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-slate-100 hover:text-slate-800 transition"
               >
                 Annulla
               </button>
