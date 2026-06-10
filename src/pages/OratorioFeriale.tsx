@@ -385,6 +385,14 @@ const OratorioFeriale: React.FC = () => {
   const [prayerActivityForm, setPrayerActivityForm] = useState('');
   const [prayerSelectedWeekId, setPrayerSelectedWeekId] = useState<string>('all');
 
+  // States for Quick Add Kid in teams tab
+  const [showQuickAddKidForm, setShowQuickAddKidForm] = useState(false);
+  const [quickKidFirstName, setQuickKidFirstName] = useState('');
+  const [quickKidLastName, setQuickKidLastName] = useState('');
+  const [quickKidBirthYear, setQuickKidBirthYear] = useState('');
+  const [quickKidNote, setQuickKidNote] = useState('');
+  const [quickKidTeamId, setQuickKidTeamId] = useState('');
+
   // Active season state (persisted)
   const [activeSeason, setActiveSeason] = useState<string>(() => {
     return localStorage.getItem('oratorio_active_season') || '2026';
@@ -1231,6 +1239,59 @@ const OratorioFeriale: React.FC = () => {
     } catch (err) {
       console.error(err);
       handleFirestoreError(err, OperationType.UPDATE, `oratorio_teams/${targetTeamId}`);
+    }
+  };
+
+  const handleQuickCreateKid = async (firstName: string, lastName: string, birthYear: string, note: string, teamId: string) => {
+    if (!firstName.trim() || !lastName.trim() || !teamId) {
+      setErrorStatus("Nome, cognome e squadra sono obbligatori!");
+      return;
+    }
+
+    try {
+      const targetTeam = teams.find(t => t.id === teamId);
+      if (!targetTeam) {
+        throw new Error("Squadra selezionata non trovata.");
+      }
+
+      const cleanFirstName = firstName.trim();
+      const cleanLastName = lastName.trim();
+      const cleanBirthYear = birthYear.trim();
+      const cleanNote = note.trim();
+
+      const exists = (targetTeam.kids || []).some(
+        k => k.firstName.toLowerCase() === cleanFirstName.toLowerCase() && 
+             k.lastName.toLowerCase() === cleanLastName.toLowerCase() && 
+             (k.birthYear || '') === cleanBirthYear
+      );
+
+      if (exists) {
+        setErrorStatus(`Il ragazzo "${cleanLastName} ${cleanFirstName}" è già presente in questa squadra.`);
+        return;
+      }
+
+      const newKidObj: Kid = {
+        firstName: cleanFirstName,
+        lastName: cleanLastName,
+        birthYear: cleanBirthYear || undefined,
+        note: cleanNote || undefined
+      };
+
+      const updatedKids = [...(targetTeam.kids || []), newKidObj];
+      await updateDoc(doc(teamsColl, teamId), { kids: updatedKids });
+
+      setSuccessStatus(`Ragazzo "${cleanLastName} ${cleanFirstName}" aggiunto con successo a ${targetTeam.name}!`);
+      setTimeout(() => setSuccessStatus(null), 3000);
+
+      // Reset form fields
+      setQuickKidFirstName('');
+      setQuickKidLastName('');
+      setQuickKidBirthYear('');
+      setQuickKidNote('');
+      setShowQuickAddKidForm(false);
+    } catch (err) {
+      console.error(err);
+      handleFirestoreError(err, OperationType.UPDATE, `oratorio_teams/${teamId}`);
     }
   };
 
@@ -6467,28 +6528,137 @@ const OratorioFeriale: React.FC = () => {
                     </h3>
                   </div>
                 </div>
-                <div className="relative w-full md:w-80">
-                  <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                    <Search size={14} />
-                  </span>
-                  <input
-                    type="text"
-                    value={kidSearchQuery}
-                    onChange={(e) => setKidSearchQuery(e.target.value)}
-                    placeholder="Cerca per cognome o nome..."
-                    className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-50 border border-slate-200 outline-none text-xs font-bold leading-normal text-slate-800 focus:ring-2 focus:ring-blue-500 shadow-inner"
-                  />
-                  {kidSearchQuery && (
-                    <button
-                      type="button"
-                      onClick={() => setKidSearchQuery('')}
-                      className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-450 hover:text-slate-700"
-                    >
-                      <X size={14} />
-                    </button>
-                  )}
+
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
+                  <div className="relative w-full md:w-80">
+                    <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                      <Search size={14} />
+                    </span>
+                    <input
+                      type="text"
+                      value={kidSearchQuery}
+                      onChange={(e) => setKidSearchQuery(e.target.value)}
+                      placeholder="Cerca per cognome o nome..."
+                      className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-50 border border-slate-200 outline-none text-xs font-bold leading-normal text-slate-800 focus:ring-2 focus:ring-blue-500 shadow-inner"
+                    />
+                    {kidSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setKidSearchQuery('')}
+                        className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-450 hover:text-slate-700"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowQuickAddKidForm(!showQuickAddKidForm);
+                      const activeTeams = teams.filter(t => t.season === activeSeason);
+                      if (activeTeams.length > 0 && !quickKidTeamId) {
+                        setQuickKidTeamId(activeTeams[0].id);
+                      }
+                    }}
+                    className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-emerald-700 transition-all shadow-md hover:shadow-emerald-100 active:scale-95 text-center whitespace-nowrap cursor-pointer"
+                  >
+                    <Plus size={14} />
+                    Nuovo Ragazzo
+                  </button>
                 </div>
               </div>
+
+              {/* Modulo di Creazione Rapida Ragazzo */}
+              {showQuickAddKidForm && (
+                <div className="p-5 bg-emerald-50/40 border border-emerald-100 rounded-2xl animate-in slide-in-from-top-2 duration-300">
+                  <div className="flex items-center justify-between mb-3 border-b border-emerald-100 pb-2">
+                    <div className="flex items-center gap-2 text-emerald-800">
+                      <Plus size={16} className="text-emerald-600" />
+                      <span className="text-[10px] font-black uppercase tracking-wider font-mono">Creazione Rapida Nuovo Ragazzo</span>
+                    </div>
+                    <button 
+                      type="button" 
+                      onClick={() => setShowQuickAddKidForm(false)}
+                      className="text-[10px] uppercase font-black tracking-widest text-emerald-650 hover:text-emerald-800 cursor-pointer"
+                    >
+                      Annulla ×
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 items-end">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black uppercase text-emerald-800 block tracking-wider">Cognome *</label>
+                      <input
+                        type="text"
+                        placeholder="Es: Rossi"
+                        value={quickKidLastName}
+                        onChange={(e) => setQuickKidLastName(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold shadow-xs outline-none placeholder:text-slate-350 focus:ring-1 focus:ring-emerald-500"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black uppercase text-emerald-800 block tracking-wider">Nome *</label>
+                      <input
+                        type="text"
+                        placeholder="Es: Mario"
+                        value={quickKidFirstName}
+                        onChange={(e) => setQuickKidFirstName(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold shadow-xs outline-none placeholder:text-slate-350 focus:ring-1 focus:ring-emerald-500"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black uppercase text-emerald-800 block tracking-wider">Anno Nascita</label>
+                      <input
+                        type="text"
+                        placeholder="Es: 2014"
+                        value={quickKidBirthYear}
+                        onChange={(e) => setQuickKidBirthYear(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold shadow-xs outline-none placeholder:text-slate-350 focus:ring-1 focus:ring-emerald-500 text-center"
+                        maxLength={4}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black uppercase text-emerald-800 block tracking-wider">Assegna alla Squadra *</label>
+                      <select
+                        value={quickKidTeamId}
+                        onChange={(e) => setQuickKidTeamId(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold shadow-xs outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                        required
+                      >
+                        <option value="" disabled>Seleziona squadra...</option>
+                        {teams
+                          .filter(t => t.season === activeSeason)
+                          .map(t => (
+                            <option key={t.id} value={t.id}>
+                              {t.name}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                    <div className="md:col-span-1 flex items-end">
+                      <button
+                        type="button"
+                        onClick={() => handleQuickCreateKid(quickKidFirstName, quickKidLastName, quickKidBirthYear, quickKidNote, quickKidTeamId)}
+                        className="w-full px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-emerald-700 transition-all shadow-md active:scale-95 text-center cursor-pointer"
+                      >
+                        Salva e Assegna
+                      </button>
+                    </div>
+                    <div className="md:col-span-5 space-y-1 mt-1">
+                      <label className="text-[9px] font-black uppercase text-emerald-800 block tracking-wider">Note o Segnalazioni (opzionale)</label>
+                      <input
+                        type="text"
+                        placeholder="Note mediche / deleghe / info importanti..."
+                        value={quickKidNote}
+                        onChange={(e) => setQuickKidNote(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold shadow-xs outline-none placeholder:text-slate-350 focus:ring-1 focus:ring-emerald-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Risultati della Ricerca */}
               {(() => {
@@ -9801,7 +9971,7 @@ const OratorioFeriale: React.FC = () => {
             </div>
 
             {/* Teams and Members Lists */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-6">
               {(() => {
                 const activeTeamsForSeason = teams.filter(t => t.season === activeSeason);
                 const teamsToShow = activeTeamsForSeason.filter(t => confessionTeamFilter === 'all' || t.id === confessionTeamFilter);
@@ -9931,151 +10101,154 @@ const OratorioFeriale: React.FC = () => {
                       </div>
 
                       {/* Card Members Body */}
-                      <div className="p-5 space-y-6 flex-1">
+                      <div className="p-6 space-y-6 flex-1">
                         {/* Animators section */}
-                        {confessionRoleFilter !== 'kid' && filteredTeamAnimators.length > 0 && (
-                          <div className="space-y-3">
-                            <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1.5 font-sans">
-                              Animatori Attivi ({filteredTeamAnimators.length})
-                            </span>
-                            <div className="space-y-2">
-                              {filteredTeamAnimators.map(anim => {
-                                const personKey = `${team.id}_anim_${anim.id}`;
-                                const isSelected = selectedConfessionPeople.includes(personKey);
-                                const isConfessed = confessions.some(c => c.personKey === personKey && c.season === activeSeason && c.confessed);
+                        {confessionRoleFilter !== 'kid' && (
+                          (() => {
+                            const sortedAnimators = filteredTeamAnimators.slice().sort((a, b) => {
+                              const nameA = `${a.lastName} ${a.firstName}`.toLowerCase();
+                              const nameB = `${b.lastName} ${b.firstName}`.toLowerCase();
+                              return nameA.localeCompare(nameB, 'it');
+                            });
 
-                                return (
-                                  <div 
-                                    key={personKey}
-                                    className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${isConfessed ? 'bg-emerald-50/40 border-emerald-100' : 'bg-slate-50/50 border-slate-150'} hover:border-slate-300`}
-                                  >
-                                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                                      {/* Printing select checkbox */}
-                                      <input
-                                        type="checkbox"
-                                        checked={isSelected}
-                                        onChange={() => togglePersonSelection(personKey)}
-                                        className="w-4.5 h-4.5 text-blue-600 border-slate-305 rounded cursor-pointer"
-                                        title="Includi in stampa PDF"
-                                      />
-                                      <div className="truncate">
-                                        <p className="text-xs font-black text-slate-800 uppercase italic truncate">
-                                          {anim.lastName} {anim.firstName}
-                                        </p>
-                                        <span className="bg-amber-100 border border-amber-300 text-amber-800 text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md inline-block mt-0.5 font-mono">
-                                          Animatore
-                                        </span>
+                            if (sortedAnimators.length === 0) return null;
+
+                            return (
+                              <div className="space-y-3">
+                                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1.5 font-sans">
+                                  Animatori Attivi ({sortedAnimators.length})
+                                </span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                                  {sortedAnimators.map(anim => {
+                                    const personKey = `${team.id}_anim_${anim.id}`;
+                                    const isSelected = selectedConfessionPeople.includes(personKey);
+                                    const isConfessed = confessions.some(c => c.personKey === personKey && c.season === activeSeason && c.confessed);
+
+                                    return (
+                                      <div 
+                                        key={personKey}
+                                        className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${isConfessed ? 'bg-emerald-50/40 border-emerald-100' : 'bg-slate-50/50 border-slate-150'} hover:border-slate-300`}
+                                      >
+                                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                                          {/* Printing select checkbox */}
+                                          <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={() => togglePersonSelection(personKey)}
+                                            className="w-4.5 h-4.5 text-blue-600 border-slate-305 rounded cursor-pointer"
+                                            title="Includi in stampa PDF"
+                                          />
+                                          <div className="truncate">
+                                            <p className="text-xs font-black text-slate-800 uppercase italic truncate">
+                                              {anim.lastName} {anim.firstName}
+                                            </p>
+                                            <span className="bg-amber-100 border border-amber-300 text-amber-800 text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md inline-block mt-0.5 font-mono">
+                                              Animatore
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        {/* Action Toggle Confession */}
+                                        <button
+                                          type="button"
+                                          onClick={() => handleToggleConfession(personKey, `${anim.lastName} ${anim.firstName}`, 'animator', team.id)}
+                                          className={`px-3 py-1.5 rounded-xl font-black text-[9px] uppercase tracking-wider transition-all border cursor-pointer shrink-0 ${
+                                            isConfessed 
+                                              ? 'bg-emerald-500 text-white border-emerald-500 hover:bg-emerald-600' 
+                                              : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                                          }`}
+                                        >
+                                          {isConfessed ? 'Fatto ✓' : 'Fatto?'}
+                                        </button>
                                       </div>
-                                    </div>
-
-                                    {/* Action Toggle Confession */}
-                                    <button
-                                      type="button"
-                                      onClick={() => handleToggleConfession(personKey, `${anim.lastName} ${anim.firstName}`, 'animator', team.id)}
-                                      className={`px-3 py-1.5 rounded-xl font-black text-[9px] uppercase tracking-wider transition-all border ${
-                                        isConfessed 
-                                          ? 'bg-emerald-500 text-white border-emerald-500 hover:bg-emerald-600' 
-                                          : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                                      }`}
-                                    >
-                                      {isConfessed ? 'Confessato ✓' : 'Segna Fatto'}
-                                    </button>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })()
                         )}
 
-                        {/* Kids grouped by Year sections */}
-                        {confessionRoleFilter !== 'animator' && sortedYears.length > 0 && (
-                          <div className="space-y-4 font-sans">
-                            {sortedYears.map(year => {
-                              const groupKids = kidsByYear[year];
-                              if (groupKids.length === 0) return null;
+                        {/* Kids section (All kids sorted Alphabetically inside multiple columns) */}
+                        {confessionRoleFilter !== 'animator' && (
+                          (() => {
+                            const kidsList: Kid[] = [];
+                            (team.kids || []).forEach(kid => {
+                              const name = `${kid.lastName} ${kid.firstName}`.toLowerCase();
+                              if (confessionSearch && !name.includes(confessionSearch.toLowerCase())) return;
 
-                              const yearKeys = groupKids.map(k => `${team.id}_kid_${k.firstName}_${k.lastName}`);
-                              const yearAllSelected = yearKeys.every(k => selectedConfessionPeople.includes(k));
+                              const personKey = `${team.id}_kid_${kid.firstName}_${kid.lastName}`;
+                              const isConfessed = confessions.some(c => c.personKey === personKey && c.season === activeSeason && c.confessed);
+                              
+                              if (confessionStatusFilter === 'confessed' && !isConfessed) return;
+                              if (confessionStatusFilter === 'not_confessed' && isConfessed) return;
 
-                              return (
-                                <div key={year} className="space-y-2 border-t border-slate-100 pt-3 first:border-0 first:pt-0">
-                                  {/* Year Group Header with group actions */}
-                                  <div className="flex items-center justify-between pb-1">
-                                    <span className="text-[9px] font-black uppercase text-indigo-600 tracking-wider font-mono">
-                                      Anno di Nascita: {year} ({groupKids.length})
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        if (yearAllSelected) {
-                                          setSelectedConfessionPeople(prev => prev.filter(k => !yearKeys.includes(k)));
-                                        } else {
-                                          setSelectedConfessionPeople(prev => {
-                                            const next = [...prev];
-                                            yearKeys.forEach(k => {
-                                              if (!next.includes(k)) next.push(k);
-                                            });
-                                            return next;
-                                          });
-                                        }
-                                      }}
-                                      className="text-[9px] font-extrabold uppercase hover:text-indigo-805 text-indigo-405 font-mono"
-                                    >
-                                      {yearAllSelected ? 'Desel. Anno' : 'Sel. Anno'}
-                                    </button>
-                                  </div>
+                              kidsList.push(kid);
+                            });
 
-                                  {/* Kids list */}
-                                  <div className="space-y-2 font-sans">
-                                    {groupKids.map(kid => {
-                                      const personKey = `${team.id}_kid_${kid.firstName}_${kid.lastName}`;
-                                      const isSelected = selectedConfessionPeople.includes(personKey);
-                                      const isConfessed = confessions.some(c => c.personKey === personKey && c.season === activeSeason && c.confessed);
+                            // Sort Alphabetically
+                            const sortedKids = kidsList.sort((a, b) => {
+                              const nameA = `${a.lastName} ${a.firstName}`.toLowerCase();
+                              const nameB = `${b.lastName} ${b.firstName}`.toLowerCase();
+                              return nameA.localeCompare(nameB, 'it');
+                            });
 
-                                      return (
-                                        <div 
-                                          key={personKey}
-                                          className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${isConfessed ? 'bg-emerald-50/40 border-emerald-100' : 'bg-slate-50/50 border-slate-150'} hover:border-slate-300`}
-                                        >
-                                          <div className="flex items-center gap-3 flex-1 min-w-0">
-                                            {/* Printing select checkbox */}
-                                            <input
-                                              type="checkbox"
-                                              checked={isSelected}
-                                              onChange={() => togglePersonSelection(personKey)}
-                                              className="w-4.5 h-4.5 text-blue-600 border-slate-305 rounded cursor-pointer"
-                                              title="Includi in stampa PDF"
-                                            />
-                                            <div className="truncate">
-                                              <p className="text-xs font-black text-slate-800 uppercase italic truncate">
-                                                {kid.lastName} {kid.firstName}
-                                              </p>
-                                              <span className="bg-slate-100 border border-slate-205 text-slate-550 text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md inline-block mt-0.5 font-mono">
-                                                Ragazzo • {year}
-                                              </span >
-                                            </div>
+                            if (sortedKids.length === 0) return null;
+
+                            return (
+                              <div className="space-y-3 pt-4 border-t border-slate-100">
+                                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1.5 font-sans">
+                                  Ragazzi Iscritti ({sortedKids.length})
+                                </span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 font-sans">
+                                  {sortedKids.map(kid => {
+                                    const personKey = `${team.id}_kid_${kid.firstName}_${kid.lastName}`;
+                                    const isSelected = selectedConfessionPeople.includes(personKey);
+                                    const isConfessed = confessions.some(c => c.personKey === personKey && c.season === activeSeason && c.confessed);
+
+                                    return (
+                                      <div 
+                                        key={personKey}
+                                        className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${isConfessed ? 'bg-emerald-50/40 border-emerald-100' : 'bg-slate-50/50 border-slate-150'} hover:border-slate-300`}
+                                      >
+                                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                                          {/* Printing select checkbox */}
+                                          <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={() => togglePersonSelection(personKey)}
+                                            className="w-4.5 h-4.5 text-blue-600 border-slate-305 rounded cursor-pointer"
+                                            title="Includi in stampa PDF"
+                                          />
+                                          <div className="truncate">
+                                            <p className="text-xs font-black text-slate-800 uppercase italic truncate">
+                                              {kid.lastName} {kid.firstName}
+                                            </p>
+                                            <span className="bg-slate-100 border border-slate-205 text-slate-550 text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md inline-block mt-0.5 font-mono">
+                                              Ragazzo {kid.birthYear ? `• ${kid.birthYear}` : ''}
+                                            </span>
                                           </div>
-
-                                          {/* Action Toggle Confession */}
-                                          <button
-                                            type="button"
-                                            onClick={() => handleToggleConfession(personKey, `${kid.lastName} ${kid.firstName}`, 'kid', team.id)}
-                                            className={`px-3 py-1.5 rounded-xl font-black text-[9px] uppercase tracking-wider transition-all border ${
-                                              isConfessed 
-                                                ? 'bg-emerald-500 text-white border-emerald-500 hover:bg-emerald-600' 
-                                                : 'bg-white text-slate-500 border-slate-200 hover:border-slate-305 hover:bg-slate-50'
-                                            }`}
-                                          >
-                                            {isConfessed ? 'Confessato ✓' : 'Segna Fatto'}
-                                          </button>
                                         </div>
-                                      );
-                                    })}
-                                  </div>
+
+                                        {/* Action Toggle Confession */}
+                                        <button
+                                          type="button"
+                                          onClick={() => handleToggleConfession(personKey, `${kid.lastName} ${kid.firstName}`, 'kid', team.id)}
+                                          className={`px-3 py-1.5 rounded-xl font-black text-[9px] uppercase tracking-wider transition-all border cursor-pointer shrink-0 ${
+                                            isConfessed 
+                                              ? 'bg-emerald-500 text-white border-emerald-500 hover:bg-emerald-600' 
+                                              : 'bg-white text-slate-500 border-slate-200 hover:border-slate-305 hover:bg-slate-50'
+                                          }`}
+                                        >
+                                          {isConfessed ? 'Fatto ✓' : 'Fatto?'}
+                                        </button>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
-                              );
-                            })}
-                          </div>
+                              </div>
+                            );
+                          })()
                         )}
                       </div>
                     </div>
