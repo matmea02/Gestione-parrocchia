@@ -1273,8 +1273,8 @@ const OratorioFeriale: React.FC = () => {
       const newKidObj: Kid = {
         firstName: cleanFirstName,
         lastName: cleanLastName,
-        birthYear: cleanBirthYear || undefined,
-        note: cleanNote || undefined
+        birthYear: cleanBirthYear || '',
+        note: cleanNote || ''
       };
 
       const updatedKids = [...(targetTeam.kids || []), newKidObj];
@@ -3406,6 +3406,222 @@ const OratorioFeriale: React.FC = () => {
     }
   };
 
+  const generateWeeklyWorkshopPlanPDF = (weekId: string) => {
+    try {
+      const activeWeeks = getWeeks();
+      const seasonText = `Stagione Feriale ${activeSeason}`;
+      const ferialeName = `${parishInfo.oratorioName || parishInfo.name || 'Oratorio Feriale'} - ${activeSeason}`;
+
+      let targetWorkshops = [];
+      let subtitleText = '';
+      let filename = '';
+
+      if (weekId === 'all') {
+        targetWorkshops = filteredWorkshops;
+        subtitleText = "PIANO GENERALE LABORATORI";
+        filename = `Piano_Generale_Laboratori_${activeSeason}.pdf`;
+      } else {
+        const targetWeek = activeWeeks.find(w => w.id === weekId);
+        if (!targetWeek) {
+          setErrorStatus("Settimana non trovata.");
+          return;
+        }
+        targetWorkshops = filteredWorkshops.filter(w => w.weeks?.includes(weekId));
+        subtitleText = `PIANO LABORATORI - ${targetWeek.label.toUpperCase()}`;
+        const cleanLabel = targetWeek.label.replace(/\s+/g, '_').replace(/\//g, '-');
+        filename = `Piano_Weekly_Laboratori_${cleanLabel}_${activeSeason}.pdf`;
+      }
+
+      if (targetWorkshops.length === 0) {
+        setErrorStatus("Nessun laboratorio attivo per la selezione corrente.");
+        return;
+      }
+
+      // Calculate total kids in this season
+      const activeTeamsForSeason = teams.filter(t => t.season === activeSeason);
+      const totalKidsInSeason = activeTeamsForSeason.reduce((acc, team) => acc + (team.kids?.length || 0), 0);
+      const avgKidsPerWorkshop = targetWorkshops.length > 0 ? Math.ceil(totalKidsInSeason / targetWorkshops.length) : 0;
+
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 14;
+
+      const r_accent = 37;
+      const g_accent = 99;
+      const b_accent = 235;
+
+      // 1. Accent line at top
+      doc.setFillColor(r_accent, g_accent, b_accent);
+      doc.rect(0, 0, pageWidth, 5, 'F');
+
+      let headerY = 13;
+
+      // 2. Parish Logo on top-left if it exists
+      let textStartX = margin;
+      const chosenLogoUrl = parishInfo.oratorioLogoUrl || parishInfo.logoUrl;
+      if (chosenLogoUrl) {
+        try {
+          doc.addImage(chosenLogoUrl, 'PNG', margin, headerY - 4, 18, 18);
+          textStartX += 22;
+        } catch (e) {
+          // Fallback if image load fails
+        }
+      }
+
+      // 4. Right Side: Reference card
+      const cardWidth = 72;
+      const cardHeight = 18;
+      const cardX = pageWidth - margin - cardWidth;
+      const cardY = headerY - 4;
+
+      // Auto-fit function to prevent overlap
+      const maxWidth = cardX - textStartX - 5;
+      const drawTextFit = (text: string, x: number, y: number, bSize: number, fontStyle: string = 'normal') => {
+        doc.setFont('helvetica', fontStyle);
+        doc.setFontSize(bSize);
+        let currentSize = bSize;
+        while (doc.getTextWidth(text) > maxWidth && currentSize > 6) {
+          currentSize -= 0.5;
+          doc.setFontSize(currentSize);
+        }
+        doc.text(text, x, y);
+      };
+
+      // 3. Left Side Title details
+      doc.setTextColor(148, 163, 184); // Slate-400
+      drawTextFit(ferialeName.toUpperCase(), textStartX, headerY, 8.5, 'bold');
+
+      doc.setTextColor(30, 41, 59); // Slate-800
+      drawTextFit(weekId === 'all' ? "PIANO COMPLESSIVO LABORATORI" : "PIANO SETTIMANALE LABORATORI", textStartX, headerY + 8, 13, 'bold');
+
+      doc.setFillColor(248, 250, 252); // Slate-50 background
+      doc.setDrawColor(226, 232, 240); // Slate-200 border
+      doc.setLineWidth(0.3);
+      doc.roundedRect(cardX, cardY, cardWidth, cardHeight, 1.5, 1.5, 'FD');
+
+      // Card Content
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(148, 163, 184); // Slate-450
+      doc.text('RIFERIMENTO PIANO', cardX + 4, cardY + 5);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(r_accent, g_accent, b_accent); // Brand accent
+      doc.text(weekId === 'all' ? "INTERA STAGIONE" : subtitleText.replace('PIANO LABORATORI - ', ''), cardX + 4, cardY + 10);
+
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(7);
+      doc.setTextColor(100, 116, 139); // Slate-500
+      doc.text(`${seasonText} • Generato: ${format(new Date(), 'dd/MM/yyyy HH:mm', { locale: it })}`, cardX + 4, cardY + 14.5);
+
+      // Clean horizontal divider line under header
+      doc.setDrawColor(241, 245, 249);
+      doc.setLineWidth(0.4);
+      doc.line(margin, headerY + 18, pageWidth - margin, headerY + 18);
+
+      let currentY = headerY + 26;
+
+      // WEEK DETAILS STATS
+      doc.setFillColor(241, 245, 249); // slate-100
+      doc.setDrawColor(226, 232, 240); // slate-200
+      doc.roundedRect(margin, currentY, pageWidth - margin * 2, 18, 1.5, 1.5, 'FD');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(71, 85, 105); // slate-600
+
+      // Stat columns:
+      // Col 1: Laboratori Attivi
+      doc.text("LABORATORI FILTRATI", margin + 12, currentY + 6);
+      doc.setFontSize(12);
+      doc.setTextColor(30, 41, 59);
+      doc.text(`${targetWorkshops.length}`, margin + 12, currentY + 13);
+
+      // Col 2: Ragazzi Iscritti Oratorio
+      doc.setFontSize(7.5);
+      doc.setTextColor(71, 85, 105);
+      doc.text("TOTALE RAGAZZI ISCRITTI (STAGIONE)", margin + 100, currentY + 6);
+      doc.setFontSize(12);
+      doc.setTextColor(30, 41, 59);
+      doc.text(`${totalKidsInSeason}`, margin + 100, currentY + 13);
+
+      currentY += 26;
+
+      // NOW LET'S DRAW THE TABLE LISTING THE LABORATORIES
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(30, 41, 59);
+      doc.text(weekId === 'all' ? "PROSPETTO LABORATORI ATTIVI DELLA STAGIONE" : "PROSPETTO LABORATORI ATTIVI DELLA SETTIMANA", margin, currentY);
+      currentY += 4;
+
+      const tableRows = targetWorkshops.map((w, index) => {
+        const referent = animators.find(a => a.id === w.referentId);
+        const referentName = referent ? `${referent.lastName.toUpperCase()} ${referent.firstName}` : 'NON ASSEGNATO';
+        const referentPhone = referent?.phone ? `\nTel: ${referent.phone}` : '';
+        const supportNames = (w.animatorIds || [])
+          .map(id => animators.find(a => a.id === id))
+          .filter(Boolean)
+          .map(a => `${a!.lastName} ${a!.firstName[0]}.`)
+          .join(', ') || 'Nessuno';
+
+        return [
+          index + 1,
+          w.name.toUpperCase(),
+          `${referentName}${referentPhone}`,
+          supportNames,
+          `${w.maxSubscribers} Max`
+        ];
+      });
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [['N.', 'NOME LABORATORIO', 'REFERENTE & RECAPITO', 'ANIMATORI SUPPORTO', 'CAPACITÀ L.']],
+        body: tableRows,
+        theme: 'grid',
+        styles: {
+          font: 'helvetica',
+          fontSize: 8,
+          cellPadding: 3.5,
+          valign: 'middle'
+        },
+        headStyles: {
+          fillColor: [37, 99, 235], // Blue-600
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          halign: 'center'
+        },
+        columnStyles: {
+          0: { cellWidth: 8, halign: 'center', fontStyle: 'bold' },
+          1: { cellWidth: 50, fontStyle: 'bold' },
+          2: { cellWidth: 50 },
+          3: { cellWidth: 54 },
+          4: { cellWidth: 20, halign: 'center' }
+        },
+        didDrawPage: (data) => {
+          doc.setFont('helvetica', 'italic');
+          doc.setFontSize(7.5);
+          doc.setTextColor(148, 163, 184);
+          doc.text(`Oratorio Feriale - Piano Laboratori. Generato per la stagione: ${activeSeason}.`, margin, pageHeight - 10);
+        }
+      });
+
+      setSuccessStatus(`Piano laboratori scaricato con successo!`);
+      setTimeout(() => setSuccessStatus(null), 2000);
+
+      doc.save(filename);
+    } catch (err) {
+      console.error('Piano Workshop PDF Generation Error:', err);
+      setErrorStatus('Impossibile scaricare il piano dei laboratori.');
+    }
+  };
+
   const getAbsenceMeta = (ab?: Absence) => {
     if (!ab) return null;
     const s = ab.startTime || '';
@@ -4083,19 +4299,24 @@ const OratorioFeriale: React.FC = () => {
     }
   }, [selectedWeeklyWeekId, weeks, activeTab, dashboardSelectedWeekId, dashboardSelectedDay]);
 
-  const TabItem = ({ id, label, icon: Icon }: { id: typeof activeTab, label: string, icon: any }) => (
-    <button
-      onClick={() => setActiveTab(id)}
-      className={`flex items-center shrink-0 gap-1.5 px-3.5 py-2.5 sm:px-5 sm:py-3 rounded-2xl text-[10px] sm:text-[11px] font-black uppercase tracking-widest transition-all ${
-        activeTab === id 
-          ? 'bg-blue-600 text-white shadow-xl shadow-blue-100 scale-102 z-10' 
-          : 'bg-white text-slate-400 hover:text-slate-600 border border-slate-100 hover:border-slate-200 shadow-sm'
-      }`}
-    >
-      <Icon size={14} className="shrink-0" />
-      <span className="whitespace-nowrap">{label}</span>
-    </button>
-  );
+  const TabItem = ({ id, label, icon: Icon }: { id: typeof activeTab, label: string, icon: any }) => {
+    const isSelected = activeTab === id;
+    return (
+      <button
+        onClick={() => setActiveTab(id)}
+        className={`flex items-center gap-2.5 px-4 py-3 sm:px-5 sm:py-3.5 rounded-2xl text-[10px] sm:text-[11px] font-black uppercase tracking-widest transition-all duration-300 outline-none select-none cursor-pointer w-full lg:w-auto ${
+          isSelected 
+            ? 'bg-blue-600 text-white shadow-xl shadow-blue-100 ring-2 ring-blue-600/30' 
+            : 'bg-white text-slate-500 hover:text-slate-700 hover:bg-slate-50 border border-slate-105 hover:border-slate-250 shadow-sm'
+        }`}
+      >
+        <span className={`p-1.5 rounded-xl transition-colors duration-300 ${isSelected ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-400'}`}>
+          <Icon size={14} className="shrink-0" />
+        </span>
+        <span className="whitespace-nowrap truncate">{label}</span>
+      </button>
+    );
+  };
 
   if (loading && !currentParish) return null;
 
@@ -4204,7 +4425,7 @@ const OratorioFeriale: React.FC = () => {
         )}
       </div>
 
-      <div className="flex flex-nowrap overflow-x-auto gap-2.5 pb-3 pt-1.5 custom-scrollbar select-none pr-4 max-w-full">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:flex lg:flex-wrap gap-2.5 pb-4 pt-1.5 select-none w-full">
         {allowedTabs.includes('dashboard') && <TabItem id="dashboard" label="Dashboard" icon={LayoutDashboard} />}
         {allowedTabs.includes('animators') && <TabItem id="animators" label="Animatori" icon={Users} />}
         {allowedTabs.includes('absences') && <TabItem id="absences" label="Assenze" icon={UserX} />}
@@ -7699,9 +7920,23 @@ const OratorioFeriale: React.FC = () => {
                                                 key={`abs-detail-${item.absence.id}`}
                                                 className="flex flex-wrap items-center justify-between p-2.5 rounded-2xl bg-slate-50 border border-slate-200 hover:bg-slate-100/60 transition-colors gap-2"
                                               >
-                                                <span className="text-[11px] font-extrabold text-slate-800 uppercase italic">
-                                                  {item.animator.lastName} {item.animator.firstName}
-                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                  <span className="text-[11px] font-extrabold text-slate-800 uppercase italic">
+                                                    {item.animator.lastName} {item.animator.firstName}
+                                                  </span>
+                                                  {(() => {
+                                                    const team = teams.find(t => t.season === activeSeason && t.animatorIds?.includes(item.animator.id));
+                                                    if (!team) return null;
+                                                    return (
+                                                      <span 
+                                                        className="text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border italic shrink-0"
+                                                        style={{ backgroundColor: `${team.color}15`, borderColor: team.color, color: team.color }}
+                                                      >
+                                                        {team.name}
+                                                      </span>
+                                                    );
+                                                  })()}
+                                                </div>
                                                 <div className="flex items-center gap-1.5">
                                                   <span className={`text-[9px] font-black uppercase tracking-wide px-2 py-0.5 rounded-lg ${badgeInfo.colorClass}`}>
                                                     {badgeInfo.text}
@@ -7786,7 +8021,23 @@ const OratorioFeriale: React.FC = () => {
                             {activeSeasonAnimatorsList.length > 0 ? activeSeasonAnimatorsList.map((anim, index) => (
                               <tr key={`${anim.id}-${index}`} className="hover:bg-slate-100/60 transition-colors">
                                 <td className="px-8 py-4 whitespace-nowrap">
-                                  <span className="text-xs font-black text-slate-800 uppercase italic">{anim.lastName} {anim.firstName}</span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-black text-slate-800 uppercase italic">
+                                      {anim.lastName} {anim.firstName}
+                                    </span>
+                                    {(() => {
+                                      const team = teams.find(t => t.season === activeSeason && t.animatorIds?.includes(anim.id));
+                                      if (!team) return null;
+                                      return (
+                                        <span 
+                                          className="text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border italic shrink-0"
+                                          style={{ backgroundColor: `${team.color}15`, borderColor: team.color, color: team.color }}
+                                        >
+                                          {team.name}
+                                        </span>
+                                      );
+                                    })()}
+                                  </div>
                                 </td>
                                 {displayedDays.map(day => {
                                   const matchingAbs = getAbsenceForAnimatorOnDay(anim.id, day);
@@ -7907,7 +8158,23 @@ const OratorioFeriale: React.FC = () => {
                             </span>
                           </td>
                           <td className="px-8 py-5">
-                            <span className="text-xs font-bold text-slate-700 italic">{anim?.lastName} {anim?.firstName}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-slate-700 italic">
+                                {anim?.lastName} {anim?.firstName}
+                              </span>
+                              {anim && (() => {
+                                const team = teams.find(t => t.season === activeSeason && t.animatorIds?.includes(anim.id));
+                                if (!team) return null;
+                                return (
+                                  <span 
+                                    className="text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border italic shrink-0"
+                                    style={{ backgroundColor: `${team.color}15`, borderColor: team.color, color: team.color }}
+                                  >
+                                    {team.name}
+                                  </span>
+                                );
+                              })()}
+                            </div>
                           </td>
                           <td className="px-8 py-5">
                             <span className="text-xs font-bold text-slate-500 font-mono">
@@ -8017,6 +8284,17 @@ const OratorioFeriale: React.FC = () => {
                       Sett. {idx + 1} ({w.label.replace('Settimana ', '')})
                     </button>
                   ))}
+                  
+                  {/* Download weekly workshop plan */}
+                  <button
+                    type="button"
+                    onClick={() => generateWeeklyWorkshopPlanPDF(selectedWeekId)}
+                    className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-100 text-white border border-emerald-605 flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ml-auto md:ml-2"
+                    title="Scarica piano settimanale laboratori (PDF)"
+                  >
+                    <Download size={13} />
+                    Scarica Prospetto
+                  </button>
                 </div>
               </div>
 
@@ -10777,20 +11055,39 @@ const OratorioFeriale: React.FC = () => {
                   <div className="space-y-2">
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Seleziona Animatore ({activeSeason})</span>
                     <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-4 bg-slate-50 rounded-[2rem] border border-slate-100 shadow-inner custom-scrollbar">
-                      {activeSeasonAnimatorsList.map((a, index) => (
-                        <button
-                          key={`${a.id}-abs-${index}`}
-                          type="button"
-                          onClick={() => setAbsenceForm({...absenceForm, animatorId: a.id})}
-                          className={`flex items-center gap-3 p-3 rounded-xl border text-left italic ${
-                            absenceForm.animatorId === a.id
-                              ? 'bg-blue-600 text-white border-blue-600' 
-                              : 'bg-white text-slate-500 border-slate-100'
-                          }`}
-                        >
-                          <span className="text-[11px] font-bold truncate">{a.lastName} {a.firstName}</span>
-                        </button>
-                      ))}
+                      {activeSeasonAnimatorsList.map((a, index) => {
+                        const isSelected = absenceForm.animatorId === a.id;
+                        return (
+                          <button
+                            key={`${a.id}-abs-${index}`}
+                            type="button"
+                            onClick={() => setAbsenceForm({...absenceForm, animatorId: a.id})}
+                            className={`flex items-center justify-between gap-3 p-3 rounded-xl border text-left italic ${
+                              isSelected
+                                ? 'bg-blue-600 text-white border-blue-600' 
+                                : 'bg-white text-slate-500 border-slate-100'
+                            }`}
+                          >
+                            <span className="text-[11px] font-bold truncate">{a.lastName} {a.firstName}</span>
+                            {(() => {
+                              const team = teams.find(t => t.season === activeSeason && t.animatorIds?.includes(a.id));
+                              if (!team) return null;
+                              return (
+                                <span 
+                                  className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border italic shrink-0"
+                                  style={{ 
+                                    backgroundColor: isSelected ? 'rgba(255,255,255,0.2)' : `${team.color}15`, 
+                                    borderColor: isSelected ? '#ffffff' : team.color, 
+                                    color: isSelected ? '#ffffff' : team.color 
+                                  }}
+                                >
+                                  {team.name}
+                                </span>
+                              );
+                            })()}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
