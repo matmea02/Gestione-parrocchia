@@ -1103,6 +1103,27 @@ const OratorioFeriale: React.FC = () => {
     return () => clearInterval(interval);
   }, [activeTab]);
 
+  useEffect(() => {
+    if (selectedGridAbsence) {
+      const s = selectedGridAbsence.existingAbs?.startTime || '08:30';
+      const e = selectedGridAbsence.existingAbs?.endTime || '17:30';
+      const r = selectedGridAbsence.existingAbs?.reason || '';
+      setCustomAbsTime({
+        show: true,
+        startTime: s,
+        endTime: e,
+        reason: r
+      });
+    } else {
+      setCustomAbsTime({
+        show: false,
+        startTime: '08:30',
+        endTime: '17:30',
+        reason: ''
+      });
+    }
+  }, [selectedGridAbsence]);
+
   const resetForms = () => {
     setAnimatorForm({ firstName: '', lastName: '', email: '', phone: '', notes: '', seasons: [activeSeason] });
     setShiftForm({ date: format(new Date(), 'yyyy-MM-dd'), startTime: '08:30', endTime: '17:30', activity: '', animatorIds: [], requiredPeopleCount: '' });
@@ -8131,10 +8152,15 @@ const OratorioFeriale: React.FC = () => {
 
             {/* Detailed list view of absences */}
             <div className="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden">
-              <div className="p-8 border-b border-slate-50 bg-slate-50/10 flex justify-between items-center">
+              <div className="p-8 border-b border-slate-50 bg-slate-50/10 flex justify-between items-center flex-wrap gap-2">
                 <h3 className="text-sm font-black text-slate-900 uppercase italic tracking-widest">
-                  Storico Assenze Dettagliate
+                  Storico Assenze Giorno {activeRecapDay ? format(parseSafeDate(activeRecapDay), 'dd/MM/yyyy') : ''}
                 </h3>
+                {activeRecapDay && (
+                  <span className="text-[10px] font-black uppercase tracking-widest bg-blue-50 text-blue-600 border border-blue-200/55 px-3 py-1.5 rounded-xl">
+                    {format(parseSafeDate(activeRecapDay), 'eeee dd MMMM yyyy', { locale: it })}
+                  </span>
+                )}
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse">
@@ -8148,58 +8174,63 @@ const OratorioFeriale: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    {filteredAbsences.length > 0 ? filteredAbsences.map((ab, index) => {
-                      const anim = animators.find(a => a.id === ab.animatorId);
-                      return (
-                        <tr key={`${ab.id}-${index}`} className="hover:bg-slate-50/50 transition-colors group">
-                          <td className="px-8 py-5">
-                            <span className="text-xs font-black text-slate-900 italic">
-                              {format(parseSafeDate(ab.date), 'dd/MM/yyyy')}
-                            </span>
-                          </td>
-                          <td className="px-8 py-5">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-bold text-slate-700 italic">
-                                {anim?.lastName} {anim?.firstName}
+                    {(() => {
+                      const absencesForSelectedDay = filteredAbsences.filter(ab => ab.date === activeRecapDay);
+                      return absencesForSelectedDay.length > 0 ? absencesForSelectedDay.map((ab, index) => {
+                        const anim = animators.find(a => a.id === ab.animatorId);
+                        return (
+                          <tr key={`${ab.id}-${index}`} className="hover:bg-slate-50/50 transition-colors group">
+                            <td className="px-8 py-5">
+                              <span className="text-xs font-black text-slate-900 italic">
+                                {format(parseSafeDate(ab.date), 'dd/MM/yyyy')}
                               </span>
-                              {anim && (() => {
-                                const team = teams.find(t => t.season === activeSeason && t.animatorIds?.includes(anim.id));
-                                if (!team) return null;
-                                return (
-                                  <span 
-                                    className="text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border italic shrink-0"
-                                    style={{ backgroundColor: `${team.color}15`, borderColor: team.color, color: team.color }}
-                                  >
-                                    {team.name}
-                                  </span>
-                                );
-                              })()}
-                            </div>
-                          </td>
-                          <td className="px-8 py-5">
-                            <span className="text-xs font-bold text-slate-500 font-mono">
-                              {ab.startTime && ab.endTime ? `${ab.startTime} - ${ab.endTime}` : 'Intera Giornata'}
-                            </span>
-                          </td>
-                          <td className="px-8 py-5">
-                            <span className="text-xs font-medium text-slate-450 italic text-slate-400">{ab.reason || 'Segnato tramite grid'}</span>
-                          </td>
-                          <td className="px-8 py-5 text-right">
-                            <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
-                              <button onClick={() => handleOpenModal('absences', ab)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><Pencil size={14} /></button>
-                              <button onClick={() => handleDelete(ab.id, absencesColl)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={14} /></button>
-                            </div>
+                            </td>
+                            <td className="px-8 py-5">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-slate-700 italic">
+                                  {anim?.lastName} {anim?.firstName}
+                                </span>
+                                {anim && (() => {
+                                  const team = teams.find(t => t.season === activeSeason && t.animatorIds?.includes(anim.id));
+                                  if (!team) return null;
+                                  return (
+                                    <span 
+                                      className="text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border italic shrink-0"
+                                      style={{ backgroundColor: `${team.color}15`, borderColor: team.color, color: team.color }}
+                                    >
+                                      {team.name}
+                                    </span>
+                                  );
+                                })()}
+                              </div>
+                            </td>
+                            <td className="px-8 py-5">
+                              <span className="text-xs font-bold text-slate-500 font-mono">
+                                {ab.startTime && ab.endTime ? `${ab.startTime} - ${ab.endTime}` : 'Intera Giornata'}
+                              </span>
+                            </td>
+                            <td className="px-8 py-5">
+                              <span className="text-xs font-medium text-slate-450 italic text-slate-400">{ab.reason || 'Segnato tramite grid'}</span>
+                            </td>
+                            <td className="px-8 py-5 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <button onClick={() => handleOpenModal('absences', ab)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><Pencil size={14} /></button>
+                                <button onClick={() => handleDelete(ab.id, absencesColl)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={14} /></button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      }) : (
+                        <tr>
+                          <td colSpan={5} className="py-20 text-center">
+                            <UserX size={48} className="mx-auto text-slate-100 mb-4" />
+                            <p className="text-slate-300 font-black uppercase tracking-widest text-[10px]">
+                              Nessuna assenza registrata per il giorno {activeRecapDay ? format(parseSafeDate(activeRecapDay), 'dd/MM/yyyy') : ''}
+                            </p>
                           </td>
                         </tr>
                       );
-                    }) : (
-                      <tr>
-                        <td colSpan={5} className="py-20 text-center">
-                          <UserX size={48} className="mx-auto text-slate-100 mb-4" />
-                          <p className="text-slate-300 font-black uppercase tracking-widest text-[10px]">Nessuna assenza registrata per questa stagione</p>
-                        </td>
-                      </tr>
-                    )}
+                    })()}
                   </tbody>
                 </table>
               </div>
@@ -9395,56 +9426,6 @@ const OratorioFeriale: React.FC = () => {
 
         {activeTab === 'events' && (
           <div className="space-y-6">
-            {/* Stats Display */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center gap-4">
-                <div className="w-12 h-12 bg-pink-50 text-pink-600 rounded-2xl flex items-center justify-center shrink-0">
-                  <Sparkles size={24} />
-                </div>
-                <div>
-                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Eventi Extra</span>
-                  <span className="text-2xl font-black italic text-slate-900">{filteredEvents.length}</span>
-                </div>
-              </div>
-              <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center gap-4">
-                <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0">
-                  <UserCheck size={24} />
-                </div>
-                <div>
-                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Presenze Totali</span>
-                  <span className="text-2xl font-black italic text-slate-900">
-                    {filteredEvents.reduce((acc, ev) => acc + (Object.values(ev.attendance || {}) as EventAttendance[]).filter(a => a.present).length, 0)}
-                  </span>
-                </div>
-              </div>
-              <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center gap-4">
-                <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center shrink-0">
-                  <Utensils size={24} />
-                </div>
-                <div>
-                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Pasti Prenotati</span>
-                  <span className="text-2xl font-black italic text-slate-900">
-                    {filteredEvents.reduce((acc, ev) => acc + (Object.values(ev.attendance || {}) as EventAttendance[]).filter(a => a.present && a.meal).length, 0)}
-                  </span>
-                </div>
-              </div>
-              <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center gap-4">
-                <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center shrink-0">
-                  <Euro size={24} />
-                </div>
-                <div>
-                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Entrate Eventi (€)</span>
-                  <span className="text-2xl font-black italic text-slate-900">
-                    {filteredEvents.reduce((acc, ev) => {
-                      const cost = ev.cost || 0;
-                      const paidCount = (Object.values(ev.attendance || {}) as EventAttendance[]).filter(a => a.present && a.paid).length;
-                      return acc + (cost * paidCount);
-                    }, 0)}
-                  </span>
-                </div>
-              </div>
-            </div>
-
             {/* Events view / List */}
             <div className="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <h3 className="text-sm font-black text-slate-900 uppercase italic tracking-widest flex items-center gap-3 mb-6">
@@ -10541,7 +10522,7 @@ const OratorioFeriale: React.FC = () => {
       {/* Creation/Edit dialogue modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className={`bg-white w-full ${activeTab === 'teams' ? 'max-w-5xl lg:max-w-6xl' : 'max-w-2xl'} rounded-3xl sm:rounded-[3rem] shadow-2xl overflow-hidden border border-white animate-in zoom-in fade-in duration-300 transition-all`}>
+          <div className={`bg-white w-full ${activeTab === 'teams' ? 'max-w-5xl lg:max-w-6xl' : activeTab === 'absences' ? 'max-w-4xl lg:max-w-5xl' : 'max-w-2xl'} rounded-3xl sm:rounded-[3rem] shadow-2xl overflow-hidden border border-white animate-in zoom-in fade-in duration-300 transition-all`}>
             <div className="p-4 sm:p-6 md:p-8 border-b border-slate-50 flex items-center justify-between">
               <div>
                 <h2 className="text-xl sm:text-2xl font-black text-slate-900 uppercase italic">
@@ -11051,83 +11032,98 @@ const OratorioFeriale: React.FC = () => {
               )}
 
               {activeTab === 'absences' && (
-                <div className="space-y-6">
-                  <div className="space-y-2">
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Seleziona Animatore ({activeSeason})</span>
-                    <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-4 bg-slate-50 rounded-[2rem] border border-slate-100 shadow-inner custom-scrollbar">
-                      {activeSeasonAnimatorsList.map((a, index) => {
-                        const isSelected = absenceForm.animatorId === a.id;
-                        return (
-                          <button
-                            key={`${a.id}-abs-${index}`}
-                            type="button"
-                            onClick={() => setAbsenceForm({...absenceForm, animatorId: a.id})}
-                            className={`flex items-center justify-between gap-3 p-3 rounded-xl border text-left italic ${
-                              isSelected
-                                ? 'bg-blue-600 text-white border-blue-600' 
-                                : 'bg-white text-slate-500 border-slate-100'
-                            }`}
-                          >
-                            <span className="text-[11px] font-bold truncate">{a.lastName} {a.firstName}</span>
-                            {(() => {
-                              const team = teams.find(t => t.season === activeSeason && t.animatorIds?.includes(a.id));
-                              if (!team) return null;
-                              return (
-                                <span 
-                                  className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border italic shrink-0"
-                                  style={{ 
-                                    backgroundColor: isSelected ? 'rgba(255,255,255,0.2)' : `${team.color}15`, 
-                                    borderColor: isSelected ? '#ffffff' : team.color, 
-                                    color: isSelected ? '#ffffff' : team.color 
-                                  }}
-                                >
-                                  {team.name}
-                                </span>
-                              );
-                            })()}
-                          </button>
-                        );
-                      })}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  {/* Left Column: Animatore and Data */}
+                  <div className="space-y-5">
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Seleziona Animatore ({activeSeason})</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[300px] overflow-y-auto p-4 bg-slate-50 rounded-[2rem] border border-slate-100 shadow-inner custom-scrollbar">
+                        {activeSeasonAnimatorsList.map((a, index) => {
+                          const isSelected = absenceForm.animatorId === a.id;
+                          return (
+                            <button
+                              key={`${a.id}-abs-${index}`}
+                              type="button"
+                              onClick={() => setAbsenceForm({...absenceForm, animatorId: a.id})}
+                              className={`flex items-center justify-between gap-3 p-3 rounded-xl border text-left italic transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-100' 
+                                  : 'bg-white text-slate-500 border-slate-100 hover:border-slate-300'
+                              }`}
+                            >
+                              <span className="text-[11px] font-bold truncate">{a.lastName} {a.firstName}</span>
+                              {(() => {
+                                const team = teams.find(t => t.season === activeSeason && t.animatorIds?.includes(a.id));
+                                if (!team) return null;
+                                return (
+                                  <span 
+                                    className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border italic shrink-0"
+                                    style={{ 
+                                      backgroundColor: isSelected ? 'rgba(255,255,255,0.2)' : `${team.color}15`, 
+                                      borderColor: isSelected ? '#ffffff' : team.color, 
+                                      color: isSelected ? '#ffffff' : team.color 
+                                    }}
+                                  >
+                                    {team.name}
+                                  </span>
+                                );
+                              })()}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+
                     <div className="space-y-2">
                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Data Assenza</span>
-                      <input required type="date" value={absenceForm.date} onChange={e => setAbsenceForm({...absenceForm, date: e.target.value})} className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none text-sm font-bold outline-none"/>
-                    </div>
-                    <div className="space-y-2">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Da (opz)</span>
-                      <input type="time" value={absenceForm.startTime || ''} onChange={e => setAbsenceForm({...absenceForm, startTime: e.target.value})} className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none text-sm font-bold outline-none"/>
-                    </div>
-                    <div className="space-y-2">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">A (opz)</span>
-                      <input type="time" value={absenceForm.endTime || ''} onChange={e => setAbsenceForm({...absenceForm, endTime: e.target.value})} className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none text-sm font-bold outline-none"/>
+                      <input required type="date" value={absenceForm.date} onChange={e => setAbsenceForm({...absenceForm, date: e.target.value})} className="w-full px-5 py-4 rounded-2xl bg-slate-50 border border-slate-100 text-sm font-bold shadow-inner outline-none focus:ring-2 focus:ring-blue-500/20"/>
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-2 -mt-3 bg-slate-50 p-2.5 rounded-xl border border-slate-100/50">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest self-center mr-1">Orari Rapidi:</span>
-                    {[
-                      { label: '☀️ Mattina (08:30-12:30)', start: '08:30', end: '12:30' },
-                      { label: '⛅ Pomeriggio (13:30-17:30)', start: '13:30', end: '17:30' },
-                      { label: '📅 Giornata (08:30-17:30)', start: '08:30', end: '17:30' }
-                    ].map(slot => (
-                      <button
-                        key={slot.label}
-                        type="button"
-                        onClick={() => setAbsenceForm({ ...absenceForm, startTime: slot.start, endTime: slot.end })}
-                        className={`text-[9px] font-black uppercase shadow-sm px-2 py-1 rounded-lg transition-all border ${
-                          slot.label.includes('Pomeriggio')
-                            ? 'bg-sky-50 text-sky-755 border-sky-300 hover:border-sky-500 hover:bg-sky-100'
-                            : 'text-slate-600 bg-white border-slate-200/60 hover:border-blue-400 hover:text-blue-600'
-                        }`}
-                      >
-                        {slot.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="space-y-2">
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Motivazione / Note</span>
-                    <textarea value={absenceForm.reason || ''} onChange={e => setAbsenceForm({...absenceForm, reason: e.target.value})} className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none text-sm font-bold shadow-inner" rows={2}/>
+
+                  {/* Right Column: Orario Personalizzato, Motivazione e Note */}
+                  <div className="space-y-5">
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Orario Personalizzato</span>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Ora Inizio (Da - opz)</span>
+                          <input type="time" value={absenceForm.startTime || ''} onChange={e => setAbsenceForm({...absenceForm, startTime: e.target.value})} className="w-full px-5 py-4 rounded-2xl bg-slate-50 border border-slate-100 text-sm font-bold shadow-inner outline-none focus:ring-2 focus:ring-blue-500/20"/>
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Ora Fine (A - opz)</span>
+                          <input type="time" value={absenceForm.endTime || ''} onChange={e => setAbsenceForm({...absenceForm, endTime: e.target.value})} className="w-full px-5 py-4 rounded-2xl bg-slate-50 border border-slate-100 text-sm font-bold shadow-inner outline-none focus:ring-2 focus:ring-blue-500/20"/>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Seleziona Fascia Oraria Rapida</span>
+                      <div className="flex flex-wrap gap-2 bg-slate-50 p-3 rounded-[1.5rem] border border-slate-100/50 shadow-inner">
+                        {[
+                          { label: '☀️ Mattina (08:30-12:30)', start: '08:30', end: '12:30' },
+                          { label: '⛅ Pomeriggio (13:30-17:30)', start: '13:30', end: '17:30' },
+                          { label: '📅 Giornata (08:30-17:30)', start: '08:30', end: '17:30' }
+                        ].map(slot => (
+                          <button
+                            key={slot.label}
+                            type="button"
+                            onClick={() => setAbsenceForm({ ...absenceForm, startTime: slot.start, endTime: slot.end })}
+                            className={`text-[9px] font-black uppercase shadow-sm px-3 py-2 rounded-xl transition-all border cursor-pointer ${
+                              slot.label.includes('Pomeriggio')
+                                ? 'bg-sky-50 text-sky-700 border-sky-300 hover:border-sky-550 hover:bg-sky-100'
+                                : 'text-slate-600 bg-white border-slate-200/60 hover:border-blue-400 hover:text-blue-600'
+                            }`}
+                          >
+                            {slot.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Motivazione / Note</span>
+                      <textarea value={absenceForm.reason || ''} onChange={e => setAbsenceForm({...absenceForm, reason: e.target.value})} className="w-full px-5 py-4 rounded-2xl bg-slate-50 border border-slate-100 text-sm font-bold shadow-inner outline-none focus:ring-2 focus:ring-blue-500/20" rows={4} placeholder="Inserisci il motivo dell'assenza o eventuali note utili..."/>
+                    </div>
                   </div>
                 </div>
               )}
@@ -11945,11 +11941,11 @@ const OratorioFeriale: React.FC = () => {
       {/* Grid Click Custom Absence Modal */}
       {selectedGridAbsence && (
         <div className="fixed inset-0 z-[180] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden border border-white animate-in zoom-in fade-in duration-300">
+          <div className="bg-white w-full max-w-4xl lg:max-w-5xl rounded-[3rem] shadow-2xl overflow-hidden border border-white animate-in zoom-in fade-in duration-300">
             <div className="p-8 border-b border-slate-50 flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-black text-slate-900 uppercase italic">
-                  Presenza / Assenza
+                  Presenza / Assenza Rapida
                 </h2>
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
                   {selectedGridAbsence.anim.firstName} {selectedGridAbsence.anim.lastName} — {format(parseSafeDate(selectedGridAbsence.day), 'dd/MM/yyyy')}
@@ -11957,13 +11953,13 @@ const OratorioFeriale: React.FC = () => {
               </div>
               <button onClick={() => {
                 setSelectedGridAbsence(null);
-                setCustomAbsTime({ show: false, startTime: '08:30', endTime: '13:30', reason: '' });
-              }} className="p-2.5 hover:bg-slate-100 rounded-full text-slate-400">
+                setCustomAbsTime({ show: false, startTime: '08:30', endTime: '17:30', reason: '' });
+              }} className="p-2.5 hover:bg-slate-100 rounded-full text-slate-400 cursor-pointer">
                 <X size={20} />
               </button>
             </div>
 
-            <div className="p-8 space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
+            <div className="p-8 space-y-4 max-h-[75vh] overflow-y-auto custom-scrollbar">
               {selectedGridAbsence.existingAbs?.id.startsWith('virtual-') ? (
                 <div className="space-y-4 py-2">
                   <div className="p-5 bg-amber-50/60 border border-amber-200 rounded-2xl">
@@ -11982,7 +11978,7 @@ const OratorioFeriale: React.FC = () => {
                     type="button"
                     onClick={() => {
                       setSelectedGridAbsence(null);
-                      setCustomAbsTime({ show: false, startTime: '08:30', endTime: '13:30', reason: '' });
+                      setCustomAbsTime({ show: false, startTime: '08:30', endTime: '17:30', reason: '' });
                     }}
                     className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition duration-150 active:scale-95 shadow-md flex items-center justify-center gap-2"
                   >
@@ -11990,248 +11986,236 @@ const OratorioFeriale: React.FC = () => {
                   </button>
                 </div>
               ) : (
-                <>
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block font-medium">Seleziona Tipo di Assenza</span>
-                  
-                  {/* Option 1: Present (cancels existing absence) */}
-                  <button
-                onClick={async () => {
-                  if (selectedGridAbsence.existingAbs) {
-                    await deleteDoc(doc(absencesColl, selectedGridAbsence.existingAbs.id));
-                    setSuccessStatus('Stato impostato a: Presente');
-                    setTimeout(() => setSuccessStatus(null), 2000);
-                  }
-                  setSelectedGridAbsence(null);
-                }}
-                className={`w-full flex items-center justify-between p-4 rounded-2xl border text-left font-bold transition-all ${
-                  !selectedGridAbsence.existingAbs 
-                    ? 'border-emerald-500 bg-emerald-50/50 text-emerald-800' 
-                    : 'border-slate-100 hover:border-emerald-250 text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                <div>
-                  <span className="text-xs font-black uppercase tracking-wider block">🟢 Presente</span>
-                  <span className="text-[10px] font-normal text-slate-400">L'animatore partecipa per l'intera giornata feriale</span>
-                </div>
-                {!selectedGridAbsence.existingAbs && <Check size={16} className="text-emerald-600" />}
-              </button>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  {/* Left Column: Quick State selector */}
+                  <div className="space-y-4">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block font-bold">Imposta Stato Rapido</span>
+                    
+                    {/* Option 1: Present (cancels existing absence) */}
+                    <button
+                      onClick={async () => {
+                        if (selectedGridAbsence.existingAbs) {
+                          await deleteDoc(doc(absencesColl, selectedGridAbsence.existingAbs.id));
+                          setSuccessStatus('Stato impostato a: Presente');
+                          setTimeout(() => setSuccessStatus(null), 2000);
+                        }
+                        setSelectedGridAbsence(null);
+                      }}
+                      className={`w-full flex items-center justify-between p-4 rounded-3xl border text-left font-bold transition-all cursor-pointer ${
+                        !selectedGridAbsence.existingAbs 
+                          ? 'border-emerald-500 bg-emerald-50/50 text-emerald-800 shadow-md shadow-emerald-50' 
+                          : 'border-slate-100 hover:border-emerald-250 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div>
+                        <span className="text-xs font-black uppercase tracking-wider block">🟢 Presente</span>
+                        <span className="text-[10px] font-normal text-slate-400 font-medium">Partecipa per l'intera giornata feriale</span>
+                      </div>
+                      {!selectedGridAbsence.existingAbs && <Check size={16} className="text-emerald-600" />}
+                    </button>
 
-              {/* Option 2: Full day absent */}
-              <button
-                onClick={async () => {
-                  if (selectedGridAbsence.existingAbs) {
-                    await updateDoc(doc(absencesColl, selectedGridAbsence.existingAbs.id), {
-                      startTime: '',
-                      endTime: '',
-                      reason: ''
-                    });
-                  } else {
-                    await addDoc(absencesColl, {
-                      animatorId: selectedGridAbsence.anim.id,
-                      date: selectedGridAbsence.day,
-                      season: activeSeason,
-                      startTime: '',
-                      endTime: '',
-                      reason: '',
-                      createdAt: new Date().toISOString()
-                    });
-                  }
-                  setSuccessStatus('Assente tutto il giorno impostato!');
-                  setTimeout(() => setSuccessStatus(null), 2000);
-                  setSelectedGridAbsence(null);
-                }}
-                className={`w-full flex items-center justify-between p-4 rounded-2xl border text-left font-bold transition-all ${
-                  selectedGridAbsence.existingAbs && !selectedGridAbsence.existingAbs.startTime && !selectedGridAbsence.existingAbs.endTime
-                    ? 'border-red-500 bg-red-50/50 text-red-800' 
-                    : 'border-slate-100 hover:border-red-250 text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                <div>
-                  <span className="text-xs font-black uppercase tracking-wider block">❌ Assente tutto il giorno</span>
-                  <span className="text-[10px] font-normal text-slate-400">Nessuna partecipazione per l'intera giornata</span>
-                </div>
-                {selectedGridAbsence.existingAbs && !selectedGridAbsence.existingAbs.startTime && !selectedGridAbsence.existingAbs.endTime && <Check size={16} className="text-red-600" />}
-              </button>
+                    {/* Option 2: Full day absent */}
+                    <button
+                      onClick={async () => {
+                        if (selectedGridAbsence.existingAbs) {
+                          await updateDoc(doc(absencesColl, selectedGridAbsence.existingAbs.id), {
+                            startTime: '',
+                            endTime: '',
+                            reason: ''
+                          });
+                        } else {
+                          await addDoc(absencesColl, {
+                            animatorId: selectedGridAbsence.anim.id,
+                            date: selectedGridAbsence.day,
+                            season: activeSeason,
+                            startTime: '',
+                            endTime: '',
+                            reason: '',
+                            createdAt: new Date().toISOString()
+                          });
+                        }
+                        setSuccessStatus('Assente tutto il giorno impostato!');
+                        setTimeout(() => setSuccessStatus(null), 2000);
+                        setSelectedGridAbsence(null);
+                      }}
+                      className={`w-full flex items-center justify-between p-4 rounded-3xl border text-left font-bold transition-all cursor-pointer ${
+                        selectedGridAbsence.existingAbs && !selectedGridAbsence.existingAbs.startTime && !selectedGridAbsence.existingAbs.endTime
+                          ? 'border-red-500 bg-red-50/50 text-red-800 shadow-md shadow-red-50' 
+                          : 'border-slate-100 hover:border-red-250 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div>
+                        <span className="text-xs font-black uppercase tracking-wider block">❌ Assente tutto il giorno</span>
+                        <span className="text-[10px] font-normal text-slate-400 font-medium">Nessuna partecipazione per l'intera giornata</span>
+                      </div>
+                      {selectedGridAbsence.existingAbs && !selectedGridAbsence.existingAbs.startTime && !selectedGridAbsence.existingAbs.endTime && <Check size={16} className="text-red-600" />}
+                    </button>
 
-              {/* Option 3: Only morning (means absent parameter 13:30 to 17:30) */}
-              <button
-                onClick={async () => {
-                  if (selectedGridAbsence.existingAbs) {
-                    await updateDoc(doc(absencesColl, selectedGridAbsence.existingAbs.id), {
-                      startTime: '13:30',
-                      endTime: '17:30',
-                      reason: 'Solo Mattina'
-                    });
-                  } else {
-                    await addDoc(absencesColl, {
-                      animatorId: selectedGridAbsence.anim.id,
-                      date: selectedGridAbsence.day,
-                      season: activeSeason,
-                      startTime: '13:30',
-                      endTime: '17:30',
-                      reason: 'Solo Mattina',
-                      createdAt: new Date().toISOString()
-                    });
-                  }
-                  setSuccessStatus('Stato impostato: Fa Solo Mattina');
-                  setTimeout(() => setSuccessStatus(null), 2000);
-                  setSelectedGridAbsence(null);
-                }}
-                className={`w-full flex items-center justify-between p-4 rounded-2xl border text-left font-bold transition-all ${
-                  selectedGridAbsence.existingAbs && selectedGridAbsence.existingAbs.reason === 'Solo Mattina'
-                    ? 'border-amber-500 bg-amber-50/50 text-amber-800' 
-                    : 'border-slate-100 hover:border-amber-250 text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                <div>
-                  <span className="text-xs font-black uppercase tracking-wider block">☀️ Solo Mattina</span>
-                  <span className="text-[10px] font-normal text-slate-400 font-medium">Lavora solo al mattino, assente al pomeriggio</span>
-                </div>
-                {selectedGridAbsence.existingAbs && selectedGridAbsence.existingAbs.reason === 'Solo Mattina' && <Check size={16} className="text-amber-600" />}
-              </button>
+                    {/* Option 3: Only morning */}
+                    <button
+                      onClick={async () => {
+                        if (selectedGridAbsence.existingAbs) {
+                          await updateDoc(doc(absencesColl, selectedGridAbsence.existingAbs.id), {
+                            startTime: '13:30',
+                            endTime: '17:30',
+                            reason: 'Solo Mattina'
+                          });
+                        } else {
+                          await addDoc(absencesColl, {
+                            animatorId: selectedGridAbsence.anim.id,
+                            date: selectedGridAbsence.day,
+                            season: activeSeason,
+                            startTime: '13:30',
+                            endTime: '17:30',
+                            reason: 'Solo Mattina',
+                            createdAt: new Date().toISOString()
+                          });
+                        }
+                        setSuccessStatus('Stato impostato: Fa Solo Mattina');
+                        setTimeout(() => setSuccessStatus(null), 2000);
+                        setSelectedGridAbsence(null);
+                      }}
+                      className={`w-full flex items-center justify-between p-4 rounded-3xl border text-left font-bold transition-all cursor-pointer ${
+                        selectedGridAbsence.existingAbs && selectedGridAbsence.existingAbs.reason === 'Solo Mattina'
+                          ? 'border-amber-500 bg-amber-50/50 text-amber-800 shadow-md shadow-amber-50' 
+                          : 'border-slate-100 hover:border-amber-250 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div>
+                        <span className="text-xs font-black uppercase tracking-wider block">☀️ Solo Mattina</span>
+                        <span className="text-[10px] font-normal text-slate-400 font-medium">Lavora solo al mattino, assente al pomeriggio</span>
+                      </div>
+                      {selectedGridAbsence.existingAbs && selectedGridAbsence.existingAbs.reason === 'Solo Mattina' && <Check size={16} className="text-amber-600" />}
+                    </button>
 
-              {/* Option 4: Only afternoon (means absent parameter 08:30 to 13:30) */}
-              <button
-                onClick={async () => {
-                  if (selectedGridAbsence.existingAbs) {
-                    await updateDoc(doc(absencesColl, selectedGridAbsence.existingAbs.id), {
-                      startTime: '08:30',
-                      endTime: '13:30',
-                      reason: 'Solo Pomeriggio'
-                    });
-                  } else {
-                    await addDoc(absencesColl, {
-                      animatorId: selectedGridAbsence.anim.id,
-                      date: selectedGridAbsence.day,
-                      season: activeSeason,
-                      startTime: '08:30',
-                      endTime: '13:30',
-                      reason: 'Solo Pomeriggio',
-                      createdAt: new Date().toISOString()
-                    });
-                  }
-                  setSuccessStatus('Stato impostato: Fa Solo Pomeriggio');
-                  setTimeout(() => setSuccessStatus(null), 2000);
-                  setSelectedGridAbsence(null);
-                }}
-                className={`w-full flex items-center justify-between p-4 rounded-2xl border text-left font-bold transition-all ${
-                  selectedGridAbsence.existingAbs && selectedGridAbsence.existingAbs.reason === 'Solo Pomeriggio'
-                    ? 'border-sky-500 bg-sky-50/50 text-sky-800' 
-                    : 'border-slate-100 hover:border-sky-250 text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                <div>
-                  <span className="text-xs font-black uppercase tracking-wider block">⛅ Solo Pomeriggio</span>
-                  <span className="text-[10px] font-normal text-slate-400 font-medium">Lavora solo al pomeriggio, assente la mattina</span>
-                </div>
-                {selectedGridAbsence.existingAbs && selectedGridAbsence.existingAbs.reason === 'Solo Pomeriggio' && <Check size={16} className="text-sky-600" />}
-              </button>
-
-              {/* Option 5: Custom hours */}
-              <button
-                type="button"
-                onClick={() => {
-                  const s = selectedGridAbsence.existingAbs?.startTime || '08:30';
-                  const e = selectedGridAbsence.existingAbs?.endTime || '13:30';
-                  const r = selectedGridAbsence.existingAbs?.reason || 'Orario personalizzato';
-                  setCustomAbsTime({ show: true, startTime: s, endTime: e, reason: r });
-                }}
-                className={`w-full flex items-center justify-between p-4 rounded-2xl border text-left font-bold transition-all ${
-                  customAbsTime.show || (selectedGridAbsence.existingAbs && selectedGridAbsence.existingAbs.startTime && selectedGridAbsence.existingAbs.reason !== 'Solo Mattina' && selectedGridAbsence.existingAbs.reason !== 'Solo Pomeriggio')
-                    ? 'border-purple-500 bg-purple-50/50 text-purple-800' 
-                    : 'border-slate-100 hover:border-purple-250 text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                <div>
-                  <span className="text-xs font-black uppercase tracking-wider block">⏰ Orario Personalizzato...</span>
-                  <span className="text-[10px] font-normal text-slate-400 font-medium">Imposta orari specifici per l'assenza</span>
-                </div>
-              </button>
-
-              {customAbsTime.show && (
-                <div className="bg-slate-50 border border-slate-100 p-6 rounded-3xl space-y-4 animate-in slide-in-from-top-4 duration-300">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Inizio assenza</span>
-                      <input
-                        type="time"
-                        value={customAbsTime.startTime}
-                        onChange={(e) => setCustomAbsTime({ ...customAbsTime, startTime: e.target.value })}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Fine assenza</span>
-                      <input
-                        type="time"
-                        value={customAbsTime.endTime}
-                        onChange={(e) => setCustomAbsTime({ ...customAbsTime, endTime: e.target.value })}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold"
-                      />
-                    </div>
+                    {/* Option 4: Only afternoon */}
+                    <button
+                      onClick={async () => {
+                        if (selectedGridAbsence.existingAbs) {
+                          await updateDoc(doc(absencesColl, selectedGridAbsence.existingAbs.id), {
+                            startTime: '08:30',
+                            endTime: '13:30',
+                            reason: 'Solo Pomeriggio'
+                          });
+                        } else {
+                          await addDoc(absencesColl, {
+                            animatorId: selectedGridAbsence.anim.id,
+                            date: selectedGridAbsence.day,
+                            season: activeSeason,
+                            startTime: '08:30',
+                            endTime: '13:30',
+                            reason: 'Solo Pomeriggio',
+                            createdAt: new Date().toISOString()
+                          });
+                        }
+                        setSuccessStatus('Stato impostato: Fa Solo Pomeriggio');
+                        setTimeout(() => setSuccessStatus(null), 2000);
+                        setSelectedGridAbsence(null);
+                      }}
+                      className={`w-full flex items-center justify-between p-4 rounded-3xl border text-left font-bold transition-all cursor-pointer ${
+                        selectedGridAbsence.existingAbs && selectedGridAbsence.existingAbs.reason === 'Solo Pomeriggio'
+                          ? 'border-sky-500 bg-sky-50/50 text-sky-800 shadow-md shadow-sky-50' 
+                          : 'border-slate-100 hover:border-sky-250 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div>
+                        <span className="text-xs font-black uppercase tracking-wider block">⛅ Solo Pomeriggio</span>
+                        <span className="text-[10px] font-normal text-slate-400 font-medium">Lavora solo al pomeriggio, assente la mattina</span>
+                      </div>
+                      {selectedGridAbsence.existingAbs && selectedGridAbsence.existingAbs.reason === 'Solo Pomeriggio' && <Check size={16} className="text-sky-600" />}
+                    </button>
                   </div>
-                  <div className="flex flex-wrap gap-1.5 bg-white border border-slate-200/50 p-2 rounded-2xl shadow-inner">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest self-center mr-1">Orari:</span>
-                    {[
-                      { label: '☀️ Mattina (08:30-12:30)', start: '08:30', end: '12:30' },
-                      { label: '⛅ Pomeriggio (13:30-17:30)', start: '13:30', end: '17:30' },
-                      { label: '📅 Giornata (08:30-17:30)', start: '08:30', end: '17:30' }
-                    ].map(slot => (
+
+                  {/* Right Column: Custom Hours and Note form */}
+                  <div className="space-y-4">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block font-bold">Orario, Motivazione & Note Personalizzate</span>
+                    
+                    <div className="bg-slate-50 border border-slate-105 p-6 rounded-[2.5rem] space-y-4 shadow-inner">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Ora Inizio (Da - opz)</span>
+                          <input
+                            type="time"
+                            value={customAbsTime.startTime}
+                            onChange={(e) => setCustomAbsTime({ ...customAbsTime, startTime: e.target.value })}
+                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-purple-500/20 shadow-sm"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Ora Fine (A - opz)</span>
+                          <input
+                            type="time"
+                            value={customAbsTime.endTime}
+                            onChange={(e) => setCustomAbsTime({ ...customAbsTime, endTime: e.target.value })}
+                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-purple-500/20 shadow-sm"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-1.5 bg-white border border-slate-150 p-2.5 rounded-2xl shadow-inner">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest self-center mr-1">Orari Rapidi:</span>
+                        {[
+                          { label: '☀️ Mattina (08:30-12:30)', start: '08:30', end: '12:30' },
+                          { label: '⛅ Pomeriggio (13:30-17:30)', start: '13:30', end: '17:30' },
+                          { label: '📅 Giornata (08:30-17:30)', start: '08:30', end: '17:30' }
+                        ].map(slot => (
+                          <button
+                            key={slot.label}
+                            type="button"
+                            onClick={() => setCustomAbsTime({ ...customAbsTime, startTime: slot.start, endTime: slot.end })}
+                            className={`text-[9px] font-black uppercase shadow-sm px-2.5 py-1.5 rounded-xl transition-all border cursor-pointer ${
+                              slot.label.includes('Pomeriggio')
+                                ? 'bg-sky-50 text-sky-700 border-sky-200 hover:border-sky-400 hover:bg-sky-100'
+                                : 'text-slate-600 bg-slate-50 border-slate-200 hover:border-purple-300'
+                            }`}
+                          >
+                            {slot.label.split(' ')[0]} {slot.label.split('(')[1].replace(')', '')}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1 block">Motivazione / Note</span>
+                        <textarea
+                          placeholder="Visita medica, studio, ritardo o impegni feriali..."
+                          value={customAbsTime.reason}
+                          onChange={(e) => setCustomAbsTime({ ...customAbsTime, reason: e.target.value })}
+                          className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-purple-500/20 shadow-sm"
+                          rows={3}
+                        />
+                      </div>
+
                       <button
-                        key={slot.label}
-                        type="button"
-                        onClick={() => setCustomAbsTime({ ...customAbsTime, startTime: slot.start, endTime: slot.end })}
-                        className={`text-[9px] font-bold px-2 py-1 rounded-lg transition-all border ${
-                          slot.label.includes('Pomeriggio')
-                            ? 'bg-sky-50 text-sky-755 border-sky-200 hover:border-sky-400 hover:bg-sky-100'
-                            : 'text-slate-600 bg-slate-50 border-slate-100 hover:border-purple-300'
-                        }`}
+                        onClick={async () => {
+                          if (selectedGridAbsence.existingAbs) {
+                            await updateDoc(doc(absencesColl, selectedGridAbsence.existingAbs.id), {
+                              startTime: customAbsTime.startTime,
+                              endTime: customAbsTime.endTime,
+                              reason: customAbsTime.reason || 'Orario personalizzato'
+                            });
+                          } else {
+                            await addDoc(absencesColl, {
+                              animatorId: selectedGridAbsence.anim.id,
+                              date: selectedGridAbsence.day,
+                              season: activeSeason,
+                              startTime: customAbsTime.startTime,
+                              endTime: customAbsTime.endTime,
+                              reason: customAbsTime.reason || 'Orario personalizzato',
+                              createdAt: new Date().toISOString()
+                            });
+                          }
+                          setSuccessStatus('Assenza ad orario salvata con successo!');
+                          setTimeout(() => setSuccessStatus(null), 2000);
+                          setSelectedGridAbsence(null);
+                          setCustomAbsTime({ show: false, startTime: '08:30', endTime: '17:30', reason: '' });
+                        }}
+                        className="w-full bg-purple-600 hover:bg-purple-700 text-white font-black uppercase tracking-wider py-4 rounded-2xl text-[10px] transition shadow-md shadow-purple-100 cursor-pointer active:scale-[0.98] block text-center"
                       >
-                        {slot.label}
+                        Salva Orario e Dettagli
                       </button>
-                    ))}
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Motivazione</span>
-                    <input
-                      type="text"
-                      placeholder="Visita medica, studio..."
-                      value={customAbsTime.reason}
-                      onChange={(e) => setCustomAbsTime({ ...customAbsTime, reason: e.target.value })}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold"
-                    />
-                  </div>
-                  <button
-                    onClick={async () => {
-                      if (selectedGridAbsence.existingAbs) {
-                        await updateDoc(doc(absencesColl, selectedGridAbsence.existingAbs.id), {
-                          startTime: customAbsTime.startTime,
-                          endTime: customAbsTime.endTime,
-                          reason: customAbsTime.reason || 'Orario personalizzato'
-                        });
-                      } else {
-                        await addDoc(absencesColl, {
-                          animatorId: selectedGridAbsence.anim.id,
-                          date: selectedGridAbsence.day,
-                          season: activeSeason,
-                          startTime: customAbsTime.startTime,
-                          endTime: customAbsTime.endTime,
-                          reason: customAbsTime.reason || 'Orario personalizzato',
-                          createdAt: new Date().toISOString()
-                        });
-                      }
-                      setSuccessStatus('Assenza ad orario salvata con successo!');
-                      setTimeout(() => setSuccessStatus(null), 2000);
-                      setSelectedGridAbsence(null);
-                      setCustomAbsTime({ show: false, startTime: '08:30', endTime: '13:30', reason: '' });
-                    }}
-                    className="w-full bg-purple-600 text-white font-black uppercase tracking-wider py-2.5 rounded-xl text-[10px] hover:bg-purple-700 transition"
-                  >
-                    Salva Orario Assenza
-                  </button>
                 </div>
-              )}
-                </>
               )}
             </div>
           </div>
