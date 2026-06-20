@@ -76,6 +76,7 @@ const Layout: React.FC = () => {
     { id: 'liturgy', path: '/liturgie', label: 'Messe e Liturgie', icon: Church },
     { id: 'catechism', path: '/catechismo', label: 'Catechismo', icon: BookOpen },
     { id: 'oratorio', path: '/oratorio', label: 'Oratorio Feriale', icon: Sun },
+    { id: 'aperture', path: '/aperture', label: 'Aperture Oratorio', icon: DoorOpen },
     { id: 'volunteers', path: '/volontari', label: 'Volontari', icon: Users },
     { id: 'expenses', path: '/spese', label: 'Gestione Spese', icon: Wallet },
     { id: 'maintenance', path: '/manutenzione', label: 'Manutenzione', icon: Wrench },
@@ -124,6 +125,7 @@ const Layout: React.FC = () => {
   const navItems = portalUser 
     ? baseNavItems.filter(item => {
         if (portalUser.isAdmin) return true;
+        if (item.id === 'aperture' || item.id === 'dashboard') return true;
         const parishPerms = (portalUser.permissions || {})[currentParish?.id || ''];
         return parishPerms?.modules?.includes(item.id);
       })

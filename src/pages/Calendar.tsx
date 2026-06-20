@@ -517,7 +517,9 @@ const Calendar: React.FC = () => {
           }
 
           if (daySchedule && daySchedule.times) {
-            daySchedule.times.forEach((timeStr: string) => {
+            daySchedule.times.forEach((timeVal: any) => {
+              const timeStr = typeof timeVal === 'string' ? timeVal : timeVal.time;
+              const label = typeof timeVal === 'string' ? '' : timeVal.label;
               const [hours, minutes] = timeStr.split(':').map(Number);
               const start = new Date(day);
               start.setHours(hours, minutes, 0, 0);
@@ -542,7 +544,7 @@ const Calendar: React.FC = () => {
 
                 events.push({
                   id: `virtual-${t.id}-${format(day, 'yyyyMMdd')}-${timeStr.replace(':', '')}`,
-                  title: t.title + (intention?.names?.length ? ' 🕊️' : ''),
+                  title: t.title + (label ? ` (${label})` : '') + (intention?.names?.length ? ' 🕊️' : ''),
                   start: start.toISOString(),
                   end: end.toISOString(),
                   calendarId: functionsCalId,
@@ -937,8 +939,8 @@ const Calendar: React.FC = () => {
               if (isRoomBooking) {
                 return (
                   <div className="fc-content p-0.5 overflow-hidden text-[10px] leading-tight">
-                    <div className="font-black uppercase truncate">{rooms}</div>
-                    <div className="font-bold text-white/90 truncate">{purpose || 'Uso Sala'}</div>
+                    <div className="font-black uppercase truncate">{purpose || 'Uso Sala'}</div>
+                    <div className="font-bold text-white/95 truncate opacity-95">{rooms}</div>
                     <div className="italic text-white/80 truncate opacity-90">{requesterName}</div>
                   </div>
                 );

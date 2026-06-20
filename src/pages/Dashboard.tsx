@@ -201,7 +201,9 @@ const Dashboard: React.FC = () => {
           }
 
           if (daySchedule && daySchedule.times) {
-            daySchedule.times.forEach((timeStr: string) => {
+            daySchedule.times.forEach((timeVal: any) => {
+              const timeStr = typeof timeVal === 'string' ? timeVal : timeVal.time;
+              const label = typeof timeVal === 'string' ? '' : timeVal.label;
               const [h, m] = timeStr.split(':').map(Number);
               const start = setSeconds(setMinutes(setHours(startOfDay(d), h), m), 0);
               const dateStr = format(start, 'yyyy-MM-dd');
@@ -216,7 +218,7 @@ const Dashboard: React.FC = () => {
                 result.push({
                   id: `v-${t.id}-${format(d, 'yyyyMMdd')}-${timeStr}`,
                   templateId: t.id,
-                  title: t.title,
+                  title: t.title + (label ? ` (${label})` : ''),
                   start: start,
                   isTemplate: true,
                   timeStr: timeStr
@@ -280,7 +282,9 @@ const Dashboard: React.FC = () => {
       if (today >= validFrom && today <= validUntil) {
         const daySchedule = t.schedule?.find((s: any) => s.day === dayNum);
         if (daySchedule && daySchedule.times) {
-          daySchedule.times.forEach((timeStr: string) => {
+          daySchedule.times.forEach((timeVal: any) => {
+            const timeStr = typeof timeVal === 'string' ? timeVal : timeVal.time;
+            const label = typeof timeVal === 'string' ? '' : timeVal.label;
             const isExcluded = liturgyExceptions.some(ex => 
               ex.templateId === t.id && 
               ex.date === format(now, 'yyyy-MM-dd') && 
@@ -299,7 +303,7 @@ const Dashboard: React.FC = () => {
 
               result.push({
                 id: `lit-${t.id}-${timeStr}`,
-                title: t.title,
+                title: t.title + (label ? ` (${label})` : ''),
                 start: start,
                 timeStr: timeStr,
                 type: 'liturgy',

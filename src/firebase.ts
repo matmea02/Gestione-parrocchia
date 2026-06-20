@@ -1,13 +1,16 @@
 export { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, doc, getDoc, setDoc, collection, addDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, getDocFromServer } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, collection, addDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, getDocFromServer, setLogLevel } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 import { GoogleAuthProvider } from 'firebase/auth';
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+// Silence benign internal Firestore logs/warnings like clock skews
+setLogLevel('error');
 
 import { enableMultiTabIndexedDbPersistence } from 'firebase/firestore';
 try {

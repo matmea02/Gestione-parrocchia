@@ -76,11 +76,19 @@ export default function Liturgies() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
+
+  // Special celebrations year filter & bulk delete states
+  const [selectedSpecialYear, setSelectedSpecialYear] = useState<string>(new Date().getFullYear().toString());
+  const [showPastSpecials, setShowPastSpecials] = useState<boolean>(false);
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [bulkDeleteYear, setBulkDeleteYear] = useState('');
+  const [bulkDeleteInput, setBulkDeleteInput] = useState('');
+  const [isDeletingBulk, setIsDeletingBulk] = useState(false);
   
   // Form State
   const [formData, setFormData] = useState({
     title: 'S. Messa',
-    schedule: DAYS_OF_WEEK.map(d => ({ day: d.id, times: [] as string[] })),
+    schedule: DAYS_OF_WEEK.map(d => ({ day: d.id, times: [] as any[] })),
     validFrom: format(new Date(), 'yyyy-MM-dd'),
     validUntil: format(new Date(new Date().getFullYear(), 11, 31), 'yyyy-MM-dd'),
     location: '',
@@ -91,6 +99,10 @@ export default function Liturgies() {
 
   const [dayTimes, setDayTimes] = useState<{ [key: number]: string }>(
     DAYS_OF_WEEK.reduce((acc, d) => ({ ...acc, [d.id]: '08:00' }), {})
+  );
+
+  const [dayLabels, setDayLabels] = useState<{ [key: number]: string }>(
+    DAYS_OF_WEEK.reduce((acc, d) => ({ ...acc, [d.id]: '' }), {})
   );
 
   useEffect(() => {
@@ -250,18 +262,60 @@ export default function Liturgies() {
     }
   };
 
+  const handleDeleteAllSpecialsByYear = async (yearStr: string) => {
+    if (!yearStr) return;
+    setIsDeletingBulk(true);
+    try {
+      const specialsToDeleteList = specials.filter(s => {
+        try {
+          return s.start && new Date(s.start).getFullYear().toString() === yearStr;
+        } catch {
+          return false;
+        }
+      });
+
+      for (const item of specialsToDeleteList) {
+        await deleteDoc(doc(litSpecialsColl, item.id));
+      }
+      
+      setIsBulkDeleteModalOpen(false);
+      setBulkDeleteYear('');
+      setBulkDeleteInput('');
+    } catch (error) {
+      console.error("Error during bulk delete of specials:", error);
+      alert("Si è verificato un errore durante l'eliminazione delle celebrazioni speciali.");
+    } finally {
+      setIsDeletingBulk(false);
+    }
+  };
+
   const addTimeToDay = (dayId: number) => {
     const timeToAdd = dayTimes[dayId];
     if (!timeToAdd) return;
+    const labelToAdd = dayLabels[dayId]?.trim() || '';
     
     setFormData(prev => ({
       ...prev,
-      schedule: prev.schedule.map(s => 
-        s.day === dayId 
-          ? { ...s, times: s.times.includes(timeToAdd) ? s.times : [...s.times, timeToAdd].sort() } 
-          : s
-      )
+      schedule: prev.schedule.map(s => {
+        if (s.day !== dayId) return s;
+        const exists = s.times.some((t: any) => {
+          const actualTime = typeof t === 'string' ? t : t.time;
+          return actualTime === timeToAdd;
+        });
+        if (exists) return s;
+        const newItem = labelToAdd ? { time: timeToAdd, label: labelToAdd } : timeToAdd;
+        return {
+          ...s,
+          times: [...s.times, newItem].sort((a, b) => {
+            const timeA = typeof a === 'string' ? a : a.time;
+            const timeB = typeof b === 'string' ? b : b.time;
+            return timeA.localeCompare(timeB);
+          })
+        };
+      })
     }));
+
+    setDayLabels(prev => ({ ...prev, [dayId]: '' }));
   };
 
   const clearDayTimes = (dayId: number) => {
@@ -273,12 +327,18 @@ export default function Liturgies() {
     }));
   };
 
-  const removeTimeFromDay = (dayId: number, time: string) => {
+  const removeTimeFromDay = (dayId: number, timeStr: string) => {
     setFormData(prev => ({
       ...prev,
       schedule: prev.schedule.map(s => 
         s.day === dayId 
-          ? { ...s, times: s.times.filter(t => t !== time) } 
+          ? { 
+              ...s, 
+              times: s.times.filter((t: any) => {
+                const actualTime = typeof t === 'string' ? t : t.time;
+                return actualTime !== timeStr;
+              }) 
+            } 
           : s
       )
     }));
@@ -288,7 +348,7 @@ export default function Liturgies() {
     setEditingId(null);
     setFormData({
       title: 'S. Messa',
-      schedule: DAYS_OF_WEEK.map(d => ({ day: d.id, times: [] as string[] })),
+      schedule: DAYS_OF_WEEK.map(d => ({ day: d.id, times: [] as any[] })),
       validFrom: format(new Date(), 'yyyy-MM-dd'),
       validUntil: format(new Date(new Date().getFullYear(), 11, 31), 'yyyy-MM-dd'),
       location: '',
@@ -297,6 +357,7 @@ export default function Liturgies() {
       end: format(new Date(), "yyyy-MM-dd'T'HH:mm")
     });
     setDayTimes(DAYS_OF_WEEK.reduce((acc, d) => ({ ...acc, [d.id]: '08:00' }), {}));
+    setDayLabels(DAYS_OF_WEEK.reduce((acc, d) => ({ ...acc, [d.id]: '' }), {}));
   };
 
   const getWeekLiturgyInstances = () => {
@@ -311,7 +372,9 @@ export default function Liturgies() {
         for (let i = 0; i < 7; i++) {
           const currentDay = addDays(weekStart, i);
           if (getDay(currentDay) === s.day) {
-            s.times?.forEach((timeStr: string) => {
+            s.times?.forEach((timeVal: any) => {
+              const timeStr = typeof timeVal === 'string' ? timeVal : timeVal.time;
+              const label = typeof timeVal === 'string' ? '' : timeVal.label;
               const [h, m] = timeStr.split(':').map(Number);
               const start = setSeconds(setMinutes(setHours(currentDay, h), m), 0);
               const dateStr = format(start, 'yyyy-MM-dd');
@@ -329,7 +392,8 @@ export default function Liturgies() {
                   title: t.title,
                   start: start,
                   dateStr: dateStr,
-                  timeStr: timeStr
+                  timeStr: timeStr,
+                  label: label
                 });
               }
             });
@@ -472,7 +536,7 @@ export default function Liturgies() {
       const names = intention?.names || [];
       return [
         format(instance.start, 'EEEE d MMMM', { locale: it }),
-        instance.timeStr,
+        instance.label ? `${instance.timeStr}\n(${instance.label})` : instance.timeStr,
         names.join('\n') || '-'
       ];
     });
@@ -513,7 +577,29 @@ export default function Liturgies() {
   };
 
 
-  const visibleSpecials = specials.filter(s => new Date(s.end || s.start) >= new Date());
+  const availableYears = Array.from(new Set([
+    new Date().getFullYear(),
+    ...specials.map(s => s.start ? new Date(s.start).getFullYear() : null).filter(Boolean) as number[]
+  ])).sort((a, b) => b - a);
+
+  const visibleSpecials = specials.filter(s => {
+    if (!s.start) return false;
+    try {
+      const year = new Date(s.start).getFullYear().toString();
+      const matchesYear = !selectedSpecialYear || year === selectedSpecialYear;
+      if (!matchesYear) return false;
+
+      if (!showPastSpecials) {
+        // Only show future/on-going specs (from beginning of today)
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        return new Date(s.end || s.start) >= todayStart;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  });
 
   return (
     <div className="space-y-6">
@@ -543,26 +629,78 @@ export default function Liturgies() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex p-1 bg-slate-100 rounded-2xl w-full max-w-md">
-        <button
-          onClick={() => setActiveTab('recurring')}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-full text-xs font-bold transition-all ${
-            activeTab === 'recurring' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          <Repeat size={16} />
-          Orari Settimanali
-        </button>
-        <button
-          onClick={() => setActiveTab('special')}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-full text-xs font-bold transition-all ${
-            activeTab === 'special' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          <CalendarPlus size={16} />
-          Celebrazioni Speciali
-        </button>
+      {/* Tabs & Controls */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex p-1 bg-slate-100 rounded-2xl w-full max-w-md">
+          <button
+            onClick={() => setActiveTab('recurring')}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-full text-xs font-bold transition-all ${
+              activeTab === 'recurring' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <Repeat size={16} />
+            Orari Settimanali
+          </button>
+          <button
+            onClick={() => setActiveTab('special')}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-full text-xs font-bold transition-all ${
+              activeTab === 'special' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <CalendarPlus size={16} />
+            Celebrazioni Speciali
+          </button>
+        </div>
+
+        {activeTab === 'special' && (
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 self-end md:self-auto w-full sm:w-auto">
+            {/* Selettore Mostra/Nascondi Messe Passate */}
+            <div className="flex items-center justify-between sm:justify-start gap-3 bg-white px-4 py-2 rounded-2xl border border-slate-200 shadow-sm">
+              <span className="text-xs font-bold text-slate-500 italic">Messe Passate:</span>
+              <button
+                type="button"
+                onClick={() => setShowPastSpecials(!showPastSpecials)}
+                className={`text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-xl transition-all ${
+                  showPastSpecials 
+                    ? 'bg-blue-600 text-white shadow-sm' 
+                    : 'bg-slate-100 text-slate-400 hover:text-slate-500'
+                }`}
+              >
+                {showPastSpecials ? 'Mostra' : 'Nascondi'}
+              </button>
+            </div>
+
+            {/* Selettore Anno */}
+            <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm shrink-0">
+              <Calendar size={16} className="text-slate-400" />
+              <select
+                value={selectedSpecialYear}
+                onChange={(e) => setSelectedSpecialYear(e.target.value)}
+                className="bg-transparent text-xs font-black uppercase tracking-wider outline-none cursor-pointer text-slate-700 italic pr-2"
+              >
+                <option value="">Tutti gli Anni</option>
+                {availableYears.map(year => (
+                  <option key={year} value={year.toString()}>{year}</option>
+                ))}
+              </select>
+              {selectedSpecialYear && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBulkDeleteYear(selectedSpecialYear);
+                    setBulkDeleteInput('');
+                    setIsBulkDeleteModalOpen(true);
+                  }}
+                  title={`Elimina tutte le celebrazioni del ${selectedSpecialYear}`}
+                  className="flex items-center gap-1 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-lg font-bold text-[9px] uppercase tracking-wide transition-colors shadow-sm cursor-pointer ml-1 px-2.5 py-1 active:scale-95"
+                >
+                  <Trash2 size={11} />
+                  Svuota Anno
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-2xl md:rounded-3xl border border-slate-200 shadow-sm overflow-hidden text-black">
@@ -602,11 +740,16 @@ export default function Liturgies() {
                               {DAYS_OF_WEEK.find(d => d.id === s.day)?.label}:
                             </span>
                             <div className="flex flex-wrap gap-1">
-                              {s.times.map((tm: string) => (
-                                <span key={tm} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-[9px] font-black">
-                                  {tm}
-                                </span>
-                              ))}
+                              {s.times.map((tm: any) => {
+                                const timeStr = typeof tm === 'string' ? tm : tm.time;
+                                const label = typeof tm === 'string' ? '' : tm.label;
+                                return (
+                                  <span key={timeStr} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-[9px] font-black inline-flex items-center gap-1">
+                                    {timeStr}
+                                    {label && <span className="text-slate-400 font-medium">({label})</span>}
+                                  </span>
+                                );
+                              })}
                             </div>
                           </div>
                         ))}
@@ -622,11 +765,16 @@ export default function Liturgies() {
                                   {DAYS_OF_WEEK.find(day => day.id === d)?.label.substring(0, 3)}
                                 </span>
                               ))}
-                              {(t.times || [t.time]).map((tm: string) => (
-                                <span key={tm} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-black">
-                                  {tm}
-                                </span>
-                              ))}
+                              {(t.times || [t.time]).map((tm: any) => {
+                                const timeStr = typeof tm === 'string' ? tm : tm?.time || '';
+                                const label = typeof tm === 'string' ? '' : tm?.label || '';
+                                return (
+                                  <span key={timeStr} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-black inline-flex items-center gap-1">
+                                    {timeStr}
+                                    {label && <span className="text-slate-400 font-medium">({label})</span>}
+                                  </span>
+                                );
+                              })}
                             </div>
                           </div>
                         )}
@@ -759,9 +907,16 @@ export default function Liturgies() {
                     <div key={s.day} className="flex gap-3 text-[11px] font-bold">
                       <span className="w-20 text-[9px] font-black uppercase text-slate-400 shrink-0">{DAYS_OF_WEEK.find(d => d.id === s.day)?.label}:</span>
                       <div className="flex flex-wrap gap-1">
-                        {s.times.map((tm: string) => (
-                          <span key={tm} className="px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded-lg text-[9px] font-black">{tm}</span>
-                        ))}
+                        {s.times.map((tm: any) => {
+                          const timeStr = typeof tm === 'string' ? tm : tm.time;
+                          const label = typeof tm === 'string' ? '' : tm.label;
+                          return (
+                            <span key={timeStr} className="px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded-lg text-[9px] font-black inline-flex items-center gap-1">
+                              {timeStr}
+                              {label && <span className="text-slate-400 font-medium">({label})</span>}
+                            </span>
+                          );
+                        })}
                       </div>
                     </div>
                   ))}
@@ -937,7 +1092,7 @@ export default function Liturgies() {
                               </span>
                               <span className="w-1.5 h-1.5 rounded-full bg-slate-200" />
                               <span className="text-xs font-black text-indigo-600 uppercase tracking-widest">
-                                ore {instance.timeStr}
+                                ore {instance.timeStr} {instance.label && `(${instance.label})`}
                               </span>
                             </div>
                           </div>
@@ -1068,24 +1223,31 @@ export default function Liturgies() {
                               </div>
                               
                               <div className="flex flex-wrap gap-2">
-                                {daySched.times.map(t => (
-                                  <div key={t} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50/50 border border-blue-100 text-blue-700 rounded-full">
-                                    <span className="text-[10px] font-black">{t}</span>
-                                    <button 
-                                      type="button" 
-                                      onClick={() => removeTimeFromDay(daySched.day, t)}
-                                      className="text-blue-300 hover:text-red-500 transition-colors"
-                                    >
-                                      <X size={10} />
-                                    </button>
-                                  </div>
-                                ))}
+                                {daySched.times.map(t => {
+                                  const timeStr = typeof t === 'string' ? t : t.time;
+                                  const label = typeof t === 'string' ? '' : t.label;
+                                  return (
+                                    <div key={timeStr} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50/50 border border-blue-100 text-blue-700 rounded-full">
+                                      <span className="text-[10px] font-black">
+                                        {timeStr}
+                                        {label && <span className="text-slate-400 font-normal ml-1">({label})</span>}
+                                      </span>
+                                      <button 
+                                        type="button" 
+                                        onClick={() => removeTimeFromDay(daySched.day, timeStr)}
+                                        className="text-blue-300 hover:text-red-500 transition-colors"
+                                      >
+                                        <X size={10} />
+                                      </button>
+                                    </div>
+                                  );
+                                })}
                                 {daySched.times.length === 0 && (
                                   <span className="text-[10px] text-slate-300 italic uppercase font-black tracking-widest">Nessun orario</span>
                                 )}
                               </div>
 
-                              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 pt-2">
+                              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-2">
                                 <div className="flex items-center gap-2 w-full sm:w-auto">
                                   <input
                                     type="time"
@@ -1094,7 +1256,17 @@ export default function Liturgies() {
                                       const val = e.target.value;
                                       setDayTimes(prev => ({ ...prev, [daySched.day]: val }));
                                     }}
-                                    className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-black text-black outline-none focus:ring-2 focus:ring-blue-500/20 w-full"
+                                    className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-black text-black outline-none focus:ring-2 focus:ring-blue-500/20 w-fit shrink-0"
+                                  />
+                                  <input
+                                    type="text"
+                                    placeholder="Etichetta (es. Ragazzi)"
+                                    value={dayLabels[daySched.day] || ''}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setDayLabels(prev => ({ ...prev, [daySched.day]: val }));
+                                    }}
+                                    className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-black outline-none focus:ring-2 focus:ring-blue-500/20 flex-1 min-w-[120px]"
                                   />
                                   <button
                                     type="button"
@@ -1112,11 +1284,22 @@ export default function Liturgies() {
                                       onClick={() => {
                                         setFormData(prev => ({
                                           ...prev,
-                                          schedule: prev.schedule.map(s => 
-                                            s.day === daySched.day 
-                                              ? { ...s, times: s.times.includes(t) ? s.times : [...s.times, t].sort() } 
-                                              : s
-                                          )
+                                          schedule: prev.schedule.map(s => {
+                                            if (s.day !== daySched.day) return s;
+                                            const exists = s.times.some((tm: any) => {
+                                              const actualTime = typeof tm === 'string' ? tm : tm.time;
+                                              return actualTime === t;
+                                            });
+                                            if (exists) return s;
+                                            return {
+                                              ...s,
+                                              times: [...s.times, t].sort((a, b) => {
+                                                const timeA = typeof a === 'string' ? a : a.time;
+                                                const timeB = typeof b === 'string' ? b : b.time;
+                                                return timeA.localeCompare(timeB);
+                                              })
+                                            };
+                                          })
                                         }));
                                       }}
                                       className="text-[9px] font-black text-slate-400 hover:text-blue-600 bg-slate-50 border border-slate-100 px-3 py-2 rounded-xl whitespace-nowrap transition-all"
@@ -1267,6 +1450,79 @@ export default function Liturgies() {
                 >
                   <Save size={18} />
                   Salva Informazioni
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Modal Svuota Anno */}
+      <AnimatePresence>
+        {isBulkDeleteModalOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                if (!isDeletingBulk) {
+                  setIsBulkDeleteModalOpen(false);
+                  setBulkDeleteYear('');
+                  setBulkDeleteInput('');
+                }
+              }}
+              className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200]"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="fixed inset-x-4 bottom-4 md:inset-auto md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 w-full md:max-w-md bg-white rounded-[2.5rem] shadow-2xl z-[210] overflow-hidden p-6 md:p-8 flex flex-col items-center text-center text-black"
+            >
+              <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center mb-4 border border-rose-100 shadow-sm animate-pulse">
+                <Trash2 size={28} />
+              </div>
+              <h3 className="text-xl font-black text-rose-600 uppercase italic tracking-wider mb-2">
+                Svuotare Anno {bulkDeleteYear}?
+              </h3>
+              <p className="text-sm font-semibold text-slate-500 leading-relaxed mb-6">
+                Questa azione è irreversibile. Tutte le celebrazioni speciali associate all'anno <strong className="text-slate-900">{bulkDeleteYear}</strong> saranno eliminate in modo permanente.
+              </p>
+              
+              <div className="space-y-2 mb-6 w-full">
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block text-left">
+                  Digita l'anno "{bulkDeleteYear}" per confermare:
+                </label>
+                <input
+                  type="text"
+                  placeholder={bulkDeleteYear}
+                  value={bulkDeleteInput}
+                  onChange={(e) => setBulkDeleteInput(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-rose-500 focus:border-rose-500 outline-none text-center font-bold text-slate-800 text-lg tracking-wider bg-white"
+                />
+              </div>
+
+              <div className="flex gap-3 w-full">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsBulkDeleteModalOpen(false);
+                    setBulkDeleteYear('');
+                    setBulkDeleteInput('');
+                  }}
+                  disabled={isDeletingBulk}
+                  className="px-6 py-3 rounded-2xl border border-slate-200 text-slate-500 font-bold hover:bg-slate-50 active:scale-95 transition-all text-[11px] uppercase tracking-wider flex-1"
+                >
+                  Annulla
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkDeleteInput !== bulkDeleteYear || isDeletingBulk}
+                  onClick={() => handleDeleteAllSpecialsByYear(bulkDeleteYear)}
+                  className="px-6 py-3 rounded-2xl bg-rose-600 text-white font-bold hover:bg-rose-700 active:scale-95 transition-all text-[11px] uppercase tracking-wider shadow-md disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 flex-[2]"
+                >
+                  {isDeletingBulk ? 'Eliminazione...' : 'Conferma e Svuota'}
                 </button>
               </div>
             </motion.div>

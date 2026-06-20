@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { collection, onSnapshot, addDoc, query, orderBy, deleteDoc, doc, updateDoc, increment, getDocs, where, writeBatch } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, query, orderBy, deleteDoc, doc, updateDoc, increment, getDocs, where, writeBatch, setDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { useParish, useParishCollection, useParishDoc } from '../components/ParishContext';
-import { Plus, Trash2, Calendar as CalendarIcon, MapPin, Users, X, Search, Filter, Tag, LayoutGrid, Pencil, AlertCircle, Clock, Upload, FileText, Image as ImageIcon, Download, ListTodo, UserPlus, Settings, CheckCircle2 } from 'lucide-react';
+import { Plus, Trash2, Calendar as CalendarIcon, MapPin, Users, X, Search, Filter, Tag, LayoutGrid, Pencil, AlertCircle, Clock, Upload, FileText, Image as ImageIcon, Download, ListTodo, UserPlus, Settings, CheckCircle2, FileDown, Check, Coins } from 'lucide-react';
 import { format, isAfter, isBefore, parseISO, startOfDay, endOfDay, isWithinInterval, addDays, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
 import { it } from 'date-fns/locale';
 import jsPDF from 'jspdf';
@@ -21,15 +21,41 @@ const PARISH_INFO = {
   address: 'Via della Chiesa, 1 - 00100 Roma (RM)',
 };
 
+const DEFAULT_EVENT_TYPES = [
+  'Messa', 'Oratorio', 'Catechismo', 'Preghiera', 'Incontro', 
+  'Festa', 'Cena', 'Gita', 'Concerto', 'Volontariato', 
+  'Formazione', 'Altro'
+];
+
+const parsePriceToNumber = (priceString: string): number => {
+  if (!priceString) return 0;
+  // Extract digits and decimals (e.g., 10, 10.5, 10,5)
+  const match = priceString.match(/\d+([.,]\d+)?/);
+  if (match) {
+    const numStr = match[0].replace(',', '.');
+    return parseFloat(numStr);
+  }
+  return 0;
+};
+
 const Events: React.FC = () => {
   const { currentParish } = useParish();
   const eventsColl = useParishCollection('events');
   const calendarsColl = useParishCollection('calendars');
   const calEventsColl = useParishCollection('calendar_events');
+  const roomsColl = useParishCollection('rooms');
   const parishSettingsDoc = useParishDoc('settings', 'parish');
+
+  const [eventTypes, setEventTypes] = useState<string[]>(DEFAULT_EVENT_TYPES);
+  const [isManageTypesModalOpen, setIsManageTypesModalOpen] = useState(false);
+  const [newTypeInput, setNewTypeInput] = useState('');
+  const [editingTypeIndex, setEditingTypeIndex] = useState<number | null>(null);
+  const [editingTypeInput, setEditingTypeInput] = useState('');
+  const [isSavingTypes, setIsSavingTypes] = useState(false);
 
   const [events, setEvents] = useState<any[]>([]);
   const [calendars, setCalendars] = useState<any[]>([]);
+  const [rooms, setRooms] = useState<any[]>([]);
   const [parishInfo, setParishInfo] = useState<any>({
     name: 'Parrocchia S. Maria Assunta',
     address: 'Via della Chiesa, 1 - 00100 Roma (RM)',
@@ -48,10 +74,13 @@ const Events: React.FC = () => {
   const [selectedEventForRegistrations, setSelectedEventForRegistrations] = useState<any | null>(null);
   const [registrations, setRegistrations] = useState<any[]>([]);
   const [newParticipant, setNewParticipant] = useState<any>({});
+  const [editingParticipantId, setEditingParticipantId] = useState<string | null>(null);
+  const [editingParticipantData, setEditingParticipantData] = useState<any>({});
   // PDF Export Filters
   const [exportStartDate, setExportStartDate] = useState<string>('');
   const [exportEndDate, setExportEndDate] = useState<string>('');
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   
   const initialEventState = {
     title: '',
@@ -65,12 +94,14 @@ const Events: React.FC = () => {
     posterUrl: '',
     posterType: '' as 'image' | 'pdf' | '',
     price: '',
+    subPrices: [] as { label: string, price: string }[],
     isApproved: false,
     showInCalendar: false,
     calendarId: '',
     registrationsEnabled: false,
     maxParticipants: '',
     secretaryInfo: '',
+    roomIds: [] as string[],
     registrationFields: [
       { id: '1', label: 'Nome e Cognome', type: 'text', required: true },
       { id: '2', label: 'Telefono', type: 'tel', required: true }
@@ -83,6 +114,25 @@ const Events: React.FC = () => {
   const [filterSearch, setFilterSearch] = useState('');
   const [filterType, setFilterType] = useState('All');
   const [filterStatus, setFilterStatus] = useState<'All' | 'Upcoming' | 'Past'>('All');
+  const [selectedYear, setSelectedYear] = useState<string>('');
+  
+  // Bulk Delete States
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [bulkDeleteYear, setBulkDeleteYear] = useState('');
+  const [bulkDeleteInput, setBulkDeleteInput] = useState('');
+  const [isDeletingBulk, setIsDeletingBulk] = useState(false);
+
+  const availableYears = Array.from(new Set([
+    new Date().getFullYear(),
+    ...events.map(e => {
+      try {
+        return e.date ? new Date(e.date).getFullYear() : null;
+      } catch {
+        return null;
+      }
+    }).filter(Boolean) as number[]
+  ])).sort((a, b) => b - a);
+
   const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
@@ -107,7 +157,15 @@ const Events: React.FC = () => {
 
     const unsubParish = onSnapshot(parishSettingsDoc, (docSnap) => {
       if (docSnap.exists()) {
-        setParishInfo(docSnap.data());
+        const data = docSnap.data();
+        setParishInfo(data);
+        if (data?.eventTypes && Array.isArray(data.eventTypes)) {
+          setEventTypes(data.eventTypes);
+        } else {
+          setEventTypes(DEFAULT_EVENT_TYPES);
+        }
+      } else {
+        setEventTypes(DEFAULT_EVENT_TYPES);
       }
     });
 
@@ -115,10 +173,15 @@ const Events: React.FC = () => {
       setCalendars(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
+    const unsubRooms = onSnapshot(roomsColl, (snap) => {
+      setRooms(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
     return () => {
       unsubEvents();
       unsubParish();
       unsubCalendars();
+      unsubRooms();
     };
   }, []);
 
@@ -137,7 +200,16 @@ const Events: React.FC = () => {
       (filterStatus === 'Upcoming' && isAfter(eventDate, now)) ||
       (filterStatus === 'Past' && isBefore(eventDate, now));
 
-    return matchesSearch && matchesType && matchesStatus;
+    let matchesYear = true;
+    if (selectedYear) {
+      try {
+        matchesYear = event.date && new Date(event.date).getFullYear().toString() === selectedYear;
+      } catch {
+        matchesYear = false;
+      }
+    }
+
+    return matchesSearch && matchesType && matchesStatus && matchesYear;
   });
 
   // Stats Logic
@@ -394,6 +466,7 @@ const Events: React.FC = () => {
       });
 
       doc.save(`eventi_parrocchia_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`);
+      setIsExportModalOpen(false);
     } catch (error) {
       console.error('Error generating PDF:', error);
       alert('Si è verificato un errore durante la generazione del PDF.');
@@ -533,6 +606,11 @@ const Events: React.FC = () => {
 
       // Table Header Configuration
       const tableHeaders = ['N.', ...selectedEventForRegistrations.registrationFields.map((f: any) => f.label)];
+      const hasSubPrices = selectedEventForRegistrations.subPrices && selectedEventForRegistrations.subPrices.length > 0;
+      
+      if (hasSubPrices) {
+        tableHeaders.push('Quota/Opzione');
+      }
       if (selectedEventForRegistrations.price) {
         tableHeaders.push('Pagamento');
       }
@@ -550,6 +628,10 @@ const Events: React.FC = () => {
         selectedEventForRegistrations.registrationFields.forEach((field: any) => {
           row.push(reg ? reg[field.id] || '' : '');
         });
+
+        if (hasSubPrices) {
+          row.push(reg ? reg.selectedSubPrice || '' : '');
+        }
 
         if (selectedEventForRegistrations.price) {
           // Combined payment column
@@ -611,12 +693,14 @@ const Events: React.FC = () => {
       posterUrl: event.posterUrl || '',
       posterType: event.posterType || '',
       price: event.price || '',
+      subPrices: event.subPrices || [],
       isApproved: event.isApproved || false,
       showInCalendar: event.showInCalendar || false,
       calendarId: event.calendarId || '',
       registrationsEnabled: event.registrationsEnabled || false,
       maxParticipants: event.maxParticipants || '',
       secretaryInfo: event.secretaryInfo || '',
+      roomIds: event.roomIds || [],
       registrationFields: event.registrationFields || initialEventState.registrationFields,
     });
     setEditingId(event.id);
@@ -642,6 +726,65 @@ const Events: React.FC = () => {
     }
   };
 
+  const handleDeleteAllEventsByYear = async (yearStr: string) => {
+    if (!yearStr) return;
+    setIsDeletingBulk(true);
+    try {
+      const eventsToDeleteList = events.filter(e => {
+        try {
+          return e.date && new Date(e.date).getFullYear().toString() === yearStr;
+        } catch {
+          return false;
+        }
+      });
+
+      for (const event of eventsToDeleteList) {
+        // Delete linked calendar events
+        const calendarEventsQ = query(calEventsColl, where('sourceEventId', '==', event.id));
+        const calendarEventsSnap = await getDocs(calendarEventsQ);
+        if (!calendarEventsSnap.empty) {
+          const batch = writeBatch(db);
+          calendarEventsSnap.docs.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+        }
+
+        // Delete registrations subcollection if there are any
+        const regsColl = collection(eventsColl, event.id, 'registrations');
+        const regsSnap = await getDocs(regsColl);
+        if (!regsSnap.empty) {
+          const batch = writeBatch(db);
+          regsSnap.docs.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+        }
+
+        // Delete event
+        await deleteDoc(doc(eventsColl, event.id));
+      }
+
+      setIsBulkDeleteModalOpen(false);
+      setBulkDeleteYear('');
+      setBulkDeleteInput('');
+    } catch (error) {
+      console.error("Error during bulk delete events:", error);
+      alert("Si è verificato un errore durante l'eliminazione degli eventi.");
+    } finally {
+      setIsDeletingBulk(false);
+    }
+  };
+
+  const handleSaveEventTypes = async (updatedTypes: string[]) => {
+    setIsSavingTypes(true);
+    try {
+      await setDoc(parishSettingsDoc, { eventTypes: updatedTypes }, { merge: true });
+      setEventTypes(updatedTypes);
+    } catch (error) {
+      console.error("Error saving event types:", error);
+      alert("Si è verificato un errore durante il salvataggio delle tipologie.");
+    } finally {
+      setIsSavingTypes(false);
+    }
+  };
+
   return (
     <div className="space-y-6 md:space-y-8 min-h-screen pb-20">
       {/* Header */}
@@ -652,56 +795,17 @@ const Events: React.FC = () => {
         </div>
         
         <div className="flex flex-col sm:flex-row items-center gap-3">
-          {/* Calendar Range Filter (Desktop) */}
-          <div className="hidden sm:flex items-center gap-3 bg-white border border-slate-200 px-4 py-2 rounded-2xl text-xs shadow-sm">
-            <div className="flex gap-2 mr-2">
-              <button 
-                onClick={() => {
-                  setExportStartDate(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
-                  setExportEndDate(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
-                }}
-                className="text-[9px] font-black uppercase text-blue-600 hover:text-blue-800 transition-colors"
-              >
-                Mese
-              </button>
-              <button 
-                onClick={() => {
-                  setExportStartDate(format(startOfYear(new Date()), 'yyyy-MM-dd'));
-                  setExportEndDate(format(endOfYear(new Date()), 'yyyy-MM-dd'));
-                }}
-                className="text-[9px] font-black uppercase text-blue-600 hover:text-blue-800 transition-colors"
-              >
-                Anno
-              </button>
-            </div>
-            <div className="flex items-center gap-2">
-              <CalendarIcon size={14} className="text-slate-400" />
-              <input
-                type="date"
-                value={exportStartDate}
-                onChange={(e) => setExportStartDate(e.target.value)}
-                className="outline-none bg-transparent font-bold text-slate-600"
-              />
-            </div>
-            <span className="text-slate-300">|</span>
-            <div className="flex items-center gap-2 text-slate-600">
-              <input
-                type="date"
-                value={exportEndDate}
-                onChange={(e) => setExportEndDate(e.target.value)}
-                className="outline-none bg-transparent font-bold"
-              />
-            </div>
-          </div>
-
           <div className="flex gap-2 w-full sm:w-auto">
             <button
-              onClick={exportToPDF}
-              disabled={isExporting}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-600 px-5 py-3 rounded-full font-black uppercase italic tracking-widest hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[10px] disabled:opacity-50"
+              onClick={() => {
+                setExportStartDate(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+                setExportEndDate(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+                setIsExportModalOpen(true);
+              }}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-600 px-5 py-3 rounded-full font-black uppercase italic tracking-widest hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[10px] cursor-pointer"
             >
-              <Download size={16} />
-              {isExporting ? '...' : 'PDF'}
+              <Download size={16} className="text-blue-600" />
+              Esporta PDF
             </button>
             <button
               onClick={() => {
@@ -784,22 +888,59 @@ const Events: React.FC = () => {
             </div>
             
             <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm">
-                <Filter size={16} className="text-slate-400" />
-                <select
-                  value={filterType}
-                  onChange={(e) => setFilterType(e.target.value)}
-                  className="bg-transparent text-xs font-black uppercase tracking-wider outline-none cursor-pointer text-slate-700 italic pr-2"
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm">
+                  <Filter size={16} className="text-slate-400" />
+                  <select
+                    value={filterType}
+                    onChange={(e) => setFilterType(e.target.value)}
+                    className="bg-transparent text-xs font-black uppercase tracking-wider outline-none cursor-pointer text-slate-700 italic pr-2"
+                  >
+                    <option value="All">Tutte le Tipologie</option>
+                    {eventTypes.map(type => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsManageTypesModalOpen(true)}
+                  title="Gestisci Tipologie"
+                  className="p-3 text-slate-500 bg-white hover:bg-slate-100 hover:text-blue-600 rounded-2xl border border-slate-200 shadow-sm transition-all flex items-center justify-center active:scale-95 cursor-pointer"
                 >
-                  <option value="All">Tutte le Tipologie</option>
-                  {[
-                    'Messa', 'Oratorio', 'Catechismo', 'Preghiera', 'Incontro', 
-                    'Festa', 'Cena', 'Gita', 'Concerto', 'Volontariato', 
-                    'Formazione', 'Altro'
-                  ].map(type => <option key={type} value={type}>{type}</option>)}
-                </select>
+                  <Settings size={16} />
+                </button>
               </div>
               
+              <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm">
+                <CalendarIcon size={16} className="text-slate-400" />
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(e.target.value)}
+                  className="bg-transparent text-xs font-black uppercase tracking-wider outline-none cursor-pointer text-slate-700 italic pr-2"
+                >
+                  <option value="">Tutti gli Anni</option>
+                  {availableYears.map(year => (
+                    <option key={year} value={year.toString()}>{year}</option>
+                  ))}
+                </select>
+                {selectedYear && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBulkDeleteYear(selectedYear);
+                      setBulkDeleteInput('');
+                      setIsBulkDeleteModalOpen(true);
+                    }}
+                    title={`Elimina tutti gli eventi del ${selectedYear}`}
+                    className="flex items-center gap-1 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-lg font-bold text-[9px] uppercase tracking-wide transition-colors shadow-sm cursor-pointer ml-1 px-2 py-0.5 active:scale-95"
+                  >
+                    <Trash2 size={10} />
+                    Svuota Anno
+                  </button>
+                )}
+              </div>
+
               <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm">
                 <LayoutGrid size={16} className="text-slate-400" />
                 <select
@@ -813,12 +954,13 @@ const Events: React.FC = () => {
                 </select>
               </div>
 
-              {(filterSearch !== '' || filterType !== 'All' || filterStatus !== 'All') && (
+              {(filterSearch !== '' || filterType !== 'All' || filterStatus !== 'All' || selectedYear !== '') && (
                 <button
                   onClick={() => {
                     setFilterSearch('');
                     setFilterType('All');
                     setFilterStatus('All');
+                    setSelectedYear('');
                   }}
                   className="p-3 text-red-500 bg-red-50 hover:bg-red-100 rounded-xl transition-all border border-red-100 shadow-sm"
                   title="Resetta filtri"
@@ -1103,45 +1245,90 @@ const Events: React.FC = () => {
 
             <div className="flex-1 overflow-auto p-4 md:p-8 space-y-8">
               {/* Stats & Quick Actions */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 flex items-center gap-4">
-                  <div className="p-3 bg-white rounded-2xl text-blue-600 shadow-sm">
-                    <Users size={20} />
-                  </div>
-                  <div>
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 italic">Iscritti</p>
-                    <p className="text-xl font-black text-slate-900">
-                      {registrations.length}
-                      {selectedEventForRegistrations.maxParticipants && (
-                        <span className="text-sm font-bold text-slate-400 ml-1 italic">/ {selectedEventForRegistrations.maxParticipants}</span>
-                      )}
-                    </p>
-                  </div>
-                </div>
+              {(() => {
+                const hasPriceField = !!selectedEventForRegistrations.price || (selectedEventForRegistrations.subPrices && selectedEventForRegistrations.subPrices.length > 0);
+                
+                // Helper to compute stats
+                let totalCollected = 0;
+                let totalExpected = 0;
+                
+                registrations.forEach(reg => {
+                  let priceAmount = 0;
+                  if (reg.selectedSubPrice && selectedEventForRegistrations.subPrices) {
+                    const lastParenIndex = reg.selectedSubPrice.lastIndexOf('(');
+                    if (lastParenIndex !== -1) {
+                      const insideParen = reg.selectedSubPrice.slice(lastParenIndex + 1, -1);
+                      priceAmount = parsePriceToNumber(insideParen);
+                    } else {
+                      priceAmount = parsePriceToNumber(reg.selectedSubPrice);
+                    }
+                  } else {
+                    priceAmount = parsePriceToNumber(selectedEventForRegistrations.price);
+                  }
+                  
+                  totalExpected += priceAmount;
+                  if (reg.isPaid) {
+                    totalCollected += priceAmount;
+                  }
+                });
 
-                {selectedEventForRegistrations.price && (
-                  <div className="bg-blue-50 p-6 rounded-[2rem] border border-blue-100 flex items-center gap-4">
-                    <div className="p-3 bg-white rounded-2xl text-blue-600 shadow-sm">
-                      <CheckCircle2 size={20} />
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className={`${hasPriceField ? 'md:col-span-1' : 'md:col-span-2'} bg-slate-50 p-6 rounded-[2rem] border border-slate-100 flex items-center gap-4`}>
+                      <div className="p-3 bg-white rounded-2xl text-blue-600 shadow-sm">
+                        <Users size={20} />
+                      </div>
+                      <div>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 italic">Iscritti</p>
+                        <p className="text-xl font-black text-slate-900">
+                          {registrations.length}
+                          {selectedEventForRegistrations.maxParticipants && (
+                            <span className="text-sm font-bold text-slate-400 ml-1 italic">/ {selectedEventForRegistrations.maxParticipants}</span>
+                          )}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest mb-1 italic">Pagamenti</p>
-                      <p className="text-xl font-black text-blue-900">
-                        {registrations.filter(r => r.isPaid).length}
-                      </p>
+
+                    {hasPriceField && (
+                      <>
+                        <div className="bg-blue-50 p-6 rounded-[2rem] border border-blue-100 flex items-center gap-4">
+                          <div className="p-3 bg-white rounded-2xl text-blue-600 shadow-sm">
+                            <CheckCircle2 size={20} />
+                          </div>
+                          <div>
+                            <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest mb-1 italic">Pagamenti</p>
+                            <p className="text-xl font-black text-blue-900">
+                              {registrations.filter(r => r.isPaid).length} <span className="text-xs font-bold text-slate-400 italic">/ {registrations.length}</span>
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="bg-emerald-50 p-6 rounded-[2rem] border border-emerald-100 flex items-center gap-4">
+                          <div className="p-3 bg-white rounded-2xl text-emerald-600 shadow-sm">
+                            <Coins size={20} />
+                          </div>
+                          <div>
+                            <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest mb-1 italic">Quota Raccolta</p>
+                            <p className="text-xl font-black text-emerald-900">
+                              {totalCollected}€
+                              <span className="text-xs font-bold text-slate-400 ml-1.5 italic">su {totalExpected}€</span>
+                            </p>
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    <div className={`${hasPriceField ? 'md:col-span-1' : 'md:col-span-2'} flex items-center`}>
+                      <button
+                        onClick={exportRegistrationsToPDF}
+                        className="w-full h-full flex items-center justify-center gap-3 bg-white border border-slate-200 text-blue-600 p-6 rounded-[2rem] font-black uppercase italic tracking-widest hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-xs cursor-pointer"
+                      >
+                        <Download size={20} /> Scarica Elenco PDF
+                      </button>
                     </div>
                   </div>
-                )}
-
-                <div className="md:col-span-2 flex items-center">
-                  <button
-                    onClick={exportRegistrationsToPDF}
-                    className="w-full flex items-center justify-center gap-3 bg-white border border-slate-200 text-blue-600 p-6 rounded-[2rem] font-black uppercase italic tracking-widest hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-xs"
-                  >
-                    <Download size={20} /> Scarica Elenco PDF
-                  </button>
-                </div>
-              </div>
+                );
+              })()}
 
               {/* Secretary Info Banner */}
               {selectedEventForRegistrations.secretaryInfo && (
@@ -1168,6 +1355,9 @@ const Events: React.FC = () => {
                             {field.label}
                           </th>
                         ))}
+                        {selectedEventForRegistrations.subPrices && selectedEventForRegistrations.subPrices.length > 0 && (
+                          <th className="px-6 py-5 text-[9px] font-black uppercase text-slate-400 tracking-widest italic">Quota / Opzione</th>
+                        )}
                         {selectedEventForRegistrations.price && (
                           <th className="px-6 py-5 text-[9px] font-black uppercase text-slate-400 tracking-widest italic">Pagamento</th>
                         )}
@@ -1198,6 +1388,27 @@ const Events: React.FC = () => {
                             />
                           </td>
                         ))}
+                        {selectedEventForRegistrations.subPrices && selectedEventForRegistrations.subPrices.length > 0 && (
+                          <td className="px-6 py-4">
+                            <select
+                              value={newParticipant.selectedSubPrice || ''}
+                              onChange={(e) => setNewParticipant({ ...newParticipant, selectedSubPrice: e.target.value })}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleSubmitParticipant(e as any);
+                                }
+                              }}
+                              className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold focus:ring-4 focus:ring-blue-100 outline-none transition-all"
+                            >
+                              <option value="">Scegli quota...</option>
+                              {selectedEventForRegistrations.subPrices.map((sub: any, i: number) => (
+                                <option key={i} value={`${sub.label} (${sub.price})`}>
+                                  {sub.label} ({sub.price})
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                        )}
                         {selectedEventForRegistrations.price && <td className="px-6 py-4"></td>}
                         <td className="px-6 py-4">
                           <input
@@ -1236,69 +1447,521 @@ const Events: React.FC = () => {
                           </td>
                         </tr>
                       ) : (
-                        registrations.map((reg, index) => (
-                          <tr key={reg.id} className="hover:bg-slate-50/50 transition-colors">
-                            <td className="px-6 py-4 text-center">
-                              <span className="text-[10px] font-black text-slate-400">{index + 1}</span>
-                            </td>
-                            {selectedEventForRegistrations.registrationFields.map((field: any) => (
-                              <td key={field.id} className="px-6 py-4">
-                                <input
-                                  type={field.type}
-                                  defaultValue={reg[field.id] || ''}
-                                  onBlur={(e) => {
-                                    if (e.target.value !== (reg[field.id] || '')) {
-                                      updateParticipantField(reg.id, field.id, e.target.value);
-                                    }
-                                  }}
-                                  className="w-full bg-transparent border-none focus:ring-0 text-xs font-bold text-slate-700 p-0"
-                                />
+                        registrations.map((reg, index) => {
+                          const isCurrentlyEditing = editingParticipantId === reg.id;
+                          return (
+                            <tr key={reg.id} className="hover:bg-slate-50/50 transition-colors">
+                              <td className="px-6 py-4 text-center">
+                                <span className="text-[10px] font-black text-slate-400">{index + 1}</span>
                               </td>
-                            ))}
-                            {selectedEventForRegistrations.price && (
+                              
+                              {selectedEventForRegistrations.registrationFields.map((field: any) => (
+                                <td key={field.id} className="px-6 py-4">
+                                  {isCurrentlyEditing ? (
+                                    <input
+                                      type={field.type}
+                                      value={editingParticipantData[field.id] || ''}
+                                      onChange={(e) => setEditingParticipantData({
+                                        ...editingParticipantData,
+                                        [field.id]: e.target.value
+                                      })}
+                                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                                    />
+                                  ) : (
+                                    <span className="text-xs font-bold text-slate-700">{reg[field.id] || '-'}</span>
+                                  )}
+                                </td>
+                              ))}
+
+                              {selectedEventForRegistrations.subPrices && selectedEventForRegistrations.subPrices.length > 0 && (
+                                <td className="px-6 py-4">
+                                  {isCurrentlyEditing ? (
+                                    <select
+                                      value={editingParticipantData.selectedSubPrice || ''}
+                                      onChange={(e) => setEditingParticipantData({
+                                        ...editingParticipantData,
+                                        selectedSubPrice: e.target.value
+                                      })}
+                                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                                    >
+                                      <option value="">Nessuna quota</option>
+                                      {selectedEventForRegistrations.subPrices.map((sub: any, i: number) => (
+                                        <option key={i} value={`${sub.label} (${sub.price})`}>
+                                          {sub.label} ({sub.price})
+                                        </option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg">
+                                      {reg.selectedSubPrice || 'Standard'}
+                                    </span>
+                                  )}
+                                </td>
+                              )}
+
+                              {selectedEventForRegistrations.price && (
+                                <td className="px-6 py-4">
+                                  <button
+                                    onClick={() => togglePayment(reg.id, !!reg.isPaid)}
+                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border italic ${
+                                      reg.isPaid 
+                                        ? 'bg-blue-50 text-blue-700 border-blue-200' 
+                                        : 'bg-slate-50 text-slate-400 border-slate-200 hover:border-blue-200 hover:text-blue-600'
+                                    }`}
+                                  >
+                                    {reg.isPaid ? <CheckCircle2 size={12} /> : <div className="w-3 h-3 border-2 border-current rounded-sm" />}
+                                    {reg.isPaid ? 'Pagato' : 'Da Pagare'}
+                                  </button>
+                                </td>
+                              )}
+
                               <td className="px-6 py-4">
-                                <button
-                                  onClick={() => togglePayment(reg.id, !!reg.isPaid)}
-                                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border italic ${
-                                    reg.isPaid 
-                                      ? 'bg-blue-50 text-blue-700 border-blue-200' 
-                                      : 'bg-slate-50 text-slate-400 border-slate-200 hover:border-blue-200 hover:text-blue-600'
-                                  }`}
-                                >
-                                  {reg.isPaid ? <CheckCircle2 size={12} /> : <div className="w-3 h-3 border-2 border-current rounded-sm" />}
-                                  {reg.isPaid ? 'Pagato' : 'Da Pagare'}
-                                </button>
+                                {isCurrentlyEditing ? (
+                                  <input
+                                    type="text"
+                                    value={editingParticipantData.secretaryNotes || ''}
+                                    onChange={(e) => setEditingParticipantData({
+                                      ...editingParticipantData,
+                                      secretaryNotes: e.target.value
+                                    })}
+                                    placeholder="Note..."
+                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-medium text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none italic"
+                                  />
+                                ) : (
+                                  <span className="text-xs text-slate-500 italic font-medium">{reg.secretaryNotes || '-'}</span>
+                                )}
                               </td>
-                            )}
-                            <td className="px-6 py-4">
-                              <input
-                                type="text"
-                                defaultValue={reg.secretaryNotes || ''}
-                                placeholder="..."
-                                onBlur={(e) => {
-                                  if (e.target.value !== (reg.secretaryNotes || '')) {
-                                    updateSecretaryNotes(reg.id, e.target.value);
-                                  }
-                                }}
-                                className="w-full bg-transparent border-none focus:ring-0 text-xs font-medium text-slate-500 placeholder:text-slate-200 italic p-0"
-                              />
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <button
-                                onClick={() => handleDeleteParticipant(reg.id)}
-                                className="p-2.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
-                                title="Elimina"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </td>
-                          </tr>
-                        ))
+
+                              <td className="px-6 py-4 text-right whitespace-nowrap">
+                                {isCurrentlyEditing ? (
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        try {
+                                          const { id, createdAt, ...dataToUpdate } = editingParticipantData;
+                                          await updateDoc(doc(collection(eventsColl, selectedEventForRegistrations.id, 'registrations'), reg.id), dataToUpdate);
+                                          setEditingParticipantId(null);
+                                          setEditingParticipantData({});
+                                        } catch (error) {
+                                          handleFirestoreError(error, OperationType.WRITE, `events/${selectedEventForRegistrations.id}/registrations/${reg.id}`);
+                                        }
+                                      }}
+                                      className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                                      title="Salva"
+                                    >
+                                      <Check size={16} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingParticipantId(null);
+                                        setEditingParticipantData({});
+                                      }}
+                                      className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                                      title="Annulla"
+                                    >
+                                      <X size={16} />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-end gap-1">
+                                    <button
+                                      onClick={() => {
+                                        setEditingParticipantId(reg.id);
+                                        setEditingParticipantData({ ...reg });
+                                      }}
+                                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
+                                      title="Modifica"
+                                    >
+                                      <Pencil size={15} />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteParticipant(reg.id)}
+                                      className="p-2.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                                      title="Elimina"
+                                    >
+                                      <Trash2 size={15} />
+                                    </button>
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Modal */}
+      {isBulkDeleteModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 z-[220]">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl space-y-8 text-center">
+            <div className="flex flex-col items-center space-y-4">
+              <div className="w-20 h-20 bg-rose-100 text-rose-600 rounded-[2.5rem] flex items-center justify-center border-4 border-rose-50 shadow-md">
+                <Trash2 size={36} />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-black text-rose-950 uppercase italic tracking-tight">
+                  Svuota Anno {bulkDeleteYear}
+                </h3>
+                <p className="text-slate-500 font-medium text-xs leading-relaxed">
+                  Questa azione è irreversibile. Tutti gli eventi pianificati associati all'anno <strong className="text-slate-900">{bulkDeleteYear}</strong> e i relativi partecipanti, iscrizioni e record a calendario saranno eliminati in modo permanente.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                Digita l'anno "{bulkDeleteYear}" per confermare:
+              </label>
+              <input
+                type="text"
+                className="w-full text-center font-black tracking-widest text-lg py-3 px-4 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-rose-500 transition-all uppercase"
+                placeholder={bulkDeleteYear}
+                value={bulkDeleteInput}
+                onChange={(e) => setBulkDeleteInput(e.target.value)}
+              />
+            </div>
+
+            <div className="flex gap-4 uppercase italic">
+              <button
+                disabled={isDeletingBulk}
+                onClick={() => {
+                  setIsBulkDeleteModalOpen(false);
+                  setBulkDeleteYear('');
+                  setBulkDeleteInput('');
+                }}
+                className="flex-1 bg-white border border-slate-200 text-slate-600 px-6 py-4 rounded-2xl font-black text-[10px] tracking-widest hover:bg-slate-50 transition-all active:scale-95 shadow-sm disabled:opacity-50"
+              >
+                Annulla
+              </button>
+              <button
+                disabled={bulkDeleteInput !== bulkDeleteYear || isDeletingBulk}
+                onClick={() => handleDeleteAllEventsByYear(bulkDeleteYear)}
+                className="flex-1 bg-rose-600 hover:bg-rose-700 text-white px-6 py-4 rounded-2xl font-black text-[10px] tracking-widest transition-all shadow-xl shadow-rose-500/20 active:scale-95 disabled:opacity-50"
+              >
+                {isDeletingBulk ? 'Eliminazione...' : 'Conferma'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manage Event Types Modal */}
+      {isManageTypesModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 z-[220]">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl space-y-6 flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-2">
+                <Settings className="text-blue-600 transition-transform duration-500 hover:rotate-90 cursor-pointer" size={20} />
+                <h3 className="text-lg font-black text-slate-900 uppercase italic tracking-tight">
+                  Gestisci Tipologie
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsManageTypesModalOpen(false);
+                  setNewTypeInput('');
+                  setEditingTypeIndex(null);
+                }}
+                className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-900 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* List and scroll area */}
+            <div className="flex-1 overflow-y-auto pr-1 space-y-2 max-h-[40vh] min-h-[150px]">
+              {eventTypes.length === 0 ? (
+                <div className="text-center py-6 text-slate-400 text-xs font-semibold">
+                  Nessuna tipologia personalizzata configurata.
+                </div>
+              ) : (
+                eventTypes.map((type, index) => (
+                  <div
+                    key={type}
+                    className="flex items-center justify-between gap-2 p-3 bg-slate-50 hover:bg-slate-100/80 rounded-2xl border border-slate-100 transition-all text-sm font-bold text-slate-705"
+                  >
+                    {editingTypeIndex === index ? (
+                      <div className="flex items-center gap-2 w-full">
+                        <input
+                          type="text"
+                          value={editingTypeInput}
+                          onChange={(e) => setEditingTypeInput(e.target.value)}
+                          className="flex-1 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const updated = [...eventTypes];
+                              const trimmed = editingTypeInput.trim();
+                              if (!trimmed) return;
+                              if (updated.includes(trimmed) && trimmed !== type) {
+                                alert("Questa tipologia esiste già!");
+                                return;
+                              }
+                              updated[index] = trimmed;
+                              handleSaveEventTypes(updated);
+                              setEditingTypeIndex(null);
+                            } else if (e.key === 'Escape') {
+                              setEditingTypeIndex(null);
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = [...eventTypes];
+                            const trimmed = editingTypeInput.trim();
+                            if (!trimmed) return;
+                            if (updated.includes(trimmed) && trimmed !== type) {
+                              alert("Questa tipologia esiste già!");
+                              return;
+                            }
+                            updated[index] = trimmed;
+                            handleSaveEventTypes(updated);
+                            setEditingTypeIndex(null);
+                          }}
+                          disabled={isSavingTypes}
+                          className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                          title="Salva"
+                        >
+                          <Check size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingTypeIndex(null)}
+                          className="p-1.5 text-slate-400 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+                          title="Annulla"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <span className="truncate pr-4">{type}</span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingTypeIndex(index);
+                              setEditingTypeInput(type);
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-white rounded-lg transition-colors cursor-pointer"
+                            title="Rinomina"
+                          >
+                            <Pencil size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`Sei sicuro di voler eliminare la tipologia "${type}"?`)) {
+                                const updated = eventTypes.filter((_, idx) => idx !== index);
+                                handleSaveEventTypes(updated);
+                              }
+                            }}
+                            disabled={isSavingTypes}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-white rounded-lg transition-colors cursor-pointer"
+                            title="Elimina"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Add new type */}
+            <div className="space-y-2 border-t border-slate-100 pt-4">
+              <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 block text-left">
+                Aggiungi Nuova Tipologia:
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Es. Campeggio, Gita di Classe..."
+                  value={newTypeInput}
+                  onChange={(e) => setNewTypeInput(e.target.value)}
+                  onKeyDown={async (e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const val = newTypeInput.trim();
+                      if (!val) return;
+                      if (eventTypes.includes(val)) {
+                        alert("Questa tipologia esiste già!");
+                        return;
+                      }
+                      const updated = [...eventTypes, val];
+                      await handleSaveEventTypes(updated);
+                      setNewTypeInput('');
+                    }
+                  }}
+                  className="flex-1 px-4 py-3 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-xs"
+                />
+                <button
+                  type="button"
+                  disabled={!newTypeInput.trim() || isSavingTypes}
+                  onClick={async () => {
+                    const val = newTypeInput.trim();
+                    if (!val) return;
+                    if (eventTypes.includes(val)) {
+                      alert("Questa tipologia esiste già!");
+                      return;
+                    }
+                    const updated = [...eventTypes, val];
+                    await handleSaveEventTypes(updated);
+                    setNewTypeInput('');
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-5 rounded-2xl font-black text-[10px] uppercase tracking-wider transition-all shadow-md shadow-blue-500/10 cursor-pointer"
+                >
+                  Aggiungi
+                </button>
+              </div>
+            </div>
+
+            {/* Close button */}
+            <div className="flex pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsManageTypesModalOpen(false);
+                  setNewTypeInput('');
+                  setEditingTypeIndex(null);
+                }}
+                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-3.5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer"
+              >
+                Chiudi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Export Calendar to PDF Modal */}
+      {isExportModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 z-[220]">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl space-y-6 text-center animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex flex-col items-center space-y-4">
+              <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-[2.5rem] flex items-center justify-center border-4 border-blue-100/30 shadow-md">
+                <FileDown size={36} />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tight">
+                  Esporta Elenco Eventi
+                </h3>
+                <p className="text-slate-500 font-medium text-xs leading-relaxed">
+                  Seleziona un intervallo di date per esportare gli eventi pianificati nel file PDF. Lascia vuoto per esportare tutto il calendario.
+                </p>
+              </div>
+            </div>
+
+            {/* Presets Quick Actions */}
+            <div className="flex gap-2 justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setExportStartDate(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+                  setExportEndDate(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+                }}
+                className="bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer"
+              >
+                Questo Mese
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setExportStartDate(format(startOfYear(new Date()), 'yyyy-MM-dd'));
+                  setExportEndDate(format(endOfYear(new Date()), 'yyyy-MM-dd'));
+                }}
+                className="bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer"
+              >
+                Questo Anno
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setExportStartDate('');
+                  setExportEndDate('');
+                }}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer"
+              >
+                Tutto
+              </button>
+            </div>
+
+            {/* Inputs Grid */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5 text-left">
+                <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Da Data</label>
+                <input
+                  type="date"
+                  value={exportStartDate}
+                  onChange={(e) => setExportStartDate(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-slate-700 text-xs"
+                />
+              </div>
+              <div className="space-y-1.5 text-left">
+                <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">A Data</label>
+                <input
+                  type="date"
+                  value={exportEndDate}
+                  onChange={(e) => setExportEndDate(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-slate-700 text-xs"
+                />
+              </div>
+            </div>
+
+            {/* Preview of items */}
+            {(() => {
+              const count = events.filter(event => {
+                if (!exportStartDate || !exportEndDate) return true;
+                try {
+                  const start = startOfDay(new Date(exportStartDate));
+                  const end = endOfDay(new Date(exportEndDate));
+                  const eventDate = new Date(event.date);
+                  return isWithinInterval(eventDate, { start, end });
+                } catch {
+                  return false;
+                }
+              }).length;
+
+              return (
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-xs font-semibold text-slate-500">
+                  Verranno inclusi <strong className="text-blue-600">{count}</strong> eventi.
+                </div>
+              );
+            })()}
+
+            {/* Modal Actions */}
+            <div className="flex gap-4 uppercase italic">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsExportModalOpen(false);
+                }}
+                className="flex-1 bg-white border border-slate-200 text-slate-600 px-6 py-4 rounded-2xl font-black text-[10px] tracking-widest hover:bg-slate-50 transition-all active:scale-95 shadow-sm"
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                disabled={isExporting}
+                onClick={exportToPDF}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-2xl font-black text-[10px] tracking-widest transition-all shadow-xl shadow-blue-500/20 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                {isExporting ? 'Composizione...' : 'Genera PDF'}
+              </button>
             </div>
           </div>
         </div>
@@ -1418,18 +2081,15 @@ const Events: React.FC = () => {
                         onChange={(e) => setNewEvent({ ...newEvent, type: e.target.value })}
                         className="w-full px-4 py-3 rounded-xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm font-bold"
                       >
-                        <option value="Messa">Messa</option>
-                        <option value="Oratorio">Oratorio</option>
-                        <option value="Catechismo">Catechismo</option>
-                        <option value="Preghiera">Preghiera</option>
-                        <option value="Incontro">Incontro</option>
-                        <option value="Festa">Festa</option>
-                        <option value="Cena">Cena</option>
-                        <option value="Gita">Gita</option>
-                        <option value="Concerto">Concerto</option>
-                        <option value="Volontariato">Volontariato</option>
-                        <option value="Formazione">Formazione</option>
-                        <option value="Altro">Altro</option>
+                        {(() => {
+                          const dropdownOptions = [...eventTypes];
+                          if (newEvent.type && !dropdownOptions.includes(newEvent.type)) {
+                            dropdownOptions.push(newEvent.type);
+                          }
+                          return dropdownOptions.map(type => (
+                            <option key={type} value={type}>{type}</option>
+                          ));
+                        })()}
                       </select>
                     </div>
                   </div>
@@ -1457,6 +2117,37 @@ const Events: React.FC = () => {
                         className="w-full pl-12 pr-4 py-3 rounded-xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm"
                         placeholder="es. Aula Magna..."
                       />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase font-sans">Sale Occupate (Prenotazione Sale)</label>
+                    <div className="bg-slate-100/55 p-3 rounded-2xl border border-slate-200/50 max-h-[120px] overflow-y-auto">
+                      {rooms.length === 0 ? (
+                        <p className="text-[10px] text-slate-400 italic font-medium">Nessuna sala configurata.</p>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-1.5">
+                          {rooms.map((room) => {
+                            const isChecked = newEvent.roomIds?.includes(room.id);
+                            return (
+                              <label key={room.id} className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700 select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => {
+                                    const currentRoomIds = newEvent.roomIds || [];
+                                    const nextRoomIds = isChecked
+                                      ? currentRoomIds.filter(id => id !== room.id)
+                                      : [...currentRoomIds, room.id];
+                                    setNewEvent({ ...newEvent, roomIds: nextRoomIds });
+                                  }}
+                                  className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                />
+                                <span>{room.name}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="space-y-2">
@@ -1571,15 +2262,81 @@ const Events: React.FC = () => {
 
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Prezzo</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">Prezzo Principale</label>
                     <input
                       type="text"
                       value={newEvent.price}
                       onChange={(e) => setNewEvent({ ...newEvent, price: e.target.value })}
-                      className="w-full px-4 py-3 rounded-xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm"
-                      placeholder="es. Gratuito, 10€..."
+                      className="w-full px-4 py-3 rounded-xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm font-bold"
+                      placeholder="es. Gratuito, 15€..."
                     />
                   </div>
+
+                  {/* Sotto-Prezzi / Quote e Opzioni Aggiuntive */}
+                  <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                        Sottoprezzi / Opzioni (es. Menù bambini, Socio, ecc)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = [...(newEvent.subPrices || []), { label: '', price: '' }];
+                          setNewEvent({ ...newEvent, subPrices: updated });
+                        }}
+                        className="text-[9px] font-black uppercase text-blue-600 hover:text-blue-800 transition-colors bg-blue-50 px-2.5 py-1 rounded-lg cursor-pointer"
+                      >
+                        + Aggiungi Quota
+                      </button>
+                    </div>
+                    
+                    {(!newEvent.subPrices || newEvent.subPrices.length === 0) ? (
+                      <p className="text-[10px] text-slate-400 italic font-medium">Nessuna quota alternativa specificata. Verrà mostrato solo il prezzo principale.</p>
+                    ) : (
+                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                        {newEvent.subPrices.map((sub, sIdx) => (
+                          <div key={sIdx} className="flex items-center gap-1.5 bg-white p-2 rounded-xl border border-slate-100 shadow-sm">
+                            <input
+                              type="text"
+                              required
+                              placeholder="Nome (es. Menù Bambini, Socio...)"
+                              value={sub.label}
+                              onChange={(e) => {
+                                const updated = [...newEvent.subPrices];
+                                updated[sIdx].label = e.target.value;
+                                setNewEvent({ ...newEvent, subPrices: updated });
+                              }}
+                              className="flex-1 px-3 py-1.5 text-xs bg-slate-50 border-none rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-bold"
+                            />
+                            <input
+                              type="text"
+                              required
+                              placeholder="Costo (es. 10€)"
+                              value={sub.price}
+                              onChange={(e) => {
+                                const updated = [...newEvent.subPrices];
+                                updated[sIdx].price = e.target.value;
+                                setNewEvent({ ...newEvent, subPrices: updated });
+                              }}
+                              className="w-20 px-3 py-1.5 text-xs bg-slate-50 border-none rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-bold"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = newEvent.subPrices.filter((_, idx) => idx !== sIdx);
+                                setNewEvent({ ...newEvent, subPrices: updated });
+                              }}
+                              className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                              title="Elimina"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   {newEvent.type === 'Altro' && (
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-slate-500 uppercase">Specifica Tipo</label>
