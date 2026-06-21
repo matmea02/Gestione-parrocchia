@@ -4,8 +4,8 @@ import { collection, onSnapshot, query, limit, orderBy } from 'firebase/firestor
 import { db } from '../firebase';
 import { useAuth } from '../components/AuthContext';
 import { useParish, useParishCollection } from '../components/ParishContext';
-import { Calendar, Wrench, DoorOpen, Users, Tag, AlertCircle, Clock, PlusCircle, Wallet, GraduationCap, ChevronRight, BookOpen, Building2 } from 'lucide-react';
-import { format, startOfMonth, endOfMonth, addDays, getDay, setHours, setMinutes, setSeconds, isBefore, startOfDay, isSameDay, parseISO } from 'date-fns';
+import { Calendar, Wrench, DoorOpen, Users, Tag, AlertCircle, Clock, PlusCircle, Wallet, GraduationCap, ChevronRight, BookOpen, Building2, Sparkles } from 'lucide-react';
+import { format, startOfMonth, endOfMonth, addDays, getDay, setHours, setMinutes, setSeconds, isBefore, startOfDay, isSameDay, parseISO, endOfDay, isWithinInterval } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { Church, Heart, MapPin, CalendarDays, FileText, Image as ImageIcon } from 'lucide-react';
 import { useParishDoc } from '../components/ParishContext';
@@ -67,6 +67,7 @@ const Dashboard: React.FC = () => {
   const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
   const [calendars, setCalendars] = useState<any[]>([]);
   const [catechismGroups, setCatechismGroups] = useState<any[]>([]);
+  const [rooms, setRooms] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'recent' | 'oldest' | 'progress'>('recent');
 
   useEffect(() => {
@@ -103,6 +104,8 @@ const Dashboard: React.FC = () => {
       setStats(prev => ({ ...prev, bookings: snap.size }));
     });
     const unsubRooms = onSnapshot(roomsColl, (snap) => {
+      const roomsData = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+      setRooms(roomsData);
       setStats(prev => ({ ...prev, rooms: snap.size }));
     });
     const unsubExpenses = onSnapshot(expensesColl, (snap) => {
@@ -372,9 +375,199 @@ const Dashboard: React.FC = () => {
     return result.sort((a, b) => a.date.getTime() - b.date.getTime()).slice(0, 5);
   };
 
+  const getLogisticsSummary = () => {
+    const today = new Date();
+    const targetDayStart = startOfDay(today);
+    const targetDayEnd = endOfDay(today);
+    const dateStrYMD = format(today, 'yyyy-MM-dd');
+    const dayNum = getDay(today);
+
+    // List of physical activities today
+    const items: Array<{
+      startTime: Date;
+      endTime: Date;
+      location: string;
+      title: string;
+      type: string;
+    }> = [];
+
+    // 1. Room Bookings
+    allBookings.forEach(b => {
+      if (!b.startTime) return;
+      const bStart = new Date(b.startTime);
+      const bEnd = b.endTime ? new Date(b.endTime) : bStart;
+
+      if (bStart <= targetDayEnd && bEnd >= targetDayStart) {
+        const roomNames = b.roomIds
+          ? b.roomIds.map((rid: string) => rooms.find(r => r.id === rid)?.name || 'Sala').join(', ')
+          : (rooms.find(r => r.id === b.roomId)?.name || 'Aula Oratorio');
+
+        items.push({
+          startTime: bStart,
+          endTime: bEnd,
+          location: roomNames,
+          title: b.purpose || 'Prenotazione',
+          type: 'booking'
+        });
+      }
+    });
+
+    // 2. Parish Events
+    allEvents.forEach(e => {
+      if (!e.date) return;
+      const eStart = new Date(e.date);
+      const eEnd = e.endDate ? new Date(e.endDate) : eStart;
+
+      if (isSameDay(eStart, today) || isWithinInterval(today, { start: startOfDay(eStart), end: endOfDay(eEnd) })) {
+        let preciseStart = eStart;
+        let preciseEnd = eEnd;
+
+        if (e.startTime) {
+          const [sh, sm] = e.startTime.split(':').map(Number);
+          preciseStart = setMinutes(setHours(preciseStart, sh || 0), sm || 0);
+        }
+        if (e.endTime) {
+          const [eh, em] = e.endTime.split(':').map(Number);
+          preciseEnd = setMinutes(setHours(preciseEnd, eh || 0), em || 0);
+        } else {
+          preciseEnd = new Date(preciseStart.getTime() + 60 * 60 * 1000);
+        }
+
+        const roomNames = e.roomIds
+          ? e.roomIds.map((rid: string) => rooms.find(r => r.id === rid)?.name || 'Sala').join(', ')
+          : 'Oratorio / Parrocchia';
+
+        items.push({
+          startTime: preciseStart,
+          endTime: preciseEnd,
+          location: roomNames,
+          title: e.title || 'Evento',
+          type: 'event'
+        });
+      }
+    });
+
+    // 3. Liturgies template
+    liturgyTemplates.forEach(t => {
+      const validFrom = t.validFrom ? new Date(t.validFrom) : startOfDay(new Date());
+      const validUntil = t.validUntil ? new Date(t.validUntil) : endOfDay(new Date());
+
+      if (targetDayStart >= startOfDay(validFrom) && targetDayStart <= endOfDay(validUntil)) {
+        t.schedule?.forEach((s: any) => {
+          if (s.day === dayNum) {
+            s.times?.forEach((timeVal: any) => {
+              const timeStr = typeof timeVal === 'string' ? timeVal : timeVal.time;
+              const isExcluded = liturgyExceptions.some(ex => 
+                ex.templateId === t.id && 
+                ex.date === dateStrYMD && 
+                ex.time === timeStr
+              );
+
+              if (!isExcluded) {
+                const [h, m] = timeStr.split(':').map(Number);
+                const start = setSeconds(setMinutes(setHours(targetDayStart, h), m), 0);
+                const end = new Date(start.getTime() + 45 * 60 * 1000);
+
+                items.push({
+                  startTime: start,
+                  endTime: end,
+                  location: t.location || 'Chiesa Parrocchiale',
+                  title: t.title || 'Messa',
+                  type: 'liturgy_recurring'
+                });
+              }
+            });
+          }
+        });
+      }
+    });
+
+    // 4. Liturgy Specials
+    liturgySpecials.forEach(s => {
+      if (!s.start) return;
+      const sStart = new Date(s.start);
+      if (isSameDay(sStart, today)) {
+        const end = s.end ? new Date(s.end) : new Date(sStart.getTime() + 60 * 60 * 1000);
+        items.push({
+          startTime: sStart,
+          endTime: end,
+          location: s.location || 'Chiesa Parrocchiale',
+          title: s.title || 'Celebrazione',
+          type: 'liturgy_special'
+        });
+      }
+    });
+
+    // 5. Calendar Events
+    calendarEvents.forEach(ce => {
+      if (!ce.start) return;
+      const ceStart = new Date(ce.start);
+      const ceEnd = ce.end ? new Date(ce.end) : ceStart;
+
+      if (ceStart <= targetDayEnd && ceEnd >= targetDayStart) {
+        if (ce.id?.startsWith('virtual-') || ce.id?.startsWith('lit-') || ce.id?.startsWith('v-')) return;
+
+        const cal = calendars.find(c => c.id === ce.calendarId);
+
+        const ceRoomIds: string[] = ce.roomIds || (ce.roomId ? [ce.roomId] : []);
+        const roomNames = ceRoomIds.length > 0
+          ? ceRoomIds.map((rid: string) => rooms.find(r => r.id === rid)?.name || 'Sala').join(', ')
+          : (ce.location || 'Oratorio');
+
+        items.push({
+          startTime: ceStart,
+          endTime: ceEnd,
+          location: roomNames,
+          title: ce.title || 'Attività',
+          type: 'calendar_event'
+        });
+      }
+    });
+
+    // Calculate Busy Rooms
+    const busyRooms = Array.from(new Set(
+      items
+        .filter(item => item.type === 'booking' || item.type === 'event' || item.type === 'calendar_event')
+        .map(item => item.location)
+        .flatMap(loc => loc.split(',').map(s => s.trim()))
+    )).filter(Boolean);
+
+    // Calculate Opening Hours
+    let openingHoursText = "Nessuna attività programmata";
+    if (items.length > 0) {
+      const physicalItems = items.filter(item => 
+        !item.location.toLowerCase().includes('chiesa') && 
+        !item.location.toLowerCase().includes('santuario')
+      );
+
+      if (physicalItems.length > 0) {
+        const sortedByStart = [...physicalItems].sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+        const sortedByEnd = [...physicalItems].sort((a, b) => b.endTime.getTime() - a.endTime.getTime());
+
+        const earliest = format(sortedByStart[0].startTime, 'HH:mm');
+        const latest = format(sortedByEnd[0].endTime, 'HH:mm');
+        openingHoursText = `Dalle ore ${earliest} alle ore ${latest}`;
+      } else {
+        const sortedItems = [...items].sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+        const earliest = format(sortedItems[0].startTime, 'HH:mm');
+        const latest = format(sortedItems[sortedItems.length - 1].endTime, 'HH:mm');
+        openingHoursText = `Fascia impegni liturgici: ${earliest} - ${latest}`;
+      }
+    }
+
+    const liturgiesCount = items.filter(item => item.type === 'liturgy_recurring' || item.type === 'liturgy_special').length;
+
+    return {
+      openingHoursText,
+      busyRooms,
+      liturgiesCount
+    };
+  };
+
   const todaysAgenda = getTodaysAgenda();
   const upcomingLiturgies = getUpcomingLiturgies();
   const upcomingCatechism = getUpcomingCatechism();
+  const logistics = getLogisticsSummary();
 
   const statsByType = allTickets.reduce((acc: any, t) => {
     const label = t.label || 'Altro';
@@ -538,75 +731,160 @@ const Dashboard: React.FC = () => {
       {/* Main Grid: Masonry/Liquid Layout */}
       <div className="flex flex-col gap-8">
         
-        {/* Agenda di Oggi - Full Width but fluid */}
-        <div className="bg-white rounded-[2.5rem] border-2 border-blue-100 shadow-xl shadow-blue-50/50 overflow-hidden h-auto">
-          <div className="p-8 border-b border-blue-50 bg-gradient-to-r from-blue-50/20 to-white flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        {/* Unified Agenda & Logistics Dark Card */}
+        <div className="bg-slate-900 text-white rounded-[2.5rem] border border-slate-800 shadow-xl overflow-hidden relative">
+          {/* Subtle background decoration */}
+          <div className="absolute top-0 right-0 p-8 opacity-5 text-white pointer-events-none">
+            <Sparkles size={160} />
+          </div>
+
+          {/* Unified Title/Header block */}
+          <div className="p-8 border-b border-slate-800/80 bg-slate-950/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
-              <div className="p-3 bg-blue-600 text-white rounded-full shadow-lg shadow-blue-200">
+              <div className="p-3 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-full shadow-lg">
                 <CalendarDays size={28} />
               </div>
               <div>
-                <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase italic">Agenda di Oggi</h2>
-                <p className="text-sm font-bold text-blue-600 uppercase tracking-widest flex items-center gap-2">
+                <span className="text-[9px] font-black uppercase tracking-widest text-blue-400 bg-blue-500/10 border border-blue-500/20 px-3 py-1 rounded-full inline-block mb-1">
+                  Logistica & Agenda Giornaliera
+                </span>
+                <h2 className="text-2xl font-black tracking-tight uppercase italic text-white flex items-center gap-2">
                   {format(new Date(), 'EEEE d MMMM yyyy', { locale: it })}
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                </p>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse inline-block" />
+                </h2>
               </div>
             </div>
-            <Link to="/calendario" className="w-full md:w-auto px-6 py-2.5 bg-white border-2 border-blue-100 text-blue-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-50 hover:border-blue-200 transition-all shadow-sm text-center">
-              Vedi Calendario Completo
-            </Link>
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+              <Link to="/calendario" className="flex-1 sm:flex-initial px-5 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-all text-center">
+                Calendario Completo
+              </Link>
+            </div>
           </div>
-          
-          <div className="p-6">
-            {todaysAgenda.length === 0 ? (
-              <div className="text-center py-10">
-                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-100">
-                  <CalendarDays size={32} className="text-slate-300" />
-                </div>
-                <p className="text-slate-500 font-bold">Nessun impegno in programma per oggi.</p>
-              </div>
-            ) : (
-              <div className="flex flex-wrap gap-4">
-                {todaysAgenda.map((item) => (
-                  <Link 
-                    key={item.id}
-                    to={item.type === 'calendar' ? `/calendario?edit=${item.id}` : '/calendario'}
-                    className={`flex-1 min-w-[280px] relative p-5 rounded-[2rem] border-2 transition-all hover:scale-[1.02] hover:shadow-lg flex flex-col justify-between ${
-                      item.type === 'liturgy' 
-                        ? 'bg-purple-50/30 border-purple-100/50' 
-                        : 'bg-white border-slate-100'
-                    }`}
-                    style={item.type === 'calendar' ? { borderColor: `${item.color}30` } : {}}
-                  >
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${
-                          item.type === 'liturgy' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'
-                        }`}
-                        style={item.type === 'calendar' ? { backgroundColor: `${item.color}15`, color: item.color } : {}}
-                        >
-                          {item.type === 'liturgy' ? 'Liturgia' : item.calendarName}
-                        </div>
-                        <div className="flex items-center gap-1 text-slate-900 font-black text-xs">
-                          <Clock size={12} className="opacity-40" />
-                          {item.timeStr}
-                        </div>
-                      </div>
-                      <h3 className="text-sm font-black text-slate-900 italic uppercase leading-tight mb-2 group-hover:text-blue-600 truncate">{item.title}</h3>
-                    </div>
 
-                    {item.names && item.names.length > 0 && (
-                      <div className="mt-2 pt-2 border-t border-purple-200/50 flex flex-wrap gap-1">
-                        {item.names.slice(0, 3).map((n: string, i: number) => (
-                          <span key={i} className="text-[8px] font-black text-slate-500 bg-white px-2 py-0.5 rounded-full border border-slate-50">† {n}</span>
-                        ))}
+          {/* Grid Layout below the header */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-slate-800">
+            
+            {/* Left Section: Agenda di Oggi */}
+            <div className="lg:col-span-2 p-6 md:p-8 flex flex-col justify-start">
+              <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-6 flex items-center gap-2">
+                <Clock size={14} className="text-slate-500" /> Impegni Programmati per Oggi
+              </h3>
+              
+              {todaysAgenda.length === 0 ? (
+                <div className="text-center py-12 bg-slate-950/25 rounded-[1.5rem] border border-slate-800/50">
+                  <div className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-3 border border-slate-700">
+                    <CalendarDays size={20} className="text-slate-500" />
+                  </div>
+                  <h4 className="text-sm font-bold text-slate-300">Nessun impegno in programma</h4>
+                  <p className="text-xs text-slate-500 mt-1">La giornata di oggi non prevede appuntamenti ordinari.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {todaysAgenda.map((item) => (
+                    <Link 
+                      key={item.id}
+                      to={item.type === 'calendar' ? `/calendario?edit=${item.id}` : '/calendario'}
+                      className={`relative p-5 rounded-[2rem] border-2 transition-all hover:scale-[1.02] hover:shadow-lg flex flex-col justify-between ${
+                        item.type === 'liturgy' 
+                          ? 'bg-purple-500/5 border-purple-500/20 hover:bg-purple-500/10' 
+                          : 'bg-white/5 border-slate-800 hover:bg-white/10 hover:border-slate-700'
+                      }`}
+                      style={item.type === 'calendar' ? { borderColor: `${item.color}30` } : {}}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <span className={`px-2.5 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-widest ${
+                            item.type === 'liturgy' ? 'bg-purple-500/10 text-purple-300 border border-purple-500/20' : 'bg-slate-800 text-slate-300 border border-slate-700'
+                          }`}
+                          style={item.type === 'calendar' ? { backgroundColor: `${item.color}15`, color: item.color, borderColor: `${item.color}30` } : {}}
+                          >
+                            {item.type === 'liturgy' ? 'Liturgia' : item.calendarName}
+                          </span>
+                          <span className="flex items-center gap-1 text-slate-300 font-extrabold text-xs">
+                            <Clock size={12} className="opacity-60" />
+                            {item.timeStr}
+                          </span>
+                        </div>
+                        <h4 className="text-sm font-black text-white italic uppercase leading-tight mb-2 truncate group-hover:text-blue-400">
+                          {item.title}
+                        </h4>
                       </div>
-                    )}
-                  </Link>
-                ))}
+
+                      {item.names && item.names.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-purple-500/10 flex flex-wrap gap-1">
+                          {item.names.slice(0, 3).map((n: string, i: number) => (
+                            <span key={i} className="text-[8px] font-black text-purple-200 bg-purple-500/10 px-2 py-0.5 rounded-full border border-purple-500/20">† {n}</span>
+                          ))}
+                        </div>
+                      )}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Right Section: Logistics & Apertura */}
+            <div className="lg:col-span-1 p-6 md:p-8 flex flex-col justify-between bg-slate-950/20">
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-6 flex items-center gap-2">
+                  <Sparkles size={14} className="text-blue-400" /> Sintesi Logistica
+                </h3>
+
+                <div className="space-y-6">
+                  {/* Presence Needed */}
+                  <div className="flex gap-4 items-start">
+                    <div className="w-10 h-10 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-center justify-center shrink-0 text-blue-400">
+                      <Clock size={18} />
+                    </div>
+                    <div>
+                      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Presenza Coordinatore</h4>
+                      <p className="text-sm font-black text-white italic mt-1">{logistics.openingHoursText}</p>
+                    </div>
+                  </div>
+
+                  {/* Spaces to Open */}
+                  <div className="flex gap-4 items-start">
+                    <div className="w-10 h-10 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-center shrink-0 text-emerald-400">
+                      <DoorOpen size={18} />
+                    </div>
+                    <div>
+                      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Spazi Oratorio da Aprire</h4>
+                      {logistics.busyRooms.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {logistics.busyRooms.map((room) => (
+                            <span key={room} className="text-[10px] font-black text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-xl whitespace-nowrap animate-fade-in">
+                              {room}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs font-bold text-slate-500 italic mt-1">Nessun locale prenotato oggi</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Liturgies Count */}
+                  <div className="flex gap-4 items-start">
+                    <div className="w-10 h-10 bg-purple-500/10 border border-purple-500/20 rounded-xl flex items-center justify-center shrink-0 text-purple-400">
+                      <Church size={18} />
+                    </div>
+                    <div>
+                      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Uffici & Liturgie Chiesa</h4>
+                      <p className="text-xs font-bold text-slate-300 leading-relaxed mt-1">
+                        {logistics.liturgiesCount} celebrazioni programmate nell'edificio principale.
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
-            )}
+
+              <div className="mt-8 pt-6 border-t border-slate-800">
+                <Link to="/aperture" className="w-full flex items-center justify-center gap-2 py-3 bg-slate-800/40 hover:bg-slate-800 border border-slate-700/50 hover:border-slate-700 text-slate-300 hover:text-white rounded-xl font-black text-[9px] uppercase tracking-widest transition-all">
+                  Gestione Turni Apertura <ChevronRight size={14} />
+                </Link>
+              </div>
+            </div>
+
           </div>
         </div>
 

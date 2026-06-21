@@ -950,7 +950,6 @@ const Calendar: React.FC = () => {
                 return (
                   <div className="fc-content p-0.5 overflow-hidden text-[10px] leading-tight">
                     <div className="font-black uppercase truncate">{eventInfo.event.title}</div>
-                    <div className="font-bold text-white/90 truncate italic">{name}</div>
                   </div>
                 );
               }

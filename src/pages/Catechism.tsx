@@ -31,10 +31,14 @@ import {
   AlertCircle,
   FilePlus,
   ArrowRight,
-  GraduationCap
+  GraduationCap,
+  DoorOpen,
+  FileDown
 } from 'lucide-react';
 import { format, addWeeks, isBefore, isAfter, startOfDay, parseISO, getDay } from 'date-fns';
 import { it } from 'date-fns/locale';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface CatechismGroup {
   id: string;
@@ -53,6 +57,8 @@ interface CatechismGroup {
   calendarId?: string;
   calendarEventIds?: string[];
   createdAt: string;
+  roomIds?: string[];
+  roomNames?: string[];
 }
 
 const dayNames = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
@@ -63,9 +69,21 @@ const Catechism: React.FC = () => {
   const volunteersColl = useParishCollection('volunteers');
   const calendarsColl = useParishCollection('calendars');
   const calEventsColl = useParishCollection('calendar_events');
+  const roomsColl = useParishCollection('rooms');
+  const parishSettingsDoc = useParishDoc('settings', 'parish');
 
   const [groups, setGroups] = useState<CatechismGroup[]>([]);
   const [volunteers, setVolunteers] = useState<any[]>([]);
+  const [rooms, setRooms] = useState<any[]>([]);
+  const [parishInfo, setParishInfo] = useState<any>({
+    name: '',
+    diocese: '',
+    pastoralCommunity: '',
+    address: '',
+    phone: '',
+    email: '',
+    logoUrl: ''
+  });
   const [catechismCalendarId, setCatechismCalendarId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -79,6 +97,7 @@ const Catechism: React.FC = () => {
     dayOfWeek: '1', // Monday
     time: '17:00',
     catechistIds: [] as string[],
+    roomIds: [] as string[],
     subscriberCount: 0,
     notes: '',
     documents: [] as { id: string; name: string; date: string; url?: string }[],
@@ -127,10 +146,29 @@ const Catechism: React.FC = () => {
       handleFirestoreError(error, OperationType.LIST, 'calendars');
     });
 
+    // 4. Fetch Rooms (Classrooms)
+    const unsubRooms = onSnapshot(roomsColl, (snap) => {
+      setRooms(snap.docs.map(doc => ({ id: doc.id, ...doc.data() as any })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'rooms');
+    });
+
+    // 5. Fetch Parish Settings
+    const unsubParish = onSnapshot(parishSettingsDoc, (docSnap) => {
+      if (docSnap.exists()) {
+        setParishInfo(docSnap.data());
+      }
+    }, (error) => {
+      // Allow minor fallback if doc settings don't exist yet
+      console.warn("No settings/parish document yet", error);
+    });
+
     return () => {
       unsub();
       unsubV();
       unsubCal();
+      unsubRooms();
+      unsubParish();
     };
   }, []);
 
@@ -202,17 +240,19 @@ const Catechism: React.FC = () => {
       const endTime = `${date}T${(parseInt((data.time || '17:00').split(':')[0]) + 1).toString().padStart(2, '0')}:${(data.time || '17:00').split(':')[1]}:00`;
       
       const eventRef = await addDoc(calEventsColl, {
-        title: `CATECHISMO - ${data.year}`,
+        title: `CATECHISMO - ${data.pathYear}`,
         start: startTime,
         end: endTime,
         calendarId: catechismCalendarId,
-        description: `Gruppo: ${data.name} (${data.year})\nCatechisti: ${(data.catechistNames || []).join(', ')}\nNote: ${data.notes || ''}`,
+        description: `Gruppo: ${data.name} (Nati nel ${data.year})\nCatechisti: ${(data.catechistNames || []).join(', ')}\nAule: ${(data.roomNames || []).join(', ')}\nNote: ${data.notes || ''}`,
         sourceCatechismId: groupId,
         isCatechism: true,
         year: data.year,
         name: data.name,
         pathYear: data.pathYear,
-        catechistNames: data.catechistNames
+        catechistNames: data.catechistNames,
+        rooms: (data.roomNames || []).join(', '),
+        roomIds: data.roomIds || []
       });
       eventIds.push(eventRef.id);
     }
@@ -225,6 +265,9 @@ const Catechism: React.FC = () => {
     const selectedCatechists = volunteers.filter(v => form.catechistIds.includes(v.id));
     const catechistNames = selectedCatechists.map(v => `${v.lastName} ${v.firstName}`);
 
+    const selectedRooms = rooms.filter(r => form.roomIds.includes(r.id));
+    const roomNames = selectedRooms.map(r => r.name);
+
     const payload = {
       name: form.name,
       year: form.year,
@@ -234,6 +277,8 @@ const Catechism: React.FC = () => {
       time: form.time,
       catechistIds: form.catechistIds,
       catechistNames,
+      roomIds: form.roomIds,
+      roomNames,
       subscriberCount: form.subscriberCount,
       notes: form.notes,
       documents: form.documents,
@@ -284,6 +329,7 @@ const Catechism: React.FC = () => {
         dayOfWeek: g.dayOfWeek,
         time: g.time,
         catechistIds: g.catechistIds || [],
+        roomIds: g.roomIds || [],
         subscriberCount: g.subscriberCount,
         notes: g.notes,
         documents: g.documents || [],
@@ -305,6 +351,7 @@ const Catechism: React.FC = () => {
         dayOfWeek: '1',
         time: '17:00',
         catechistIds: [],
+        roomIds: [],
         subscriberCount: 0,
         notes: '',
         documents: [],
@@ -324,6 +371,231 @@ const Catechism: React.FC = () => {
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingId(null);
+  };
+
+  const downloadGroupPresentationPDF = (group: CatechismGroup) => {
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    const navyColor: [number, number, number] = [79, 70, 229]; // Indigo-600 #4f46e5
+    const slateColor: [number, number, number] = [30, 41, 59]; // Slate-800
+    const lightSlate: [number, number, number] = [100, 116, 139]; // Slate-500
+    const bgLight: [number, number, number] = [248, 250, 252]; // Slate-50
+    const pageWidth = doc.internal.pageSize.getWidth();
+
+    // 1. Header (Letterhead / Intestazione)
+    // Header Background
+    doc.setFillColor(250, 250, 250); // Light neutral letterhead region
+    doc.rect(0, 0, pageWidth, 35, 'F');
+
+    const logoUrl = parishInfo?.logoUrl || currentParish?.logoUrl;
+    if (logoUrl) {
+      try {
+        doc.addImage(logoUrl, 'PNG', 20, 6, 22, 22);
+      } catch (e) {
+        doc.setDrawColor(79, 70, 229);
+        doc.circle(31, 17, 10, 'S');
+      }
+    }
+
+    const textStartX = logoUrl ? 47 : 20;
+
+    // Parish Info
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(30, 41, 59); // slate-800
+    const finalParishName = parishInfo?.name || currentParish?.name || 'PARROCCHIA / ORATORIO';
+    doc.text(finalParishName.toUpperCase(), textStartX, 12);
+    
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(100, 116, 139); // slate-500
+
+    let hRowY = 17;
+    if (parishInfo?.diocese) {
+      doc.text(parishInfo.diocese, textStartX, hRowY);
+      hRowY += 4.5;
+    }
+    if (parishInfo?.pastoralCommunity) {
+      doc.text(parishInfo.pastoralCommunity, textStartX, hRowY);
+      hRowY += 4.5;
+    }
+    
+    // Combined contacts row
+    const contactParts = [];
+    if (parishInfo?.address) contactParts.push(parishInfo.address);
+    if (parishInfo?.phone) contactParts.push(`Tel: ${parishInfo.phone}`);
+    if (parishInfo?.email) contactParts.push(parishInfo.email);
+    
+    if (contactParts.length > 0) {
+      doc.text(contactParts.join('  |  '), textStartX, hRowY);
+    }
+    
+    // Indigo Badge/Box at Top Right
+    const boxWidth = 58;
+    const boxHeight = 23;
+    const boxX = pageWidth - 20 - boxWidth;
+    const boxY = 6;
+
+    doc.setFillColor(79, 70, 229); // Indigo-600 #4f46e5
+    doc.roundedRect(boxX, boxY, boxWidth, boxHeight, 3, 3, 'F');
+
+    doc.setFontSize(8.5);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('Helvetica', 'bold');
+    doc.text('GRUPPO CATECHISMO', boxX + boxWidth / 2, boxY + 7, { align: 'center' });
+    
+    doc.setFontSize(8);
+    doc.setFont('Helvetica', 'normal');
+    doc.text(`Anno Past: ${group.catechismYear || 'N/D'}`, boxX + boxWidth / 2, boxY + 13, { align: 'center' });
+    doc.text(`Iscritti: ${group.subscriberCount || 0}`, boxX + boxWidth / 2, boxY + 20, { align: 'center' });
+
+    // Dividers beneath the letterhead
+    doc.setDrawColor(226, 232, 240); // slate-200
+    doc.setLineWidth(0.8);
+    doc.line(20, 35, pageWidth - 20, 35);
+
+    // 2. Main Title & Doc Purpose
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(20);
+    doc.setTextColor(30, 41, 59); // Slate-800
+    doc.text(group.name.toUpperCase(), 20, 46);
+
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(79, 70, 229); // Indigo-600
+    doc.text(`Presentazione del Percorso di Catechismo: ${group.pathYear || 'Incontri'}`, 20, 52);
+
+    // 3. Metadata Grid (Boxed info card) starts at boxY = 58
+    const infoY = 58;
+    const boxHeightVal = 42;
+    doc.setFillColor(bgLight[0], bgLight[1], bgLight[2]);
+    doc.rect(20, infoY, 170, boxHeightVal, 'F');
+    // and thin border
+    doc.setDrawColor(226, 232, 240);
+    doc.rect(20, infoY, 170, boxHeightVal, 'S');
+
+    // Populate the Info Card with two columns
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(9.5);
+    
+    // Left Column
+    doc.setTextColor(lightSlate[0], lightSlate[1], lightSlate[2]);
+    doc.text("GIORNO DI INCONTRO:", 25, infoY + 7);
+    doc.setFont('Helvetica', 'bold');
+    doc.setTextColor(slateColor[0], slateColor[1], slateColor[2]);
+    const dayName = dayNames[parseInt(group.dayOfWeek)] || 'Non specificato';
+    doc.text(`${dayName} ore ${group.time || '17:00'}`, 25, infoY + 12);
+
+    doc.setFont('Helvetica', 'bold');
+    doc.setTextColor(lightSlate[0], lightSlate[1], lightSlate[2]);
+    doc.text("SPAZI E AULE:", 25, infoY + 21);
+    doc.setFont('Helvetica', 'normal');
+    doc.setTextColor(slateColor[0], slateColor[1], slateColor[2]);
+    doc.text(group.roomNames?.join(', ') || 'Aule assegnate in loco', 25, infoY + 26);
+
+    doc.setFont('Helvetica', 'bold');
+    doc.setTextColor(lightSlate[0], lightSlate[1], lightSlate[2]);
+    doc.text("DESTINATARI:", 25, infoY + 34);
+    doc.setFont('Helvetica', 'normal');
+    doc.setTextColor(slateColor[0], slateColor[1], slateColor[2]);
+    doc.text(`Giovanissimi nati nel ${group.year || 'N/D'}`, 25, infoY + 38);
+
+    // Right Column
+    doc.setFont('Helvetica', 'bold');
+    doc.setTextColor(lightSlate[0], lightSlate[1], lightSlate[2]);
+    doc.text("CATECHISTI REFERENTI:", 110, infoY + 7);
+    doc.setFont('Helvetica', 'normal');
+    doc.setTextColor(slateColor[0], slateColor[1], slateColor[2]);
+    const catechistsStr = group.catechistNames?.join(', ') || 'In fase di assegnazione';
+    const splitCatechists = doc.splitTextToSize(catechistsStr, 70);
+    doc.text(splitCatechists, 110, infoY + 12);
+
+    // notes block if present
+    let currentY = infoY + boxHeightVal + 8;
+    if (group.notes) {
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(10.5);
+      doc.setTextColor(79, 70, 229);
+      doc.text("NOTE ED INDICAZIONI DEL PERCORSO", 20, currentY);
+
+      doc.setFont('Helvetica', 'normal');
+      doc.setFontSize(9.5);
+      doc.setTextColor(slateColor[0], slateColor[1], slateColor[2]);
+      const splitNotes = doc.splitTextToSize(group.notes, 160);
+      const notesHeight = splitNotes.length * 5;
+      
+      doc.setDrawColor(79, 70, 229);
+      doc.setLineWidth(1.2);
+      doc.line(20, currentY + 3, 20, currentY + 3 + notesHeight);
+
+      doc.text(splitNotes, 24, currentY + 7);
+      currentY += notesHeight + 10;
+    } else {
+      currentY += 2;
+    }
+
+    // 4. Meeting dates table
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(11.5);
+    doc.setTextColor(slateColor[0], slateColor[1], slateColor[2]);
+    doc.text("CALENDARIO DEGLI INCONTRI", 20, currentY);
+    currentY += 4;
+
+    const tableRows = (group.meetingDates || []).map((dateStr, idx) => {
+      let formattedDate = dateStr;
+      try {
+        formattedDate = format(parseISO(dateStr), 'EEEE dd MMMM yyyy', { locale: it });
+        // Capitalize first letter of weekday
+        formattedDate = formattedDate.charAt(0).toUpperCase() + formattedDate.slice(1);
+      } catch (e) {
+        formattedDate = dateStr;
+      }
+      return [
+        `${idx + 1}° Incontro`,
+        formattedDate,
+        group.time || '17:00',
+        group.roomNames?.join(', ') || 'Aula del percorso'
+      ];
+    });
+
+    if (tableRows.length === 0) {
+      doc.setFont('Helvetica', 'normal');
+      doc.setFontSize(9.5);
+      doc.setTextColor(lightSlate[0], lightSlate[1], lightSlate[2]);
+      doc.text("Nessun incontro programmato.", 20, currentY + 4);
+    } else {
+      autoTable(doc, {
+        startY: currentY,
+        head: [['Incontro', 'Data', 'Orario', 'Aula / Sede']],
+        body: tableRows,
+        theme: 'striped',
+        headStyles: {
+          fillColor: navyColor,
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          fontSize: 9.5,
+          halign: 'left'
+        },
+        bodyStyles: {
+          fontSize: 8.5,
+          textColor: slateColor
+        },
+        alternateRowStyles: {
+          fillColor: [248, 250, 252] // Slate-50 zebra color
+        },
+        margin: { left: 20, right: 20 },
+        styles: {
+          font: 'Helvetica',
+          cellPadding: 3.5
+        }
+      });
+    }
+
+    doc.save(`Presentazione_Catechismo_${group.name.replace(/\s+/g, '_')}_${group.catechismYear.replace(/\//g, '-')}.pdf`);
   };
 
   return (
@@ -398,6 +670,12 @@ const Catechism: React.FC = () => {
                               <Clock size={12} />
                               <span className="text-[10px] font-black uppercase">{group.time}</span>
                             </div>
+                            {group.roomNames && group.roomNames.length > 0 && (
+                              <div className="flex items-center gap-2 text-indigo-650 font-bold shrink-0">
+                                <DoorOpen size={12} className="text-indigo-500" />
+                                <span className="text-[10px] tracking-tight">{group.roomNames.join(', ')}</span>
+                              </div>
+                            )}
                           </div>
                         </td>
                         <td className="px-6 py-5">
@@ -431,6 +709,13 @@ const Catechism: React.FC = () => {
                         </td>
                         <td className="px-8 py-5 text-right">
                           <div className="flex items-center justify-end gap-2">
+                            <button 
+                              onClick={() => downloadGroupPresentationPDF(group)} 
+                              title="Scarica Presentazione PDF"
+                              className="p-2.5 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 rounded-full transition-all border border-emerald-100 shadow-sm hover:scale-110"
+                            >
+                              <FileDown size={18} />
+                            </button>
                             <button onClick={() => openModal(group)} className="p-2.5 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-full transition-all border border-blue-100 shadow-sm hover:scale-110">
                               <Pencil size={18} />
                             </button>
@@ -493,6 +778,16 @@ const Catechism: React.FC = () => {
                     </p>
                   </div>
 
+                  {group.roomNames && group.roomNames.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Aula/Aule</p>
+                      <div className="flex items-center gap-1.5 text-indigo-650 font-bold">
+                        <DoorOpen size={12} className="text-indigo-500" />
+                        <span className="text-[11px] font-semibold">{group.roomNames.join(', ')}</span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between pt-2">
                     <div className="text-[9px] font-black uppercase tracking-widest">
                       {group.documents?.length > 0 ? (
@@ -502,6 +797,13 @@ const Catechism: React.FC = () => {
                       )}
                     </div>
                     <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => downloadGroupPresentationPDF(group)} 
+                        title="Scarica Presentazione PDF"
+                        className="p-2 text-emerald-600 bg-emerald-50 rounded-full border border-emerald-100 hover:bg-emerald-100 transition shadow-sm flex items-center gap-1.5"
+                      >
+                        <FileDown size={14} />
+                      </button>
                       <button onClick={() => openModal(group)} className="p-2 text-blue-600 bg-blue-50 rounded-full border border-blue-100">
                         <Pencil size={16} />
                       </button>
@@ -715,6 +1017,40 @@ const Catechism: React.FC = () => {
                           onChange={(e) => setForm({ ...form, time: e.target.value })}
                           className="w-full px-5 py-3.5 rounded-2xl bg-white/10 border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm font-bold text-white"
                         />
+                      </div>
+                    </div>
+
+                    {/* Selezione Aule / Aule utilizzate */}
+                    <div className="space-y-4">
+                      <label className="text-[11px] font-black text-slate-400 uppercase ml-1 flex items-center gap-2">
+                        <DoorOpen size={14} className="text-indigo-400" /> Aule Utilizzate per gli Incontri
+                      </label>
+                      <div className="bg-white/5 p-4 rounded-2xl border border-white/10 max-h-40 overflow-y-auto custom-scrollbar">
+                        {rooms.length === 0 ? (
+                          <p className="text-[10px] text-slate-500 italic p-1">Nessuna aula configurata in "Gestione Sale".</p>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {rooms.map((room) => {
+                              const isChecked = form.roomIds.includes(room.id);
+                              return (
+                                <label key={room.id} className="flex items-center gap-3 p-3 bg-white/5 rounded-xl border border-white/5 cursor-pointer hover:bg-white/10 transition-all select-none">
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={(e) => {
+                                      const newIds = e.target.checked
+                                        ? [...form.roomIds, room.id]
+                                        : form.roomIds.filter(id => id !== room.id);
+                                      setForm({ ...form, roomIds: newIds });
+                                    }}
+                                    className="w-4 h-4 rounded border-white/25 text-indigo-650 bg-white/10 focus:ring-indigo-500 cursor-pointer"
+                                  />
+                                  <span className="text-xs font-bold text-slate-200 truncate">{room.name}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     </div>
 

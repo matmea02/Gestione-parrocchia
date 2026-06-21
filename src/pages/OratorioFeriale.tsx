@@ -54,7 +54,8 @@ import {
   EyeOff,
   ClipboardList,
   Search,
-  Heart
+  Heart,
+  BarChart3
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -401,6 +402,7 @@ const OratorioFeriale: React.FC = () => {
   const [errorStatus, setErrorStatus] = useState<string | null>(null);
   const [successStatus, setSuccessStatus] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [statsAnimator, setStatsAnimator] = useState<Animator | null>(null);
 
   const allowedTabs = portalUser?.isAdmin 
     ? ['dashboard', 'animators', 'absences', 'teams', 'shifts', 'meetings', 'preghiera', 'workshops', 'events', 'confessioni']
@@ -5961,6 +5963,16 @@ const OratorioFeriale: React.FC = () => {
                               </td>
                               <td className="px-8 py-4 text-right whitespace-nowrap">
                                 <div className="flex items-center justify-end gap-1.5">
+                                  <button 
+                                    onClick={() => {
+                                      setStatsAnimator(a);
+                                    }}
+                                    className="px-2.5 py-1 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors flex items-center gap-1.5 active:scale-95 shadow-sm"
+                                    title="Statistiche Presenze"
+                                  >
+                                    <BarChart3 size={11} className="text-emerald-500" />
+                                    <span className="text-[9px] font-black uppercase tracking-wider">Statistiche</span>
+                                  </button>
                                   <button 
                                     onClick={() => {
                                       setSelectedInterviewAnimatorId(a.id);
@@ -12762,6 +12774,242 @@ const OratorioFeriale: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Stats Animator Modal (Statistiche Presenze) */}
+      {statsAnimator && (() => {
+        const anim = statsAnimator;
+        const totalDays = activeSeasonDays;
+        const totalDaysCount = totalDays.length;
+
+        // Enrolled days: days belonging to weeks the animator is registered for
+        const enrolledDays = totalDays.filter(day => isAnimatorPresentInWeek(anim, activeSeason, getWeekIdForDay(day)));
+        const enrolledDaysCount = enrolledDays.length;
+
+        // All absences for any day of the active season
+        const allAbsencesList = totalDays.map(day => {
+          const abs = getAbsenceForAnimatorOnDay(anim.id, day);
+          return abs ? { day, abs } : null;
+        }).filter(Boolean) as { day: string; abs: Absence }[];
+
+        // Explicit absences during enrolled weeks
+        const enrolledAbsencesCount = enrolledDays.filter(day => {
+          const abs = getAbsenceForAnimatorOnDay(anim.id, day);
+          return abs !== undefined;
+        }).length;
+
+        // Enrolled present days
+        const presentDaysCount = enrolledDaysCount - enrolledAbsencesCount;
+
+        // Presence percentage (relative on enrolled weeks)
+        const presencePercentage = enrolledDaysCount > 0 
+          ? Math.round((presentDaysCount / enrolledDaysCount) * 105) > 100 
+            ? 100 
+            : Math.round((presentDaysCount / enrolledDaysCount) * 100)
+          : 100;
+
+        // Relative on the entire season
+        const totalAbsencesCount = allAbsencesList.length;
+        const seasonPresentDays = totalDaysCount - totalAbsencesCount;
+        const seasonPresencePercentage = totalDaysCount > 0 
+          ? Math.round((seasonPresentDays / totalDaysCount) * 100) 
+          : 100;
+
+        const enrolledWeeks = weeks.filter(w => isAnimatorPresentInWeek(anim, activeSeason, w.id));
+
+        return (
+          <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <div className="bg-white w-full max-w-4xl rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-100 animate-in zoom-in fade-in duration-300">
+              {/* Modal Header */}
+              <div className="p-8 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50">
+                <div>
+                  <h2 className="text-xl font-black text-slate-900 uppercase italic flex items-center gap-2">
+                    <BarChart3 className="text-emerald-500" size={24} />
+                    Statistiche Presenze e Assenze
+                  </h2>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
+                    {anim.lastName} {anim.firstName} — {activeSeason}
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setStatsAnimator(null)} 
+                  className="p-2.5 hover:bg-slate-200 rounded-full text-slate-400 transition"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-8 grid grid-cols-1 md:grid-cols-5 gap-8 max-h-[65vh] overflow-y-auto custom-scrollbar">
+                {/* Left Panel: Statistics Recap */}
+                <div className="md:col-span-2 space-y-6 flex flex-col justify-start">
+                  
+                  {/* Attendance card with progress ring / percentage bar */}
+                  <div className="p-6 bg-emerald-50/50 rounded-3xl border border-emerald-100 flex flex-col items-center text-center">
+                    <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest mb-4">Presenza Effettiva</span>
+                    
+                    {/* Beautiful radial gradient progress ring or double circular indicators */}
+                    <div className="relative w-32 h-32 flex items-center justify-center">
+                      <svg className="absolute w-full h-full transform -rotate-90">
+                        <circle
+                          cx="64"
+                          cy="64"
+                          r="52"
+                          className="stroke-emerald-100"
+                          strokeWidth="12"
+                          fill="transparent"
+                        />
+                        <circle
+                          cx="64"
+                          cy="64"
+                          r="52"
+                          className="stroke-emerald-500 transition-all duration-500"
+                          strokeWidth="12"
+                          fill="transparent"
+                          strokeDasharray={326.7}
+                          strokeDashoffset={326.7 - (326.7 * presencePercentage) / 100}
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      <div className="flex flex-col items-center">
+                        <span className="text-3xl font-black text-slate-900">{presencePercentage}%</span>
+                        <span className="text-[9px] font-black text-emerald-700 uppercase tracking-widest mt-0.5">Iscritto / Attivo</span>
+                      </div>
+                    </div>
+
+                    <p className="text-xs font-bold text-slate-600 mt-5 leading-relaxed">
+                      Ha partecipato a <span className="font-extrabold text-slate-900">{presentDaysCount}</span> giorni su <span className="font-extrabold text-slate-900">{enrolledDaysCount}</span> programmati per le sue settimane feriali.
+                    </p>
+                  </div>
+
+                  {/* Absolute season attendance card */}
+                  <div className="p-5 bg-slate-50 rounded-3xl border border-slate-100 space-y-3">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Statistiche Generali Camp</span>
+                    
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-bold text-slate-500 uppercase">Presenza su Stagione:</span>
+                      <span className="font-black text-slate-800 font-mono text-xs">{seasonPresencePercentage}% <span className="text-slate-400">({seasonPresentDays}/{totalDaysCount} gg)</span></span>
+                    </div>
+
+                    {/* Simple bar progress */}
+                    <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-blue-500 rounded-full" style={{ width: `${seasonPresencePercentage}%` }} />
+                    </div>
+
+                    <div className="border-t border-slate-100 pt-3 flex justify-between items-center text-xs">
+                      <span className="font-bold text-slate-500 uppercase">Settimane Iscritte:</span>
+                      <span className="font-black text-slate-800 uppercase text-[10px]">{enrolledWeeks.length} su {weeks.length} sett.</span>
+                    </div>
+
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-bold text-slate-500 uppercase">Assenze Totali:</span>
+                      <span className="font-black text-red-650 font-mono text-xs">{totalAbsencesCount} Giorni</span>
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* Right Panel: Absence and Attendance Ledger list */}
+                <div className="md:col-span-3 space-y-4">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-150">
+                    <h3 className="text-xs font-black text-slate-700 uppercase italic tracking-widest flex items-center gap-2">
+                      <List size={14} className="text-slate-400" />
+                      Registro Dettagliato Assenze
+                    </h3>
+                    <span className="text-[9px] font-black bg-red-105 text-red-650 border border-red-200 px-2.5 py-1 rounded-full uppercase tracking-wider">
+                      {totalAbsencesCount} Assenz{totalAbsencesCount === 1 ? 'a' : 'e'}
+                    </span>
+                  </div>
+
+                  {totalAbsencesCount === 0 ? (
+                    <div className="p-10 bg-emerald-50/20 border border-emerald-100 rounded-3xl text-center space-y-3 flex flex-col items-center justify-center h-full min-h-[300px]">
+                      <div className="w-14 h-14 bg-emerald-100/50 rounded-full flex items-center justify-center border border-emerald-200">
+                        <Trophy size={26} className="text-emerald-600 animate-bounce" />
+                      </div>
+                      <h4 className="text-sm font-black text-slate-800 uppercase tracking-widest">Presenza Perfetta! 🎉</h4>
+                      <p className="text-xs text-slate-600 font-bold max-w-sm leading-relaxed">
+                        Questo animatore non ha registrato alcuna assenza durante la stagione ed è stato presente a tutti i giorni del camp!
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3 max-h-[42vh] overflow-y-auto pr-1">
+                      {allAbsencesList.map((item, index) => {
+                        const dayWeekId = getWeekIdForDay(item.day);
+                        const isEnrolledWeek = isAnimatorPresentInWeek(anim, activeSeason, dayWeekId);
+                        const parentWeek = weeks.find(w => w.id === dayWeekId);
+                        const weekLabel = parentWeek ? parentWeek.label.split(' ')[1] || 'Feriale' : 'Sett.';
+                        const meta = getAbsenceMeta(item.abs);
+
+                        return (
+                          <div 
+                            key={`${item.day}-${index}`} 
+                            className={`p-4 rounded-2xl border flex items-start justify-between gap-4 select-none hover:shadow-sm transition-all ${
+                              !isEnrolledWeek 
+                                ? 'bg-slate-50/70 border-slate-200/60 opacity-80' 
+                                : 'bg-white border-slate-150/90'
+                            }`}
+                          >
+                            <div className="space-y-1">
+                              <span className="text-[9px] font-black uppercase text-slate-450 tracking-widest block leading-none">
+                                {weekLabel ? `Settimana ${weekLabel}` : 'Giorno Camp'}
+                              </span>
+                              <h4 className="text-xs font-black text-slate-900 uppercase italic flex items-center gap-2">
+                                {format(parseSafeDate(item.day), 'eeee dd MMMM yyyy', { locale: it })}
+                                {!isEnrolledWeek && (
+                                  <span className="text-[7.5px] font-black px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 border border-slate-300 uppercase leading-none">
+                                    Riposo
+                                  </span>
+                                )}
+                              </h4>
+                              {item.abs.reason && (
+                                <p className="text-[11px] font-extrabold text-slate-500 italic mt-1 leading-relaxed pl-1 border-l-2 border-slate-200">
+                                  Motivazione: {item.abs.reason}
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="flex flex-col items-end gap-1 shrink-0 text-right">
+                              {meta ? (
+                                <span className={`px-2.5 py-1 rounded-xl text-[9px] font-black uppercase tracking-wider block shadow-sm border ${meta.className}`}>
+                                  {meta.label}
+                                </span>
+                              ) : (
+                                <span className="px-2.5 py-1 rounded-xl text-[9px] font-black uppercase tracking-wider block bg-red-500 text-white shadow-sm">
+                                  Assente
+                                </span>
+                              )}
+                              {item.abs.startTime && item.abs.endTime && (
+                                <span className="text-[9.5px] font-mono font-black text-slate-500 uppercase tracking-widest mt-0.5 block">
+                                  Orario: {item.abs.startTime} - {item.abs.endTime}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-[9.5px] text-slate-400 font-extrabold leading-relaxed uppercase tracking-wider">
+                    💡 NOTA: Le giornate visualizzate con l&apos;etichetta "Riposo" sono relative alle settimane in cui l&apos;animatore non si è iscritto. Non influiscono sulla percentuale di presenza delle settimane attive.
+                  </div>
+
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-8 bg-slate-50 border-t border-slate-100 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setStatsAnimator(null)}
+                  className="bg-white text-slate-500 border border-slate-200 text-[10px] font-black uppercase tracking-widest px-6 py-3.5 rounded-full hover:bg-slate-100 transition active:scale-95 shadow-sm"
+                >
+                  Chiudi Statistiche
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

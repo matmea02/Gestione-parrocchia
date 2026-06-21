@@ -22,6 +22,7 @@ const Rooms: React.FC = () => {
   const [rooms, setRooms] = useState<any[]>([]);
   const [bookings, setBookings] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
   const [parishInfo, setParishInfo] = useState<any>({ name: '', logoUrl: '' });
   const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
@@ -92,6 +93,10 @@ const Rooms: React.FC = () => {
       setEvents(snap.docs.map(doc => ({ id: doc.id, ...doc.data() as any })));
     });
 
+    const unsubCalEvents = onSnapshot(calEventsColl, (snap) => {
+      setCalendarEvents(snap.docs.map(doc => ({ id: doc.id, ...doc.data() as any })));
+    });
+
     const unsubCalendars = onSnapshot(calendarsColl, (snap) => {
       const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
       const roomsCal = data.find(c => c.name.toUpperCase() === 'UTILIZZO SALE');
@@ -116,6 +121,7 @@ const Rooms: React.FC = () => {
       unsubRooms();
       unsubBookings();
       unsubEvents();
+      unsubCalEvents();
       unsubCalendars();
       unsubParish();
     };
@@ -362,6 +368,44 @@ const Rooms: React.FC = () => {
 
               conflictMsg = `La sala (o le sale):\n"${conflictingNames}"\n\nrisulta occupata da un evento programmato in queste ore (${formattedDate} dalle ${formattedStartE} alle ${formattedEndE}) da:\n` +
                 `• "📅 ${e.title || 'Evento'}"\n\n` +
+                `Vuoi registrare comunque la prenotazione creando una sovrapposizione?`;
+
+              hasOverlap = true;
+              break;
+            }
+          }
+        }
+      }
+
+      // Check overlap with calendar events (including Catechism, other calendar events)
+      if (!hasOverlap) {
+        for (const ce of calendarEvents) {
+          if (editingBookingId && ce.sourceBookingId === editingBookingId) continue;
+
+          const ceRoomIds: string[] = ce.roomIds || (ce.roomId ? [ce.roomId] : []);
+          if (ceRoomIds.length === 0) continue;
+          if (!ce.start || !ce.end) continue;
+
+          const startCE = new Date(ce.start).getTime();
+          const endCE = new Date(ce.end).getTime();
+
+          if (startA < endCE && startCE < endA) {
+            const overlapping = newBooking.roomIds.filter(rid => ceRoomIds.includes(rid));
+
+            if (overlapping.length > 0) {
+              const conflictingNames = rooms
+                .filter(r => overlapping.includes(r.id))
+                .map(r => r.name)
+                .join(', ');
+
+              const formattedDate = format(new Date(ce.start), 'dd/MM/yyyy', { locale: it });
+              const formattedStartCE = format(new Date(ce.start), 'HH:mm', { locale: it });
+              const formattedEndCE = format(new Date(ce.end), 'HH:mm', { locale: it });
+
+              const isCatechismStr = ce.isCatechism ? 'Incontro di Catechismo' : 'Attività a calendario';
+
+              conflictMsg = `La sala (o le sale):\n"${conflictingNames}"\n\nrisulta occupata da un'attività a calendario in queste ore (${formattedDate} dalle ${formattedStartCE} alle ${formattedEndCE}) per:\n` +
+                `• "${ce.title || 'Incontro'}" (${isCatechismStr})\n\n` +
                 `Vuoi registrare comunque la prenotazione creando una sovrapposizione?`;
 
               hasOverlap = true;
@@ -733,6 +777,44 @@ const Rooms: React.FC = () => {
                 
                 hasOverlap = true;
                 break; // Warn once is enough
+              }
+            }
+          }
+
+          // Check overlap with calendar events (including Catechism, other calendar events)
+          if (!hasOverlap) {
+            for (const ce of calendarEvents) {
+              if (ce.sourceBookingId === id) continue; // Skip itself if already logged
+
+              const ceRoomIds: string[] = ce.roomIds || (ce.roomId ? [ce.roomId] : []);
+              if (ceRoomIds.length === 0) continue;
+              if (!ce.start || !ce.end) continue;
+
+              const startCE = new Date(ce.start).getTime();
+              const endCE = new Date(ce.end).getTime();
+
+              if (startA < endCE && startCE < endA) {
+                const overlapping = rIdsA.filter((rid: string) => ceRoomIds.includes(rid));
+
+                if (overlapping.length > 0) {
+                  const conflictingNames = rooms
+                    .filter(r => overlapping.includes(r.id))
+                    .map(r => r.name)
+                    .join(', ');
+
+                  const formattedDate = format(new Date(ce.start), 'dd/MM/yyyy', { locale: it });
+                  const formattedStartCE = format(new Date(ce.start), 'HH:mm', { locale: it });
+                  const formattedEndCE = format(new Date(ce.end), 'HH:mm', { locale: it });
+
+                  const isCatechismStr = ce.isCatechism ? 'Incontro di Catechismo' : 'Attività a calendario';
+
+                  conflictMsg = `La sala (o le sale):\n"${conflictingNames}"\n\nrisulta occupata da un'attività a calendario in queste ore (${formattedDate} dalle ${formattedStartCE} alle ${formattedEndCE}) per:\n` +
+                    `• "${ce.title || 'Incontro'}" (${isCatechismStr})\n\n` +
+                    `Vuoi approvare comunque questa prenotazione creandone una duplicata?`;
+
+                  hasOverlap = true;
+                  break;
+                }
               }
             }
           }
