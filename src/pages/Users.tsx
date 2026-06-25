@@ -30,6 +30,7 @@ const MODULES = [
   { id: 'liturgy', label: 'Messe e Liturgie' },
   { id: 'catechism', label: 'Catechismo' },
   { id: 'oratorio', label: 'Oratorio Feriale' },
+  { id: 'aperture', label: 'Aperture Oratorio' },
   { id: 'volunteers', label: 'Volontari' },
   { id: 'expenses', label: 'Gestione Spese' },
   { id: 'maintenance', label: 'Manutenzione' },
@@ -42,8 +43,11 @@ const ORATORIO_TABS = [
   { id: 'shifts', label: 'Turni' },
   { id: 'teams', label: 'Squadre' },
   { id: 'absences', label: 'Assenze' },
+  { id: 'meetings', label: 'Riunioni' },
+  { id: 'preghiera', label: 'Preghiera' },
   { id: 'workshops', label: 'Laboratori' },
   { id: 'events', label: 'Eventi Extra' },
+  { id: 'confessioni', label: 'Confessioni' },
 ];
 
 const Users: React.FC = () => {
@@ -158,7 +162,7 @@ const Users: React.FC = () => {
     const parishPerms = currentPermissions[parishId] || { enabled: false, modules: [], oratorioTabs: [] };
     
     // Default to all tabs if it's not set
-    let currentTabs = parishPerms.oratorioTabs || ['animators', 'shifts', 'teams', 'absences', 'workshops', 'events'];
+    let currentTabs = parishPerms.oratorioTabs || ['animators', 'absences', 'teams', 'shifts', 'meetings', 'preghiera', 'workshops', 'events', 'confessioni'];
     let newTabs = [...currentTabs];
     
     if (checked) {
@@ -435,7 +439,7 @@ const Users: React.FC = () => {
                                  </div>
                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                    {ORATORIO_TABS.map(tab => {
-                                     const oratorioTabs = parishPerms.oratorioTabs || ['animators', 'shifts', 'teams', 'absences', 'workshops', 'events'];
+                                     const oratorioTabs = parishPerms.oratorioTabs || ['animators', 'absences', 'teams', 'shifts', 'meetings', 'preghiera', 'workshops', 'events', 'confessioni'];
                                      const isTabChecked = oratorioTabs.includes(tab.id);
                                      return (
                                        <button

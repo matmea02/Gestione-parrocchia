@@ -55,7 +55,8 @@ import {
   ClipboardList,
   Search,
   Heart,
-  BarChart3
+  BarChart3,
+  AlertTriangle
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -145,6 +146,13 @@ interface Workshop {
   weeks: string[];
   season: string;
   createdAt: string;
+  schedule?: {
+    [weekId: string]: {
+      date: string;
+      startTime: string;
+      endTime: string;
+    }[];
+  };
 }
 
 interface EventAttendance {
@@ -447,6 +455,9 @@ const OratorioFeriale: React.FC = () => {
   const [isDaysConfigOpen, setIsDaysConfigOpen] = useState(false);
   const [isDownloadDropdownOpen, setIsDownloadDropdownOpen] = useState(false);
   const [selectedWeekId, setSelectedWeekId] = useState<string>('all');
+  const [bulkWorkshopSchedule, setBulkWorkshopSchedule] = useState<{
+    [dayStr: string]: { active: boolean; startTime: string; endTime: string }
+  }>({});
   const [teamsSelectedWeekId, setTeamsSelectedWeekId] = useState<string>('all');
   const [dashboardSelectedWeekId, setDashboardSelectedWeekId] = useState<string>('all');
   const [expandedTeams, setExpandedTeams] = useState<Record<string, boolean>>({});
@@ -569,7 +580,8 @@ const OratorioFeriale: React.FC = () => {
     maxSubscribers: '' as number | '',
     animatorIds: [] as string[],
     referentId: '',
-    weeks: [] as string[]
+    weeks: [] as string[],
+    schedule: {} as { [weekId: string]: { date: string; startTime: string; endTime: string }[] }
   });
 
   const [eventForm, setEventForm] = useState({
@@ -863,6 +875,33 @@ const OratorioFeriale: React.FC = () => {
     return null;
   };
 
+  const checkAnimatorWorkshopAbsence = (animId: string, w: Workshop, targetWeekId: string) => {
+    const activeWeeks = targetWeekId === 'all' ? (w.weeks || []) : [targetWeekId].filter(id => w.weeks?.includes(id));
+    const absencesList: { date: string; startTime: string; endTime: string; reason: string; weekLabel: string }[] = [];
+    
+    activeWeeks.forEach(weekId => {
+      const weekObj = getWeeks().find(wk => wk.id === weekId);
+      const weekIndex = getWeeks().findIndex(wk => wk.id === weekId);
+      const weekLabel = weekObj ? `Sett. ${weekIndex + 1}` : '';
+      
+      const weekSchedule = w.schedule?.[weekId] || [];
+      weekSchedule.forEach(session => {
+        const reason = isAnimatorAbsentDuringShift(animId, session.date, session.startTime, session.endTime);
+        if (reason) {
+          absencesList.push({
+            date: session.date,
+            startTime: session.startTime,
+            endTime: session.endTime,
+            reason,
+            weekLabel
+          });
+        }
+      });
+    });
+    
+    return absencesList;
+  };
+
   const getWeeks = () => {
     const sorted = [...activeSeasonDays].sort((a, b) => a.localeCompare(b));
     const groupsMap: { [mondayStr: string]: string[] } = {};
@@ -1126,12 +1165,45 @@ const OratorioFeriale: React.FC = () => {
     }
   }, [selectedGridAbsence]);
 
+  useEffect(() => {
+    if (selectedWeekId && selectedWeekId !== 'all') {
+      const activeWeekObj = getWeeks().find(wk => wk.id === selectedWeekId);
+      if (activeWeekObj) {
+        // Find if any workshop already has a schedule for this week to use as a starting template
+        const sampleWorkshop = workshops.find(w => w.season === activeSeason && w.weeks?.includes(selectedWeekId) && w.schedule?.[selectedWeekId]?.length);
+        const initialSchedule: { [dayStr: string]: { active: boolean; startTime: string; endTime: string } } = {};
+        
+        // Initialize all days of the week
+        (activeWeekObj.days || []).forEach(day => {
+          initialSchedule[day] = {
+            active: false,
+            startTime: '15:00',
+            endTime: '17:00'
+          };
+        });
+
+        if (sampleWorkshop && sampleWorkshop.schedule?.[selectedWeekId]) {
+          sampleWorkshop.schedule[selectedWeekId].forEach(session => {
+            if (initialSchedule[session.date]) {
+              initialSchedule[session.date].active = true;
+              initialSchedule[session.date].startTime = session.startTime;
+              initialSchedule[session.date].endTime = session.endTime;
+            }
+          });
+        }
+        setBulkWorkshopSchedule(initialSchedule);
+      }
+    } else {
+      setBulkWorkshopSchedule({});
+    }
+  }, [selectedWeekId, activeSeason]);
+
   const resetForms = () => {
     setAnimatorForm({ firstName: '', lastName: '', email: '', phone: '', notes: '', seasons: [activeSeason] });
     setShiftForm({ date: format(new Date(), 'yyyy-MM-dd'), startTime: '08:30', endTime: '17:30', activity: '', animatorIds: [], requiredPeopleCount: '' });
     setTeamForm({ name: '', color: '#3B82F6', animatorIds: [], kids: [], referentIds: [], assignments: {} });
     setAbsenceForm({ animatorId: '', date: format(new Date(), 'yyyy-MM-dd'), startTime: '', endTime: '', reason: '' });
-    setWorkshopForm({ name: '', maxSubscribers: '', animatorIds: [], referentId: '', weeks: [] });
+    setWorkshopForm({ name: '', maxSubscribers: '', animatorIds: [], referentId: '', weeks: [], schedule: {} });
     setEventForm({
       name: '',
       description: '',
@@ -1606,7 +1678,8 @@ const OratorioFeriale: React.FC = () => {
           maxSubscribers: data.maxSubscribers || '',
           animatorIds: data.animatorIds || [],
           referentId: data.referentId || '',
-          weeks: data.weeks || []
+          weeks: data.weeks || [],
+          schedule: data.schedule || {}
         });
       }
       if (type === 'events') {
@@ -1641,7 +1714,8 @@ const OratorioFeriale: React.FC = () => {
           maxSubscribers: '',
           animatorIds: [],
           referentId: '',
-          weeks: currentWeeks.map(w => w.id)
+          weeks: currentWeeks.map(w => w.id),
+          schedule: {}
         });
       }
       if (type === 'events') {
@@ -2408,10 +2482,12 @@ const OratorioFeriale: React.FC = () => {
               details = 'Assente Pomeriggio (Fa Solo Mattina)';
             } else if (isAbsent.reason === 'Solo Pomeriggio') {
               details = 'Assente Mattina (Fa Solo Pomeriggio)';
+            } else if (isAbsent.reason === 'Assente Riunione Verifica') {
+              details = 'Assente Riunione di Verifica';
             } else if (isAbsent.startTime || isAbsent.endTime) {
               details = `${isAbsent.startTime || ''} - ${isAbsent.endTime || ''}`;
             }
-            if (isAbsent.reason && isAbsent.reason !== 'Solo Mattina' && isAbsent.reason !== 'Solo Pomeriggio') {
+            if (isAbsent.reason && isAbsent.reason !== 'Solo Mattina' && isAbsent.reason !== 'Solo Pomeriggio' && isAbsent.reason !== 'Assente Riunione Verifica') {
               details += ` (${isAbsent.reason})`;
             }
 
@@ -2606,6 +2682,8 @@ const OratorioFeriale: React.FC = () => {
               rowData.push('Solo Mat.');
             } else if (ab.reason === 'Solo Pomeriggio') {
               rowData.push('Solo Pom.');
+            } else if (ab.reason === 'Assente Riunione Verifica') {
+              rowData.push('Ass. Riunione');
             } else if (ab.startTime || ab.endTime) {
               rowData.push(`Parz: ${ab.startTime || ''}-${ab.endTime || ''}`);
             } else {
@@ -2667,10 +2745,12 @@ const OratorioFeriale: React.FC = () => {
                 details = 'Solo Mattina';
               } else if (ab.reason === 'Solo Pomeriggio') {
                 details = 'Solo Pomeriggio';
+              } else if (ab.reason === 'Assente Riunione Verifica') {
+                details = 'Assente Riunione Verifica';
               } else if (ab.startTime || ab.endTime) {
                 details = `${ab.startTime || ''} - ${ab.endTime || ''}`;
               }
-              if (ab.reason && ab.reason !== 'Solo Mattina' && ab.reason !== 'Solo Pomeriggio') {
+              if (ab.reason && ab.reason !== 'Solo Mattina' && ab.reason !== 'Solo Pomeriggio' && ab.reason !== 'Assente Riunione Verifica') {
                 details += ` (${ab.reason})`;
               }
 
@@ -3645,6 +3725,60 @@ const OratorioFeriale: React.FC = () => {
     }
   };
 
+  const handleApplyBulkSchedule = async () => {
+    setIsSaving(true);
+    setErrorStatus(null);
+    try {
+      const sessionsToApply: { date: string; startTime: string; endTime: string }[] = [];
+      Object.keys(bulkWorkshopSchedule).forEach((dateStr) => {
+        const details = bulkWorkshopSchedule[dateStr];
+        if (details && details.active) {
+          sessionsToApply.push({
+            date: dateStr,
+            startTime: details.startTime,
+            endTime: details.endTime
+          });
+        }
+      });
+
+      const activeWeekWorkshops = filteredWorkshops.filter(w => w.weeks?.includes(selectedWeekId));
+      
+      if (activeWeekWorkshops.length === 0) {
+        setErrorStatus("Nessun laboratorio attivo per questa settimana.");
+        setTimeout(() => setErrorStatus(null), 3000);
+        setIsSaving(false);
+        return;
+      }
+
+      const batchPromises = activeWeekWorkshops.map(async (w) => {
+        const updatedSchedule = {
+          ...(w.schedule || {}),
+          [selectedWeekId]: sessionsToApply
+        };
+        
+        const docPath = `oratorio_workshops/${w.id}`;
+        try {
+          await updateDoc(doc(workshopsColl, w.id), {
+            schedule: updatedSchedule,
+            updatedAt: new Date().toISOString()
+          });
+        } catch (err) {
+          handleFirestoreError(err, OperationType.UPDATE, docPath);
+        }
+      });
+
+      await Promise.all(batchPromises);
+      setSuccessStatus("Orario impostato con successo per tutti i laboratori della settimana!");
+      setTimeout(() => setSuccessStatus(null), 3000);
+    } catch (error: any) {
+      console.error("Errore durante l'applicazione dell'orario di massa:", error);
+      setErrorStatus("Errore durante l'applicazione dell'orario di massa.");
+      setTimeout(() => setErrorStatus(null), 3000);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const getAbsenceMeta = (ab?: Absence) => {
     if (!ab) return null;
     const s = ab.startTime || '';
@@ -3671,6 +3805,13 @@ const OratorioFeriale: React.FC = () => {
         label: '⛅ P',
         tooltip: 'Fa solo Pomeriggio (Assente Mattina: 08:30-13:30)',
         className: 'bg-sky-500 text-white ring-2 ring-sky-100'
+      };
+    }
+    if (r === 'Assente Riunione Verifica') {
+      return {
+        label: '📝 RV',
+        tooltip: 'Assente alla riunione di verifica',
+        className: 'bg-indigo-500 text-white ring-2 ring-indigo-100 text-[9px]'
       };
     }
     if (!s && !e) {
@@ -5597,14 +5738,17 @@ const OratorioFeriale: React.FC = () => {
                               const referent = animators.find(a => a.id === w.referentId);
                               const assignedStaffCount = w.animatorIds?.length || 0;
 
+                              const isRefAbsent = referent ? checkAnimatorWorkshopAbsence(referent.id, w, currentWeekId).length > 0 : false;
+                              const hasSupportAbsences = (w.animatorIds || []).some(aid => checkAnimatorWorkshopAbsence(aid, w, currentWeekId).length > 0);
+
                               return (
-                                <div key={w.id} className="bg-slate-50/70 border border-slate-100 rounded-2xl p-4 space-y-2">
+                                <div key={w.id} className="bg-slate-50/70 border border-slate-100 rounded-2xl p-4 space-y-2 relative overflow-hidden">
                                   <div className="flex items-start justify-between gap-2">
-                                    <div>
-                                      <h4 className="text-xs font-black text-slate-900 uppercase tracking-tight leading-tight">{w.name}</h4>
+                                    <div className="min-w-0 flex-1">
+                                      <h4 className="text-xs font-black text-slate-900 uppercase tracking-tight leading-tight truncate">{w.name}</h4>
                                       {referent ? (
-                                        <p className="text-[9.5px] text-slate-500 mt-0.5 font-bold">
-                                          Referente: <span className="font-black text-slate-700 uppercase">{referent.firstName} {referent.lastName}</span>
+                                        <p className={`text-[9.5px] mt-0.5 font-bold ${isRefAbsent ? 'text-red-650' : 'text-slate-500'}`}>
+                                          Referente: <span className={`font-black uppercase ${isRefAbsent ? 'text-red-750 font-black' : 'text-slate-700'}`}>{referent.firstName} {referent.lastName} {isRefAbsent && '🔴 (ASSENTE)'}</span>
                                         </p>
                                       ) : (
                                         <p className="text-[9.5px] text-slate-400 italic mt-0.5">Nessun referente assegnato</p>
@@ -5622,13 +5766,31 @@ const OratorioFeriale: React.FC = () => {
                                         {w.animatorIds.map(aid => {
                                           const a = animators.find(an => an.id === aid);
                                           if (!a) return null;
+                                          const aAbs = checkAnimatorWorkshopAbsence(a.id, w, currentWeekId);
+                                          const isAAbsent = aAbs.length > 0;
                                           return (
-                                            <span key={aid} className="bg-white border border-slate-150 text-slate-600 text-[8.5px] font-extrabold uppercase px-1.5 py-0.5 rounded mt-0.5">
+                                            <span 
+                                              key={aid} 
+                                              className={`text-[8.5px] font-extrabold uppercase px-1.5 py-0.5 rounded mt-0.5 border transition-all flex items-center gap-1 ${
+                                                isAAbsent 
+                                                  ? 'bg-rose-600 border-rose-700 text-white shadow-xs' 
+                                                  : 'bg-white border-slate-150 text-slate-600'
+                                              }`}
+                                              title={isAAbsent ? aAbs.map(ab => `${format(parseSafeDate(ab.date), 'dd/MM')} ${ab.startTime}-${ab.endTime} (${ab.reason})`).join(', ') : undefined}
+                                            >
+                                              {isAAbsent && <UserX size={8} />}
                                               {a.firstName} {a.lastName[0]}.
                                             </span>
                                           );
                                         })}
                                       </div>
+                                    </div>
+                                  )}
+
+                                  {(isRefAbsent || hasSupportAbsences) && (
+                                    <div className="mt-2.5 p-2 bg-red-50 border border-red-200/60 rounded-xl flex items-center gap-1.5 text-[8.5px] font-black text-red-700 uppercase tracking-wider">
+                                      <AlertTriangle size={10} className="text-red-600 animate-pulse shrink-0" />
+                                      <span className="truncate">Attenzione: assenze nel personale!</span>
                                     </div>
                                   )}
                                 </div>
@@ -7300,11 +7462,13 @@ const OratorioFeriale: React.FC = () => {
                                 spec = 'Solo Mattina';
                               } else if (ab?.reason === 'Solo Pomeriggio') {
                                 spec = 'Solo Pomeriggio';
+                              } else if (ab?.reason === 'Assente Riunione Verifica') {
+                                spec = 'Riunione Verifica';
                               } else if (ab?.startTime || ab?.endTime) {
                                 spec = `${ab.startTime || ''}-${ab.endTime || ''}`;
                               }
                               
-                              const reason = (isRegistered && ab?.reason && ab.reason !== 'Solo Mattina' && ab.reason !== 'Solo Pomeriggio') ? `(${ab.reason})` : '';
+                              const reason = (isRegistered && ab?.reason && ab.reason !== 'Solo Mattina' && ab.reason !== 'Solo Pomeriggio' && ab.reason !== 'Assente Riunione Verifica') ? `(${ab.reason})` : '';
                               const isRef = t.referentIds?.includes(anim.id);
                               const assign = t.assignments?.[anim.id];
 
@@ -7934,6 +8098,15 @@ const OratorioFeriale: React.FC = () => {
                                         <span className="bg-red-50 border border-red-100 text-red-650 px-2.5 py-1 rounded-xl flex items-center gap-1">
                                           🔴 {activeDayStats.absent} Ass.
                                         </span>
+                                        {(() => {
+                                          const meetingForDayCount = meetings.find(m => m.date === activeRecapDay && m.season === activeSeason);
+                                          const meetingAbsCount = meetingForDayCount ? (meetingForDayCount.absentAnimatorIds || []).length : 0;
+                                          return meetingAbsCount > 0 ? (
+                                            <span className="bg-indigo-50 border border-indigo-150 text-indigo-750 px-2.5 py-1 rounded-xl flex items-center gap-1">
+                                              📝 {meetingAbsCount} Ass. Riunione
+                                            </span>
+                                          ) : null;
+                                        })()}
                                       </div>
                                     </div>
 
@@ -7994,6 +8167,44 @@ const OratorioFeriale: React.FC = () => {
                                         </div>
                                       )}
                                     </div>
+                                    {(() => {
+                                      const meetingOnDay = meetings.find(m => m.date === activeRecapDay && m.season === activeSeason);
+                                      const meetingAbsentees = meetingOnDay 
+                                        ? (meetingOnDay.absentAnimatorIds || []).map(id => {
+                                            return activeSeasonAnimatorsList.find(a => a.id === id);
+                                          }).filter(Boolean) as Animator[]
+                                        : [];
+                                      return (
+                                        <div className="mt-4 pt-4 border-t border-slate-100">
+                                          <h5 className="text-[9px] font-black text-indigo-600 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                                            <ClipboardList size={12} className="text-indigo-600 animate-pulse" />
+                                            Assenti alla Riunione di Verifica di questa sera ({meetingAbsentees.length}):
+                                          </h5>
+                                          {meetingAbsentees.length > 0 ? (
+                                            <div className="flex flex-wrap gap-1.5 max-h-[100px] overflow-y-auto pr-1">
+                                              {meetingAbsentees.map(anim => {
+                                                const team = teams.find(t => t.season === activeSeason && t.animatorIds?.includes(anim.id));
+                                                return (
+                                                  <span 
+                                                    key={`mtg-abs-recap-${anim.id}`} 
+                                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-indigo-50 border border-indigo-150 text-indigo-950 text-[9px] font-extrabold uppercase italic"
+                                                  >
+                                                    📝 {anim.lastName} {anim.firstName}
+                                                    {team && (
+                                                      <span className="text-[7.5px] font-black uppercase inline-block border border-indigo-200/50 bg-white/70 px-1.5 py-0.2 rounded font-sans scale-90" style={{ color: team.color }}>
+                                                        {team.name}
+                                                      </span>
+                                                    )}
+                                                  </span>
+                                                );
+                                              })}
+                                            </div>
+                                          ) : (
+                                            <p className="text-[9.5px] font-bold text-slate-400 italic">Nessun assente alla riunione inserito o tutti presenti stasera.</p>
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
                                   </div>
 
                                   <div className="pt-3 mt-4 border-t border-slate-100/60 text-[9px] text-slate-400 font-bold uppercase tracking-wider flex justify-between items-center">
@@ -8086,26 +8297,40 @@ const OratorioFeriale: React.FC = () => {
                                           : ''
                                       }`}
                                     >
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setSelectedGridAbsence({
-                                            anim,
-                                            day,
-                                            existingAbs: matchingAbs
-                                          });
-                                        }}
-                                        className={`w-11 h-11 rounded-xl flex items-center justify-center font-bold text-xs shadow-sm cursor-pointer transition-all active:scale-95 ${
-                                          meta ? meta.className : 'bg-emerald-50/40 border border-emerald-100 hover:bg-emerald-50 hover:border-emerald-255 text-emerald-600 hover:text-emerald-800'
-                                        }`}
-                                        title={meta ? meta.tooltip : `${anim.lastName}: Presente (Clicca per impostare assenza)`}
-                                      >
-                                        {meta ? (
-                                          <span className="font-extrabold text-[10px] whitespace-nowrap">{meta.label}</span>
-                                        ) : (
-                                          <Plus size={11} className="opacity-60 hover:opacity-100 hover:scale-110 transition-all font-bold" />
-                                        )}
-                                      </button>
+                                      {(() => {
+                                        const matchingMeeting = meetings.find(m => m.date === day && m.season === activeSeason);
+                                        const isMtgAbsent = matchingMeeting ? (matchingMeeting.absentAnimatorIds || []).includes(anim.id) : false;
+                                        return (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setSelectedGridAbsence({
+                                                anim,
+                                                day,
+                                                existingAbs: matchingAbs
+                                              });
+                                            }}
+                                            className={`relative w-11 h-11 rounded-xl flex items-center justify-center font-bold text-xs shadow-sm cursor-pointer transition-all active:scale-95 ${
+                                              meta ? meta.className : 'bg-emerald-50/40 border border-emerald-100 hover:bg-emerald-50 hover:border-emerald-255 text-emerald-600 hover:text-emerald-800'
+                                            }`}
+                                            title={meta ? `${meta.tooltip}${isMtgAbsent ? ' + Assente Riunione' : ''}` : `${anim.lastName}: Presente${isMtgAbsent ? ' (Assente Riunione)' : ''} (Clicca per impostare)`}
+                                          >
+                                            {meta ? (
+                                              <span className="font-extrabold text-[10px] whitespace-nowrap">{meta.label}</span>
+                                            ) : (
+                                              <Plus size={11} className="opacity-60 hover:opacity-100 hover:scale-110 transition-all font-bold" />
+                                            )}
+                                            {isMtgAbsent && (
+                                              <span 
+                                                className="absolute -top-1.5 -right-1.5 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-indigo-600 text-[8.5px] font-black text-white ring-2 ring-white shadow-md animate-in zoom-in duration-300" 
+                                                title="Assente alla Riunione di Verifica"
+                                              >
+                                                📝
+                                              </span>
+                                            )}
+                                          </button>
+                                        );
+                                      })()}
                                     </td>
                                   );
                                 })}
@@ -8341,6 +8566,147 @@ const OratorioFeriale: React.FC = () => {
                 </div>
               </div>
 
+              {/* Mass Schedule Configuration Box */}
+              {selectedWeekId !== 'all' && (() => {
+                const activeWeekObj = weeks.find(wk => wk.id === selectedWeekId);
+                const activeWeekIndex = weeks.findIndex(wk => wk.id === selectedWeekId);
+                const activeWeekWorkshops = filteredWorkshops.filter(w => w.weeks?.includes(selectedWeekId));
+                
+                if (!activeWeekObj) return null;
+
+                return (
+                  <div className="bg-gradient-to-br from-indigo-50/40 to-slate-50 border border-indigo-100/60 rounded-[2.5rem] p-6 md:p-8 mb-8 space-y-4 shadow-xs">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-indigo-100/40">
+                      <div>
+                        <h4 className="text-xs font-black text-indigo-700 uppercase tracking-widest flex items-center gap-2">
+                          <span className="p-1.5 bg-indigo-100 text-indigo-700 rounded-lg"><Calendar size={13} /></span>
+                          Pianificazione di Massa • Settimana {activeWeekIndex + 1}
+                        </h4>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
+                          Imposta giorni e orari uguali per tutti i {activeWeekWorkshops.length} laboratori attivi in questa settimana
+                        </p>
+                      </div>
+                      
+                      <button
+                        type="button"
+                        onClick={handleApplyBulkSchedule}
+                        disabled={isSaving || activeWeekWorkshops.length === 0}
+                        className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all select-none border cursor-pointer flex items-center gap-2 ${
+                          isSaving
+                            ? 'bg-indigo-300 text-white border-indigo-300 cursor-not-allowed'
+                            : activeWeekWorkshops.length === 0
+                              ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                              : 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 shadow-sm hover:shadow-md'
+                        }`}
+                      >
+                        {isSaving ? 'Salvataggio...' : '⚡ Applica Orario a Tutti i Laboratori'}
+                      </button>
+                    </div>
+
+                    {activeWeekWorkshops.length === 0 ? (
+                      <div className="py-4 text-center text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        Nessun laboratorio attivo configurato per questa settimana.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 pt-2">
+                        {(activeWeekObj.days || []).map(dayStr => {
+                          const dayDate = parseSafeDate(dayStr);
+                          const dayName = format(dayDate, 'eeee', { locale: it });
+                          const capitalizedDay = dayName.charAt(0).toUpperCase() + dayName.slice(1);
+                          
+                          const dayDetails = bulkWorkshopSchedule[dayStr] || { active: false, startTime: '15:00', endTime: '17:00' };
+                          const isScheduled = dayDetails.active;
+                          
+                          return (
+                            <div 
+                              key={`bulk-day-${dayStr}`} 
+                              className={`flex flex-col p-4 rounded-2xl border transition-all ${
+                                isScheduled
+                                  ? 'bg-white border-indigo-200 shadow-xs'
+                                  : 'bg-slate-50/50 text-slate-400 border-slate-100'
+                              }`}
+                            >
+                              {/* Toggle Checkbox Button */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setBulkWorkshopSchedule(prev => ({
+                                    ...prev,
+                                    [dayStr]: {
+                                      active: !prev[dayStr]?.active,
+                                      startTime: prev[dayStr]?.startTime || '15:00',
+                                      endTime: prev[dayStr]?.endTime || '17:00'
+                                    }
+                                  }));
+                                }}
+                                className={`flex items-center gap-2 text-left mb-3 w-full pb-2 border-b border-dashed transition-colors ${
+                                  isScheduled ? 'border-indigo-100' : 'border-slate-100'
+                                }`}
+                              >
+                                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${
+                                  isScheduled 
+                                    ? 'bg-indigo-600 border-indigo-600 text-white' 
+                                    : 'border-slate-300 bg-white'
+                                }`// @ts-ignore
+                                }>
+                                  {isScheduled && <Check size={10} />}
+                                </div>
+                                <div className="min-w-0">
+                                  <span className={`text-[10px] font-black uppercase block tracking-wider ${isScheduled ? 'text-indigo-900' : 'text-slate-400'}`}>
+                                    {capitalizedDay}
+                                  </span>
+                                  <span className={`text-[9px] font-bold block ${isScheduled ? 'text-slate-500' : 'text-slate-400/80'}`}>
+                                    {format(dayDate, 'dd/MM')}
+                                  </span>
+                                </div>
+                              </button>
+
+                              {/* Time Inputs */}
+                              <div className={`space-y-2 transition-opacity duration-200 ${isScheduled ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
+                                <div className="flex items-center justify-between gap-1 bg-slate-50 px-2.5 py-1 rounded-xl border border-slate-100">
+                                  <span className="text-[8px] font-black text-slate-400 uppercase">DALLE</span>
+                                  <input
+                                    type="time"
+                                    value={dayDetails.startTime}
+                                    onChange={(e) => {
+                                      setBulkWorkshopSchedule(prev => ({
+                                        ...prev,
+                                        [dayStr]: {
+                                          ...prev[dayStr],
+                                          startTime: e.target.value
+                                        }
+                                      }));
+                                    }}
+                                    className="bg-transparent border-none text-[10px] font-extrabold text-slate-700 w-14 p-0 text-right focus:ring-0"
+                                  />
+                                </div>
+                                <div className="flex items-center justify-between gap-1 bg-slate-50 px-2.5 py-1 rounded-xl border border-slate-100">
+                                  <span className="text-[8px] font-black text-slate-400 uppercase">ALLE</span>
+                                  <input
+                                    type="time"
+                                    value={dayDetails.endTime}
+                                    onChange={(e) => {
+                                      setBulkWorkshopSchedule(prev => ({
+                                        ...prev,
+                                        [dayStr]: {
+                                          ...prev[dayStr],
+                                          endTime: e.target.value
+                                        }
+                                      }));
+                                    }}
+                                    className="bg-transparent border-none text-[10px] font-extrabold text-slate-700 w-14 p-0 text-right focus:ring-0"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* Workshops Grid */}
               {(() => {
                 const workshopsToShow = selectedWeekId === 'all'
@@ -8355,6 +8721,21 @@ const OratorioFeriale: React.FC = () => {
                         const supportAnimators = (w.animatorIds || [])
                           .map(id => animators.find(a => a.id === id))
                           .filter(Boolean) as Animator[];
+
+                        // Compute conflicted animators for the active weeks
+                        const conflictedAnimators: { anim: Animator; role: 'Referente' | 'Supporto'; sessions: any[] }[] = [];
+                        if (referent) {
+                          const refAbs = checkAnimatorWorkshopAbsence(referent.id, w, selectedWeekId);
+                          if (refAbs.length > 0) {
+                            conflictedAnimators.push({ anim: referent, role: 'Referente', sessions: refAbs });
+                          }
+                        }
+                        supportAnimators.forEach(a => {
+                          const aAbs = checkAnimatorWorkshopAbsence(a.id, w, selectedWeekId);
+                          if (aAbs.length > 0) {
+                            conflictedAnimators.push({ anim: a, role: 'Supporto', sessions: aAbs });
+                          }
+                        });
 
                         return (
                           <div
@@ -8399,34 +8780,71 @@ const OratorioFeriale: React.FC = () => {
                               </div>
 
                               {/* Referent display */}
-                              <div className="p-3 bg-amber-50/20 border border-amber-100/50 rounded-2xl flex items-center gap-3">
-                                <div className="w-8 h-8 bg-amber-50 rounded-xl flex items-center justify-center shrink-0 text-amber-500 shadow-sm border border-amber-100/30">
-                                  <Star size={14} className="fill-amber-450 text-amber-500" />
-                                </div>
-                                <div>
-                                  <span className="text-[8.5px] font-black uppercase text-amber-600 tracking-wider block">
-                                    Referente Laboratorio
-                                  </span>
-                                  <span className="text-xs font-black text-slate-800">
-                                    {referent ? `${referent.lastName} ${referent.firstName}` : 'Referente non impostato'}
-                                  </span>
-                                </div>
-                              </div>
+                              {(() => {
+                                const refAbs = referent ? checkAnimatorWorkshopAbsence(referent.id, w, selectedWeekId) : [];
+                                const isRefAbsent = refAbs.length > 0;
+                                return (
+                                  <div className={`p-3 border rounded-2xl flex items-center gap-3 transition-colors ${
+                                    isRefAbsent 
+                                      ? 'bg-rose-50 border-rose-200 text-rose-950' 
+                                      : 'bg-amber-50/20 border-amber-100/50 text-slate-800'
+                                  }`}>
+                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-sm border ${
+                                      isRefAbsent 
+                                        ? 'bg-rose-100 border-rose-250 text-rose-650 animate-pulse' 
+                                        : 'bg-amber-50 border-amber-100/30 text-amber-500'
+                                    }`}>
+                                      {isRefAbsent ? <UserX size={14} /> : <Star size={14} className="fill-amber-450 text-amber-500" />}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <span className={`text-[8.5px] font-black uppercase tracking-wider block ${
+                                        isRefAbsent ? 'text-rose-600' : 'text-amber-600'
+                                      }`}>
+                                        Referente Laboratorio {isRefAbsent && '⚠️ ASSENTE'}
+                                      </span>
+                                      <span className={`text-xs font-black truncate block ${isRefAbsent ? 'text-rose-700' : 'text-slate-800'}`}>
+                                        {referent ? `${referent.lastName} ${referent.firstName}` : 'Referente non impostato'}
+                                      </span>
+                                      {isRefAbsent && (
+                                        <span className="text-[9px] font-bold text-rose-600 block mt-0.5 leading-tight italic">
+                                          {refAbs.map(ab => `${ab.weekLabel ? ab.weekLabel + ' - ' : ''}${format(parseSafeDate(ab.date), 'dd/MM')} ${ab.startTime}-${ab.endTime} (${ab.reason})`).join(', ')}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
 
                               {/* Supports display */}
                               <div className="space-y-1.5">
                                 <span className="text-[8.5px] font-black uppercase text-slate-400 tracking-wider block ml-1">
                                   Animatori di Supporto ({supportAnimators.length})
                                 </span>
-                                <div className="flex flex-wrap gap-1">
-                                  {supportAnimators.map(a => (
-                                    <span
-                                      key={`${w.id}-support-${a.id}`}
-                                      className="text-[10px] font-bold text-slate-600 bg-slate-50 border border-slate-100 px-2.5 py-1 rounded-lg"
-                                    >
-                                      {a.lastName} {a.firstName[0]}.
-                                    </span>
-                                  ))}
+                                <div className="flex flex-wrap gap-1.5">
+                                  {supportAnimators.map(a => {
+                                    const aAbs = checkAnimatorWorkshopAbsence(a.id, w, selectedWeekId);
+                                    const isAAbsent = aAbs.length > 0;
+                                    
+                                    return (
+                                      <span
+                                        key={`${w.id}-support-${a.id}`}
+                                        className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1 transition-all relative group/abs ${
+                                          isAAbsent
+                                            ? 'text-white bg-rose-600 border-rose-700 hover:bg-rose-700 shadow-sm'
+                                            : 'text-slate-600 bg-slate-50 border-slate-100'
+                                        }`}
+                                        title={isAAbsent ? aAbs.map(ab => `${ab.weekLabel ? ab.weekLabel + ': ' : ''}${format(parseSafeDate(ab.date), 'dd/MM')} ${ab.startTime}-${ab.endTime} (${ab.reason})`).join(', ') : undefined}
+                                      >
+                                        {isAAbsent && <UserX size={10} className="animate-bounce" />}
+                                        {a.lastName} {a.firstName[0]}.
+                                        {isAAbsent && (
+                                          <span className="ml-1 text-[8px] font-black uppercase tracking-tight bg-white text-rose-600 px-1 py-0.2 rounded font-sans scale-90">
+                                            ASSENTE
+                                          </span>
+                                        )}
+                                      </span>
+                                    );
+                                  })}
                                   {supportAnimators.length === 0 && (
                                     <span className="text-[10px] text-slate-400 italic ml-1 block">
                                       Nessun altro animatore assegnato
@@ -8434,6 +8852,67 @@ const OratorioFeriale: React.FC = () => {
                                   )}
                                 </div>
                               </div>
+
+                              {/* Prominent Coverage Warning Banner if someone is absent */}
+                              {conflictedAnimators.length > 0 && (
+                                <div className="p-3 bg-red-50 border border-red-200/60 rounded-2xl flex items-start gap-2.5 animate-in shake duration-300">
+                                  <div className="p-1.5 bg-red-600 text-white rounded-lg shrink-0">
+                                    <AlertTriangle size={14} className="animate-pulse" />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <h5 className="text-[10px] font-black text-red-700 uppercase tracking-wider leading-none mb-1">
+                                      ⚠️ PROBLEMA COPERTURA ({conflictedAnimators.length})
+                                    </h5>
+                                    <p className="text-[9.5px] font-bold text-red-650 leading-normal">
+                                      Qualcuno non può svolgere il laboratorio nei giorni/orari previsti:
+                                    </p>
+                                    <div className="mt-1.5 space-y-1">
+                                      {conflictedAnimators.map((c, idx) => (
+                                        <div key={`conflict-detail-${idx}`} className="text-[9px] font-black text-red-800 leading-tight">
+                                          • <strong className="uppercase">{c.anim.lastName} {c.anim.firstName}</strong> ({c.role}):{' '}
+                                          <span className="font-bold italic">
+                                            {c.sessions.map(s => `${s.weekLabel ? s.weekLabel + ' ' : ''}${format(parseSafeDate(s.date), 'dd/MM')} ${s.startTime}-${s.endTime}`).join(', ')}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Detailed schedule list display */}
+                              {(() => {
+                                const activeWeeksList = selectedWeekId === 'all' ? (w.weeks || []) : [selectedWeekId].filter(id => w.weeks?.includes(id));
+                                return activeWeeksList.map(weekId => {
+                                  const weekObj = weeks.find(wk => wk.id === weekId);
+                                  const weekIndex = weeks.findIndex(wk => wk.id === weekId);
+                                  const weekSchedule = w.schedule?.[weekId] || [];
+                                  
+                                  if (weekSchedule.length === 0) return null;
+                                  
+                                  return (
+                                    <div key={`card-sched-${w.id}-${weekId}`} className="pt-2.5 border-t border-slate-50 space-y-1">
+                                      <span className="text-[8.5px] font-black uppercase text-indigo-600 tracking-wider block ml-1">
+                                        Programma Sett. {weekIndex + 1}:
+                                      </span>
+                                      <div className="flex flex-wrap gap-1">
+                                        {weekSchedule.map(session => {
+                                          const dDate = parseSafeDate(session.date);
+                                          const dName = format(dDate, 'eee', { locale: it });
+                                          return (
+                                            <span 
+                                              key={`session-chip-${session.date}`}
+                                              className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-indigo-700 bg-indigo-50/50 border border-indigo-100/60 px-2 py-1 rounded-xl"
+                                            >
+                                              📅 {dName} {format(dDate, 'dd/MM')}: <strong className="text-indigo-900 font-extrabold">{session.startTime}-{session.endTime}</strong>
+                                            </span>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  );
+                                });
+                              })()}
 
                               {/* Weeks display */}
                               <div className="space-y-1.5 pt-2 border-t border-slate-50">
@@ -11232,10 +11711,27 @@ const OratorioFeriale: React.FC = () => {
                             key={w.id}
                             type="button"
                             onClick={() => {
-                              const ids = isSelected
-                                ? workshopForm.weeks.filter(id => id !== w.id)
-                                : [...workshopForm.weeks, w.id];
-                              setWorkshopForm({...workshopForm, weeks: ids});
+                              const isSelected = workshopForm.weeks.includes(w.id);
+                              let newWeeks = [];
+                              const newSchedule = { ...(workshopForm.schedule || {}) };
+                              
+                              if (isSelected) {
+                                newWeeks = workshopForm.weeks.filter(id => id !== w.id);
+                                delete newSchedule[w.id];
+                              } else {
+                                newWeeks = [...workshopForm.weeks, w.id];
+                                // Pre-populate days of the week with default hours
+                                newSchedule[w.id] = (w.days || []).map(day => ({
+                                  date: day,
+                                  startTime: '15:00',
+                                  endTime: '17:00'
+                                }));
+                              }
+                              setWorkshopForm({
+                                ...workshopForm,
+                                weeks: newWeeks,
+                                schedule: newSchedule
+                              });
                             }}
                             className={`flex items-center justify-between p-3.5 rounded-xl border text-left ${
                               isSelected
@@ -11257,6 +11753,130 @@ const OratorioFeriale: React.FC = () => {
                       )}
                     </div>
                   </div>
+
+                  {/* Dynamic Days and Hours Schedule per Week */}
+                  {workshopForm.weeks.length > 0 && (
+                    <div className="space-y-4 pt-4 border-t border-slate-100">
+                      <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest ml-1 block font-bold">
+                        Pianificazione Giorni e Orari per Settimana
+                      </span>
+                      <p className="text-[10px] font-medium text-slate-400 -mt-2 ml-1">
+                        Seleziona in quali giorni si tiene il laboratorio e inserisci gli orari (es. 15:00 - 17:00) per verificare la presenza degli animatori.
+                      </p>
+                      
+                      <div className="space-y-4">
+                        {workshopForm.weeks.map((weekId, weekIdx) => {
+                          const weekObj = weeks.find(wk => wk.id === weekId);
+                          if (!weekObj) return null;
+                          
+                          const weekSchedule = workshopForm.schedule?.[weekId] || [];
+                          
+                          return (
+                            <div key={`schedule-week-${weekId}`} className="p-5 bg-slate-50 rounded-3xl border border-slate-100 space-y-3">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-black text-slate-700 uppercase italic">
+                                  Settimana {weekIdx + 1} ({weekObj.label.replace('Settimana ', '')})
+                                </span>
+                                <span className="text-[9px] font-black uppercase text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md">
+                                  {weekSchedule.length} giorni attivi
+                                </span>
+                              </div>
+                              
+                              <div className="space-y-2">
+                                {(weekObj.days || []).map(dayStr => {
+                                  const dayDate = parseSafeDate(dayStr);
+                                  const dayName = format(dayDate, 'eeee', { locale: it });
+                                  const capitalizedDay = dayName.charAt(0).toUpperCase() + dayName.slice(1);
+                                  
+                                  const session = weekSchedule.find(s => s.date === dayStr);
+                                  const isScheduled = !!session;
+                                  
+                                  return (
+                                    <div key={`day-row-${dayStr}`} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-white rounded-2xl border border-slate-100/60 gap-3">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const currentSchedule = { ...(workshopForm.schedule || {}) };
+                                          let ws = [...(currentSchedule[weekId] || [])];
+                                          const idx = ws.findIndex(s => s.date === dayStr);
+                                          if (idx > -1) {
+                                            ws.splice(idx, 1);
+                                          } else {
+                                            ws.push({
+                                              date: dayStr,
+                                              startTime: '15:00',
+                                              endTime: '17:00'
+                                            });
+                                          }
+                                          ws.sort((a, b) => a.date.localeCompare(b.date));
+                                          currentSchedule[weekId] = ws;
+                                          setWorkshopForm({ ...workshopForm, schedule: currentSchedule });
+                                        }}
+                                        className={`flex items-center gap-2.5 px-3.5 py-2 rounded-xl border text-left cursor-pointer transition-all ${
+                                          isScheduled
+                                            ? 'bg-indigo-50 border-indigo-100 text-indigo-900 font-extrabold'
+                                            : 'bg-slate-50 text-slate-400 border-slate-100'
+                                        }`}
+                                      >
+                                        <div className={`w-4 h-4 rounded border flex items-center shrink-0 justify-center ${isScheduled ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-200'}`}>
+                                          {isScheduled && <Check size={10} />}
+                                        </div>
+                                        <span className="text-[11px] font-bold">
+                                          {capitalizedDay} {format(dayDate, 'dd/MM')}
+                                        </span>
+                                      </button>
+                                      
+                                      {isScheduled && session && (
+                                        <div className="flex items-center gap-2 self-end sm:self-auto">
+                                          <div className="flex items-center gap-1 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-100">
+                                            <span className="text-[9px] font-black text-slate-400 uppercase">DALLE</span>
+                                            <input
+                                              type="time"
+                                              value={session.startTime}
+                                              onChange={(e) => {
+                                                const currentSchedule = { ...(workshopForm.schedule || {}) };
+                                                const ws = [...(currentSchedule[weekId] || [])];
+                                                const idx = ws.findIndex(s => s.date === dayStr);
+                                                if (idx > -1) {
+                                                  ws[idx] = { ...ws[idx], startTime: e.target.value };
+                                                  currentSchedule[weekId] = ws;
+                                                  setWorkshopForm({ ...workshopForm, schedule: currentSchedule });
+                                                }
+                                              }}
+                                              className="bg-transparent border-none text-[11px] font-extrabold text-slate-700 w-16 p-0 focus:ring-0"
+                                            />
+                                          </div>
+                                          
+                                          <div className="flex items-center gap-1 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-100">
+                                            <span className="text-[9px] font-black text-slate-400 uppercase">ALLE</span>
+                                            <input
+                                              type="time"
+                                              value={session.endTime}
+                                              onChange={(e) => {
+                                                const currentSchedule = { ...(workshopForm.schedule || {}) };
+                                                const ws = [...(currentSchedule[weekId] || [])];
+                                                const idx = ws.findIndex(s => s.date === dayStr);
+                                                if (idx > -1) {
+                                                  ws[idx] = { ...ws[idx], endTime: e.target.value };
+                                                  currentSchedule[weekId] = ws;
+                                                  setWorkshopForm({ ...workshopForm, schedule: currentSchedule });
+                                                }
+                                              }}
+                                              className="bg-transparent border-none text-[11px] font-extrabold text-slate-700 w-16 p-0 focus:ring-0"
+                                            />
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -12136,6 +12756,65 @@ const OratorioFeriale: React.FC = () => {
                       </div>
                       {selectedGridAbsence.existingAbs && selectedGridAbsence.existingAbs.reason === 'Solo Pomeriggio' && <Check size={16} className="text-sky-600" />}
                     </button>
+
+                    {/* Independent Toggle: Absent from Evening Meeting */}
+                    <div className="mt-6 pt-6 border-t border-slate-100 space-y-3">
+                      <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest block font-bold font-sans">Riunione di Verifica (Stasera)</span>
+                      
+                      {(() => {
+                        const matchingMeeting = meetings.find(m => m.date === selectedGridAbsence.day && m.season === activeSeason);
+                        const isMtgAbsent = matchingMeeting ? (matchingMeeting.absentAnimatorIds || []).includes(selectedGridAbsence.anim.id) : false;
+                        
+                        return (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (matchingMeeting) {
+                                const currentAbs = matchingMeeting.absentAnimatorIds || [];
+                                const newAbsList = isMtgAbsent
+                                  ? currentAbs.filter(id => id !== selectedGridAbsence.anim.id)
+                                  : [...currentAbs, selectedGridAbsence.anim.id];
+                                await updateDoc(doc(meetingsColl, matchingMeeting.id), {
+                                  absentAnimatorIds: newAbsList,
+                                  updatedAt: new Date().toISOString()
+                                });
+                              } else {
+                                await addDoc(meetingsColl, {
+                                  date: selectedGridAbsence.day,
+                                  time: '21:00',
+                                  season: activeSeason,
+                                  questions: [],
+                                  criticalPoints: '',
+                                  whatWorked: '',
+                                  notes: '',
+                                  absentAnimatorIds: [selectedGridAbsence.anim.id],
+                                  extraPresentAnimatorIds: [],
+                                  createdAt: new Date().toISOString()
+                                });
+                              }
+                              setSuccessStatus(isMtgAbsent ? 'Stato salvato: Presente alla Riunione' : 'Stato salvato: Assente alla Riunione');
+                              setTimeout(() => setSuccessStatus(null), 2000);
+                            }}
+                            className={`w-full flex items-center justify-between p-4 rounded-3xl border text-left font-bold transition-all cursor-pointer ${
+                              isMtgAbsent
+                                ? 'border-indigo-500 bg-indigo-50/50 text-indigo-900 shadow-md shadow-indigo-50'
+                                : 'border-slate-100 hover:border-indigo-200 text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <span className="text-xl">📝</span>
+                              <div>
+                                <span className="text-xs font-black uppercase tracking-wider block">Assente alla Riunione</span>
+                                <span className="text-[10px] font-normal text-slate-400 font-medium">L'animatore è assente alla riunione serale / di verifica</span>
+                              </div>
+                            </div>
+                            <div className={`w-10 h-6 rounded-full p-0.5 transition-colors duration-200 focus:outline-none ${isMtgAbsent ? 'bg-indigo-600' : 'bg-slate-200'}`}>
+                              <div className={`bg-white w-5 h-5 rounded-full shadow-md transform duration-200 ease-in-out ${isMtgAbsent ? 'translate-x-4' : 'translate-x-0'}`} />
+                            </div>
+                          </button>
+                        );
+                      })()}
+                    </div>
                   </div>
 
                   {/* Right Column: Custom Hours and Note form */}

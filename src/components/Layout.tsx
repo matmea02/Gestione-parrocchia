@@ -125,7 +125,7 @@ const Layout: React.FC = () => {
   const navItems = portalUser 
     ? baseNavItems.filter(item => {
         if (portalUser.isAdmin) return true;
-        if (item.id === 'aperture' || item.id === 'dashboard') return true;
+        if (item.id === 'dashboard') return true;
         const parishPerms = (portalUser.permissions || {})[currentParish?.id || ''];
         return parishPerms?.modules?.includes(item.id);
       })

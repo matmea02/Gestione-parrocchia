@@ -691,41 +691,42 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="space-y-10 pb-12">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div>
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+        <div className="shrink-0">
           <h1 className="text-3xl font-black text-slate-900 italic uppercase tracking-tight">Dashboard</h1>
           <p className="text-slate-500 mt-1 italic font-medium flex items-center gap-2">
             Benvenuto, <span className="text-blue-600 font-black not-italic">{portalUser?.volunteerName || user?.displayName || 'Utente'}</span>
             <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
           </p>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-         {statCards.map(card => (
-           <Link 
-             key={card.id} 
-             to={card.to}
-             className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all group flex flex-col justify-between"
-           >
-             <div className="flex items-center justify-between mb-4">
-                <div className={`p-3 rounded-2xl ${card.bg} ${card.color} group-hover:scale-110 transition-transform`}>
-                  <card.icon size={20} />
+        {/* 4 Stat Boxes side-by-side next to the title on large screens, responsive on smaller ones */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 lg:gap-4 w-full lg:w-auto">
+          {statCards.map(card => (
+            <Link 
+              key={card.id} 
+              to={card.to}
+              className="bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all group flex items-center gap-3 min-w-[130px] xl:min-w-[170px]"
+            >
+              <div className={`p-2 rounded-xl shrink-0 ${card.bg} ${card.color} group-hover:scale-105 transition-transform`}>
+                <card.icon size={16} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider truncate mb-0.5">{card.label}</p>
+                <div className="flex items-center gap-1.5">
+                  <h3 className="text-base font-black text-slate-950 tracking-tight leading-none truncate">{card.value}</h3>
+                  {card.id === 'maintenance' && stats.pendingTickets > 0 && (
+                    <span className="flex h-2 w-2 relative">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                    </span>
+                  )}
                 </div>
-                {card.id === 'maintenance' && stats.pendingTickets > 0 && (
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-red-50 text-red-600 rounded-full text-[9px] font-black uppercase tracking-widest border border-red-100 animate-pulse">
-                    <AlertCircle size={10} />
-                    {stats.pendingTickets} Urgenti
-                  </div>
-                )}
-             </div>
-             <div>
-               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 italic">{card.label}</p>
-               <h3 className="text-2xl font-black text-slate-900 tracking-tighter italic uppercase">{card.value}</h3>
-               <p className="text-[9px] font-bold text-slate-500 mt-1 uppercase tracking-tight">{card.subValue}</p>
-             </div>
-           </Link>
-         ))}
+                <p className="text-[8px] font-bold text-slate-500 uppercase tracking-tight truncate leading-none mt-1">{card.subValue}</p>
+              </div>
+            </Link>
+          ))}
+        </div>
       </div>
 
       {/* Main Grid: Masonry/Liquid Layout */}
